@@ -11,8 +11,12 @@ No build step, no dependencies — plain HTML/JS using the Web MIDI API
 
 ## Run it
 
-Web MIDI needs a secure context, so serve the folder rather than opening the
-file directly:
+**Hosted:** https://zooloo303.github.io/digi-roll/ — open in Chrome (or
+Edge/Brave — not Safari), allow the MIDI permission, pick your box. Patterns
+save in the browser's localStorage per device.
+
+**Locally:** Web MIDI needs a secure context, so serve the folder rather than
+opening the file directly:
 
 ```sh
 cd digi-roll
