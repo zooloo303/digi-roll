@@ -8,6 +8,124 @@
 const LOOKAHEAD_MS = 120;
 const PUMP_MS = 25;
 
+// Standard MIDI File export: type 0, 96 ticks per quarter (a 16th step = 24 ticks).
+const TPQN = 96;
+const TICKS_PER_STEP = TPQN / 4;
+
+function vlq(n) {
+  const out = [n & 0x7f];
+  n = Math.floor(n / 128);
+  while (n > 0) { out.unshift((n & 0x7f) | 0x80); n = Math.floor(n / 128); }
+  return out;
+}
+
+function chunk(id, bytes) {
+  const len = bytes.length;
+  return [...id].map(c => c.charCodeAt(0))
+    .concat([(len >>> 24) & 255, (len >>> 16) & 255, (len >>> 8) & 255, len & 255], bytes);
+}
+
+// Swing and micro-timing are baked into the tick positions so the file sounds
+// like the app does.
+export function patternToMidiFile(pattern, bpm) {
+  const swingTicks = (((pattern.swing ?? 50) - 50) / 50) * (TICKS_PER_STEP / 3);
+  const ch = pattern.channel & 0x0f;
+  const events = [];
+  for (const n of pattern.notes) {
+    const start = Math.max(0, Math.round((n.step + (n.micro ?? 0)) * TICKS_PER_STEP + (n.step % 2 ? swingTicks : 0)));
+    const end = start + Math.max(1, Math.round(n.len * TICKS_PER_STEP));
+    events.push({ tick: start, order: 1, data: [0x90 | ch, n.pitch & 0x7f, Math.max(1, Math.min(127, n.velocity))] });
+    events.push({ tick: end, order: 0, data: [0x80 | ch, n.pitch & 0x7f, 0] });
+  }
+  events.sort((a, b) => a.tick - b.tick || a.order - b.order); // note-offs first on a shared tick
+
+  const name = [...pattern.name].map(c => c.charCodeAt(0) & 0x7f);
+  const uspq = Math.round(60000000 / bpm); // microseconds per quarter note
+  const track = [0, 0xff, 0x03, ...vlq(name.length), ...name,
+                 0, 0xff, 0x51, 0x03, (uspq >>> 16) & 255, (uspq >>> 8) & 255, uspq & 255];
+  let t = 0;
+  for (const e of events) {
+    track.push(...vlq(e.tick - t), ...e.data);
+    t = e.tick;
+  }
+  // Run the track out to the full pattern length so the loop keeps its bar count.
+  track.push(...vlq(Math.max(0, pattern.lengthSteps * TICKS_PER_STEP - t)), 0xff, 0x2f, 0x00);
+
+  return new Uint8Array([
+    ...chunk('MThd', [0, 0, 0, 1, (TPQN >>> 8) & 255, TPQN & 255]),
+    ...chunk('MTrk', track),
+  ]);
+}
+
+// Import: parse a type 0/1 SMF and take the first track that has notes, mapped
+// onto the 16th grid — whatever doesn't land on a step becomes micro-timing.
+export function midiFileToNotes(bytes, maxSteps = 64) {
+  let i = 0;
+  const tag = () => String.fromCharCode(bytes[i++], bytes[i++], bytes[i++], bytes[i++]);
+  const u16 = () => (bytes[i++] << 8) | bytes[i++];
+  const u32 = () => ((bytes[i++] << 24) | (bytes[i++] << 16) | (bytes[i++] << 8) | bytes[i++]) >>> 0;
+  const vlen = () => { let v = 0, b; do { b = bytes[i++]; v = v * 128 + (b & 0x7f); } while (b & 0x80); return v; };
+  const skip = () => { const n = vlen(); i += n; }; // never write `i += vlen()`: i is read before vlen() moves it
+
+  if (bytes.length < 14 || tag() !== 'MThd') throw new Error('not a MIDI file');
+  const headerLen = u32();
+  u16(); // format: 0 and 1 are handled the same way here
+  const ntrks = u16();
+  const division = u16();
+  i += headerLen - 6;
+  if (division & 0x8000) throw new Error('SMPTE-timecode files are not supported');
+  const per16 = division / 4;
+
+  let found = null;
+  for (let t = 0; t < ntrks && i < bytes.length && !found; t++) {
+    const id = tag();
+    const trackLen = u32();
+    const end = i + trackLen;
+    if (id !== 'MTrk') { i = end; continue; }
+    const notes = [], open = new Map();
+    let tick = 0, status = 0;
+    while (i < end) {
+      tick += vlen();
+      let s = bytes[i];
+      if (s & 0x80) { status = s; i++; } else s = status;
+      if (s === 0xff) { i++; skip(); status = 0; }              // meta
+      else if (s === 0xf0 || s === 0xf7) { skip(); status = 0; } // sysex
+      else {
+        const hi = s & 0xf0;
+        const d1 = bytes[i++];
+        const d2 = hi === 0xc0 || hi === 0xd0 ? 0 : bytes[i++];
+        if (hi === 0x90 && d2 > 0) open.set(d1, { tick, vel: d2 });
+        else if (hi === 0x80 || (hi === 0x90 && d2 === 0)) {
+          const o = open.get(d1);
+          if (o) { open.delete(d1); notes.push({ on: o.tick, off: tick, pitch: d1, vel: o.vel }); }
+        }
+      }
+    }
+    i = end;
+    for (const [pitch, o] of open) notes.push({ on: o.tick, off: o.tick + per16, pitch, vel: o.vel }); // never released
+    if (notes.length) found = notes;
+  }
+  if (!found) return { notes: [], lengthSteps: 16 };
+
+  const out = [];
+  for (const n of found.sort((a, b) => a.on - b.on)) {
+    const f = n.on / per16;
+    const step = Math.round(f);
+    if (step < 0 || step >= maxSteps) continue; // past 4 bars: dropped
+    out.push({
+      step,
+      pitch: n.pitch,
+      len: Math.max(1, Math.round((n.off - n.on) / per16)),
+      velocity: Math.max(1, Math.min(127, n.vel)),
+      micro: Math.max(-0.49, Math.min(0.49, f - step)),
+    });
+  }
+  const maxStep = out.reduce((m, n) => Math.max(m, n.step), 0);
+  const lengthSteps = Math.min(maxSteps, Math.max(16, (Math.floor(maxStep / 16) + 1) * 16));
+  for (const n of out) n.len = Math.min(n.len, lengthSteps - n.step);
+  return { notes: out, lengthSteps, dropped: found.length - out.length };
+}
+
 export class MidiEngine {
   constructor(getState) {
     this.getState = getState; // () => { pattern, bpm, sendClock }
@@ -111,11 +229,15 @@ export class MidiEngine {
       this._nextClockTime = horizon; // keep aligned in case it's re-enabled
     }
 
+    // Swing pushes odd 16ths later; at 66% the odd step lands 2/3 through the pair.
+    const swing = pattern.swing ?? 50;
+
     while (this._nextStepTime < horizon) {
       const stepInPattern = this._step >= 0 ? this._step % pattern.lengthSteps : -1;
+      const swingMs = stepInPattern % 2 === 1 ? ((swing - 50) / 50) * (stepMs / 3) : 0;
       for (const n of pattern.notes) {
         if (n.step !== stepInPattern) continue;
-        const t = this._nextStepTime;
+        const t = this._nextStepTime + swingMs + (n.micro ?? 0) * stepMs;
         this.noteOn(pattern.channel, n.pitch, n.velocity, t);
         // End slightly early so back-to-back notes retrigger cleanly.
         this._send([0x80 | pattern.channel, n.pitch, 0], t + n.len * stepMs - 8);

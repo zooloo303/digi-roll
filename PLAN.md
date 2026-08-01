@@ -27,14 +27,14 @@ Guiding principles:
 Make the piano roll genuinely nice to compose in before the plumbing work.
 Each item is independent; pick by mood.
 
-- [ ] Undo/redo (in-memory edit history; Cmd+Z / Shift+Cmd+Z)
-- [ ] Multi-select (drag-marquee + shift-click), move/delete/velocity as a group
-- [ ] Copy/paste + "duplicate bar" (fastest way to build 4-bar variations)
-- [ ] Scale highlight: pick key/scale, tint in-scale rows (breaks/DnB basslines
+- [x] Undo/redo (in-memory edit history; Cmd+Z / Shift+Cmd+Z)
+- [x] Multi-select (drag-marquee + shift-click), move/delete/velocity as a group
+- [x] Copy/paste + "duplicate bar" (fastest way to build 4-bar variations)
+- [x] Scale highlight: pick key/scale, tint in-scale rows (breaks/DnB basslines
       live in a scale; this speeds everything up)
-- [ ] Swing / per-note micro-timing (matters for the SysEx path later —
+- [x] Swing / per-note micro-timing (matters for the SysEx path later —
       Elektron trigs store micro-timing, so the model should carry it now)
-- [ ] MIDI file export/import (escape hatch + lets you pull patterns from
+- [x] MIDI file export/import (escape hatch + lets you pull patterns from
       elsewhere)
 - [ ] Pattern chaining preview (play slots A→B→C to hear a sequence)
 

@@ -51,9 +51,22 @@ notes arriving.
 
 - Click an empty cell to draw a note; keep dragging right to set its length
 - Drag a note to move it, drag its right edge to resize
-- Right-click / alt-click deletes; Delete key removes the selected note
+- Right-click / alt-click deletes; Delete key removes the selection
 - Shift+drag a note up/down to set its velocity (brighter = harder); the
   slider mirrors the touched note and sets the default for new notes
+- Cmd/Ctrl+drag a note sideways for micro-timing (± half a step, shown while
+  dragging); **Swing** (50–80, per pattern) pushes the odd 16ths late
+- Multi-select: Cmd/Ctrl+drag on empty grid for a marquee, shift+click to
+  toggle a note in or out. Move, delete, shift+drag velocity and the Vel
+  slider all apply to the whole selection
+- Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z undo and redo (100 steps); Cmd/Ctrl+C/X/V
+  copy, cut and paste — the clipboard survives switching pattern slots
+- **Dup bar** adds a bar and copies the last one into it (up to 4 bars)
+- Scale menu (root + scale) tints the in-scale rows; purely visual
+- **Export .mid** writes a type 0 Standard MIDI File of the current pattern
+  (tempo, velocities, swing and micro-timing baked in); **Import .mid** reads
+  a type 0/1 file back in, quantized to 16ths with the remainder as
+  micro-timing
 - 8 pattern slots, 1–4 bars each, auto-saved to localStorage
 - Space bar = play/stop
 

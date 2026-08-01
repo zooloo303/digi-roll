@@ -4,21 +4,37 @@
 //   click/drag on empty cell  -> create note, drag right to set length
 //   drag note body            -> move (pitch + step)
 //   drag note's right edge    -> resize
-//   shift+drag on note        -> velocity (up = harder)
+//   shift+drag on note        -> velocity (up = harder), applied to the whole selection
+//   shift+click on note       -> toggle it in/out of the selection
+//   cmd/ctrl+drag on note     -> micro-timing offset
+//   cmd/ctrl+drag on empty    -> marquee select
 //   right-click (or alt+click) on note -> delete
-//   Delete/Backspace          -> delete selected note
+//   Delete/Backspace          -> delete selected notes
 
 import { makeNote } from './state.js';
 
-const PITCH_MAX = 96; // C7
-const PITCH_MIN = 24; // C1
+export const PITCH_MAX = 96; // C7
+export const PITCH_MIN = 24; // C1
 const ROWS = PITCH_MAX - PITCH_MIN + 1;
 const CELL_H = 16;
 const CELL_W = 34;
 const KEY_W = 52;
 const EDGE_PX = 7;
+const DRAG_PX = 3; // movement before a shift-click becomes a velocity drag
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const BLACK = new Set([1, 3, 6, 8, 10]);
+
+export const PITCH_CLASSES = NAMES;
+export const SCALES = {
+  'Major': [0, 2, 4, 5, 7, 9, 11],
+  'Minor': [0, 2, 3, 5, 7, 8, 10],
+  'Dorian': [0, 2, 3, 5, 7, 9, 10],
+  'Phrygian': [0, 1, 3, 5, 7, 8, 10],
+  'Mixolydian': [0, 2, 4, 5, 7, 9, 10],
+  'Harmonic Minor': [0, 2, 3, 5, 7, 8, 11],
+  'Pentatonic Minor': [0, 3, 5, 7, 10],
+  'Blues': [0, 3, 5, 6, 7, 10],
+};
 
 export function noteName(pitch) {
   return NAMES[pitch % 12] + (Math.floor(pitch / 12) - 1); // C4 = 60
@@ -33,7 +49,10 @@ export class PianoRoll {
     this.onChange = opts.onChange;             // notes edited (persist)
     this.onPreview = opts.onPreview;           // (pitch, velocity) audition
     this.onSelect = opts.onSelect;             // (note) selection / velocity changed
-    this.selected = null;
+    this.onBeforeEdit = opts.onBeforeEdit;     // about to mutate: snapshot for undo (once per gesture)
+    this.getScale = opts.getScale;             // () => { root, set } | null — row tinting only
+    this.selected = new Set();                 // note ids
+    this.lastTouched = null;                   // id the velocity slider mirrors
     this.drag = null;
     this.playhead = null;
 
@@ -42,15 +61,41 @@ export class PianoRoll {
     window.addEventListener('mouseup', () => this._up());
     canvas.addEventListener('contextmenu', e => e.preventDefault());
     window.addEventListener('keydown', e => {
-      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selected != null) {
+      const typing = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT';
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selected.size && !typing) {
         const p = this.getPattern();
-        p.notes = p.notes.filter(n => n.id !== this.selected);
-        this.selected = null;
+        this.onBeforeEdit?.();
+        p.notes = p.notes.filter(n => !this.selected.has(n.id));
+        this.clearSelection();
         this.onChange();
         this.draw();
       }
     });
     this.resize();
+  }
+
+  clearSelection() {
+    this.selected.clear();
+    this.lastTouched = null;
+  }
+
+  selectedNotes() {
+    return this.getPattern().notes.filter(n => this.selected.has(n.id));
+  }
+
+  // Selection replaced by one note (the usual result of a plain click).
+  select(note) {
+    this.selected.clear();
+    this.selected.add(note.id);
+    this.lastTouched = note.id;
+    this.onSelect?.(note);
+  }
+
+  setSelection(ids) {
+    this.selected = new Set(ids);
+    if (!this.selected.has(this.lastTouched)) this.lastTouched = null;
+    const last = this.selectedNotes().at(-1);
+    if (last) { this.lastTouched = this.lastTouched ?? last.id; this.onSelect?.(last); }
   }
 
   resize() {
@@ -88,35 +133,64 @@ export class PianoRoll {
         }
       }
     }
-    return { x, step, pitch, inGrid, note, nearEdge };
+    return { x, y, step, pitch, inGrid, note, nearEdge };
+  }
+
+  // Bounds of the current selection, for clamping a group move.
+  _groupStart() {
+    const items = this.selectedNotes().map(n => ({ n, step: n.step, pitch: n.pitch }));
+    return {
+      items,
+      minStep: Math.min(...items.map(i => i.step)),
+      maxEnd: Math.max(...items.map(i => i.step + i.n.len)),
+      minPitch: Math.min(...items.map(i => i.pitch)),
+      maxPitch: Math.max(...items.map(i => i.pitch)),
+    };
   }
 
   _down(e) {
     const pos = this._pos(e);
-    if (!pos.inGrid) return;
+    if (!pos.inGrid) {
+      if (this.selected.size) { this.clearSelection(); this.draw(); }
+      return;
+    }
     const p = this.getPattern();
 
     if (pos.note && (e.button === 2 || e.altKey)) {
+      this.onBeforeEdit?.();
       p.notes = p.notes.filter(n => n.id !== pos.note.id);
-      if (this.selected === pos.note.id) this.selected = null;
+      this.selected.delete(pos.note.id);
       this.onChange();
       this.draw();
       return;
     }
     if (e.button !== 0) return;
+    const mod = e.metaKey || e.ctrlKey;
+
+    if (pos.note && e.shiftKey) {
+      // Undecided until it moves: a click toggles selection, a drag sets velocity.
+      this.drag = { mode: 'shift', note: pos.note, startX: e.clientX, startY: e.clientY };
+      return;
+    }
 
     if (pos.note) {
-      this.selected = pos.note.id;
-      this.onSelect?.(pos.note);
-      this.drag = e.shiftKey
-        ? { mode: 'vel', note: pos.note, startY: e.clientY, startVel: pos.note.velocity }
+      // Clicking a note already in the selection keeps the group, so it can be dragged.
+      if (this.selected.has(pos.note.id)) { this.lastTouched = pos.note.id; this.onSelect?.(pos.note); }
+      else this.select(pos.note);
+      this.onBeforeEdit?.(); // once per gesture, not per mousemove
+      this.drag = mod
+        ? { mode: 'micro', note: pos.note, startX: e.clientX, startMicro: pos.note.micro ?? 0 }
         : pos.nearEdge
           ? { mode: 'resize', note: pos.note }
-          : { mode: 'move', note: pos.note, dStep: pos.step - pos.note.step, startPitch: pos.note.pitch };
+          : { mode: 'move', note: pos.note, dStep: pos.step - pos.note.step,
+              baseStep: pos.note.step, basePitch: pos.note.pitch, group: this._groupStart() };
+    } else if (mod) {
+      this.drag = { mode: 'marquee', x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
     } else {
+      this.onBeforeEdit?.();
       const n = makeNote(pos.step, pos.pitch, 1, this.getDefaultVelocity());
       p.notes.push(n);
-      this.selected = n.id;
+      this.select(n);
       this.drag = { mode: 'resize', note: n, created: true };
       this.onPreview(n.pitch, n.velocity);
       this.onChange();
@@ -129,35 +203,86 @@ export class PianoRoll {
     const pos = this._pos(e);
     const p = this.getPattern();
     const n = this.drag.note;
-    if (this.drag.mode === 'vel') {
-      const vel = Math.max(1, Math.min(127, this.drag.startVel + Math.round(this.drag.startY - e.clientY)));
-      if (vel !== n.velocity) {
-        n.velocity = vel;
+
+    if (this.drag.mode === 'shift') {
+      if (Math.abs(e.clientX - this.drag.startX) <= DRAG_PX && Math.abs(e.clientY - this.drag.startY) <= DRAG_PX) return;
+      if (!this.selected.has(n.id)) this.select(n);
+      else { this.lastTouched = n.id; this.onSelect?.(n); }
+      this.onBeforeEdit?.();
+      this.drag = { mode: 'vel', note: n, startY: this.drag.startY,
+                    items: this.selectedNotes().map(x => ({ n: x, vel: x.velocity })) };
+    }
+
+    if (this.drag.mode === 'marquee') {
+      this.drag.x1 = pos.x;
+      this.drag.y1 = pos.y;
+      this.setSelection(this._inMarquee());
+      this.draw();
+    } else if (this.drag.mode === 'vel') {
+      const d = Math.round(this.drag.startY - e.clientY);
+      let changed = false;
+      for (const it of this.drag.items) {
+        const vel = Math.max(1, Math.min(127, it.vel + d));
+        if (vel !== it.n.velocity) { it.n.velocity = vel; changed = true; }
+      }
+      if (changed) {
         this.onSelect?.(n);
         this.draw();
       }
+    } else if (this.drag.mode === 'micro') {
+      const micro = Math.max(-0.49, Math.min(0.49, this.drag.startMicro + (e.clientX - this.drag.startX) * 0.01));
+      if (micro !== n.micro) { n.micro = micro; this.draw(); }
     } else if (this.drag.mode === 'resize') {
       const len = Math.max(1, Math.min(pos.step - n.step + 1, p.lengthSteps - n.step));
       if (len !== n.len) { n.len = len; this.draw(); }
-    } else {
-      const step = Math.max(0, Math.min(pos.step - this.drag.dStep, p.lengthSteps - n.len));
-      const pitch = Math.max(PITCH_MIN, Math.min(pos.pitch, PITCH_MAX));
-      if (step !== n.step || pitch !== n.pitch) {
-        if (pitch !== n.pitch) this.onPreview(pitch, n.velocity);
-        n.step = step;
-        n.pitch = pitch;
+    } else if (this.drag.mode === 'move') {
+      // One delta for the whole selection, clamped so no member leaves the grid.
+      const g = this.drag.group;
+      const dStep = Math.max(-g.minStep, Math.min(pos.step - this.drag.dStep - this.drag.baseStep,
+                                                  p.lengthSteps - g.maxEnd));
+      const dPitch = Math.max(PITCH_MIN - g.minPitch, Math.min(pos.pitch - this.drag.basePitch,
+                                                               PITCH_MAX - g.maxPitch));
+      if (dStep !== this.drag.dS || dPitch !== this.drag.dP) {
+        for (const it of g.items) { it.n.step = it.step + dStep; it.n.pitch = it.pitch + dPitch; }
+        if (dPitch !== this.drag.dP) this.onPreview(n.pitch, n.velocity);
+        this.drag.dS = dStep;
+        this.drag.dP = dPitch;
         this.draw();
       }
     }
   }
 
   _up() {
-    if (this.drag) {
-      if (this.drag.mode === 'vel') this.onPreview(this.drag.note.pitch, this.drag.note.velocity);
+    if (!this.drag) return;
+    const d = this.drag;
+    this.drag = null;
+    if (d.mode === 'shift') {          // never passed the threshold: toggle membership
+      if (this.selected.has(d.note.id)) {
+        this.selected.delete(d.note.id);
+        if (this.lastTouched === d.note.id) this.lastTouched = null;
+      } else {
+        this.selected.add(d.note.id);
+        this.lastTouched = d.note.id;
+        this.onSelect?.(d.note);
+      }
+    } else if (d.mode === 'marquee') {
+      if (d.x0 === d.x1 && d.y0 === d.y1) this.clearSelection(); // click on empty space
+    } else {
+      if (d.mode === 'vel') this.onPreview(d.note.pitch, d.note.velocity);
       this.onChange();
-      this.drag = null;
-      this.draw();
     }
+    this.draw();
+  }
+
+  _inMarquee() {
+    const d = this.drag;
+    const [x0, x1] = [Math.min(d.x0, d.x1), Math.max(d.x0, d.x1)];
+    const [y0, y1] = [Math.min(d.y0, d.y1), Math.max(d.y0, d.y1)];
+    return this.getPattern().notes.filter(n => {
+      const nx0 = (n.step + (n.micro ?? 0)) * CELL_W, nx1 = nx0 + n.len * CELL_W;
+      const ny0 = (PITCH_MAX - n.pitch) * CELL_H, ny1 = ny0 + CELL_H;
+      return nx0 < x1 && nx1 > x0 && ny0 < y1 && ny1 > y0;
+    }).map(n => n.id);
   }
 
   setPlayhead(step) {
@@ -172,11 +297,17 @@ export class PianoRoll {
     const h = ROWS * CELL_H;
     ctx.clearRect(0, 0, w, h);
 
-    // Rows
+    // Rows (tinted amber where they sit in the chosen scale)
+    const scale = this.getScale?.();
     for (let r = 0; r < ROWS; r++) {
       const pitch = PITCH_MAX - r;
       ctx.fillStyle = BLACK.has(pitch % 12) ? '#16181c' : '#1d2026';
       ctx.fillRect(KEY_W, r * CELL_H, p.lengthSteps * CELL_W, CELL_H);
+      if (scale) {
+        const iv = (pitch - scale.root + 120) % 12;
+        const tint = iv === 0 ? 'rgba(240, 145, 58, 0.15)' : scale.set.has(iv) ? 'rgba(240, 145, 58, 0.06)' : null;
+        if (tint) { ctx.fillStyle = tint; ctx.fillRect(KEY_W, r * CELL_H, p.lengthSteps * CELL_W, CELL_H); }
+      }
     }
     // Grid lines
     for (let s = 0; s <= p.lengthSteps; s++) {
@@ -199,29 +330,42 @@ export class PianoRoll {
 
     // Notes
     for (const n of p.notes) {
-      const x = KEY_W + n.step * CELL_W;
+      const x = KEY_W + (n.step + (n.micro ?? 0)) * CELL_W;
       const y = (PITCH_MAX - n.pitch) * CELL_H;
       const bright = 45 + Math.round((n.velocity / 127) * 45);
       ctx.fillStyle = `hsl(28, 90%, ${bright}%)`;
       ctx.beginPath();
       ctx.roundRect(x + 1, y + 1.5, n.len * CELL_W - 3, CELL_H - 3, 3);
       ctx.fill();
-      if (n.id === this.selected) {
+      if (this.selected.has(n.id)) {
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
     }
 
-    // Velocity readout while shift-dragging
-    if (this.drag?.mode === 'vel') {
+    // Marquee
+    if (this.drag?.mode === 'marquee') {
+      const d = this.drag;
+      const x = KEY_W + Math.min(d.x0, d.x1), y = Math.min(d.y0, d.y1);
+      const mw = Math.abs(d.x1 - d.x0), mh = Math.abs(d.y1 - d.y0);
+      ctx.fillStyle = 'rgba(240, 145, 58, 0.16)';
+      ctx.fillRect(x, y, mw, mh);
+      ctx.strokeStyle = '#f0913a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, mw, mh);
+    }
+
+    // Readout while shift-dragging (velocity) or cmd-dragging (micro-timing)
+    if (this.drag?.mode === 'vel' || this.drag?.mode === 'micro') {
       const n = this.drag.note;
-      const tx = KEY_W + n.step * CELL_W + 2;
+      const micro = this.drag.mode === 'micro';
+      const tx = KEY_W + (n.step + (micro ? n.micro : 0)) * CELL_W + 2;
       const ty = Math.max(11, (PITCH_MAX - n.pitch) * CELL_H - 4);
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 11px system-ui';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(`vel ${n.velocity}`, tx, ty);
+      ctx.fillText(micro ? `micro ${n.micro >= 0 ? '+' : ''}${n.micro.toFixed(2)}` : `vel ${n.velocity}`, tx, ty);
     }
 
     // Playhead

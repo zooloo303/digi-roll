@@ -32,6 +32,7 @@ h1 {
   gap: 8px;
   align-items: center;
 }
+.toolbar + .toolbar { margin-top: 7px; }
 
 select, input[type="number"], button {
   background: #21252e;
@@ -45,6 +46,8 @@ select, input[type="number"], button {
 button { cursor: pointer; }
 button:hover { border-color: #f0913a; }
 button.active { background: #f0913a; color: #14161a; border-color: #f0913a; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:disabled:hover { border-color: #363c48; }
 
 #output { max-width: 220px; }
 input[type="number"] { width: 62px; }

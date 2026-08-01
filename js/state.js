@@ -5,8 +5,8 @@ export const NUM_SLOTS = 8;
 
 let nextNoteId = 1;
 
-export function makeNote(step, pitch, len = 1, velocity = 100) {
-  return { id: nextNoteId++, step, pitch, len, velocity };
+export function makeNote(step, pitch, len = 1, velocity = 100, micro = 0) {
+  return { id: nextNoteId++, step, pitch, len, velocity, micro };
 }
 
 export function defaultPattern(index) {
@@ -14,6 +14,7 @@ export function defaultPattern(index) {
     name: `Pattern ${index + 1}`,
     lengthSteps: 16,   // 16th notes
     channel: index,    // 0-based MIDI channel; defaults line up with Elektron track channels 1-8
+    swing: 50,         // 50 = straight, up to 80 like the Elektron range
     notes: [],
   };
 }
@@ -27,6 +28,8 @@ export function defaultState() {
     countIn: 0, // bars of clock before the notes start
     outputId: null,
     defaultVelocity: 100,
+    scaleRoot: 0,      // 0 = C
+    scale: 'off',      // key into SCALES, or 'off'
   };
 }
 
@@ -35,9 +38,14 @@ export function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
     const state = { ...defaultState(), ...JSON.parse(raw) };
-    // Re-seed note ids above anything stored so new notes never collide.
+    // Re-seed note ids above anything stored so new notes never collide, and
+    // backfill fields added after a pattern was saved.
     for (const p of state.patterns) {
-      for (const n of p.notes) nextNoteId = Math.max(nextNoteId, n.id + 1);
+      if (typeof p.swing !== 'number') p.swing = 50;
+      for (const n of p.notes) {
+        if (typeof n.micro !== 'number') n.micro = 0;
+        nextNoteId = Math.max(nextNoteId, n.id + 1);
+      }
     }
     return state;
   } catch {
