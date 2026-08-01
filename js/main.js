@@ -83,7 +83,7 @@ const chanSel = $('channel');
 for (let i = 0; i < 16; i++) chanSel.add(new Option(`Ch ${i + 1}`, i));
 
 const lenSel = $('length');
-for (const bars of [1, 2, 3, 4]) lenSel.add(new Option(`${bars} bar${bars > 1 ? 's' : ''}`, bars * 16));
+for (const bars of [1, 2, 3, 4, 5, 6, 7, 8]) lenSel.add(new Option(`${bars} bar${bars > 1 ? 's' : ''}`, bars * 16));
 
 const countSel = $('countin');
 for (const bars of [0, 1, 2, 4]) countSel.add(new Option(bars === 0 ? 'Off' : `${bars} bar${bars > 1 ? 's' : ''}`, bars));
@@ -228,7 +228,7 @@ $('importFile').onchange = async () => {
     syncToolbar();
     roll.resize();
     persist();
-    setStatus(`Imported ${notes.length} notes from ${file.name}` + (dropped ? ` (${dropped} past 4 bars dropped)` : ''));
+    setStatus(`Imported ${notes.length} notes from ${file.name}` + (dropped ? ` (${dropped} past 8 bars dropped)` : ''));
   } catch (err) {
     setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
   }
@@ -237,7 +237,7 @@ $('importFile').onchange = async () => {
 
 $('dup').onclick = () => {
   const p = pattern();
-  if (p.lengthSteps >= 64) { setStatus('Already 4 bars — can\'t duplicate further', true); return; }
+  if (p.lengthSteps >= 128) { setStatus('Already 8 bars — can\'t duplicate further', true); return; }
   pushUndo();
   const from = p.lengthSteps - 16;
   const copies = p.notes.filter(n => n.step >= from);

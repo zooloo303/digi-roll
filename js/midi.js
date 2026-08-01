@@ -59,7 +59,7 @@ export function patternToMidiFile(pattern, bpm) {
 
 // Import: parse a type 0/1 SMF and take the first track that has notes, mapped
 // onto the 16th grid — whatever doesn't land on a step becomes micro-timing.
-export function midiFileToNotes(bytes, maxSteps = 64) {
+export function midiFileToNotes(bytes, maxSteps = 128) {
   let i = 0;
   const tag = () => String.fromCharCode(bytes[i++], bytes[i++], bytes[i++], bytes[i++]);
   const u16 = () => (bytes[i++] << 8) | bytes[i++];
