@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>digi-roll — piano roll for Elektron boxes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>digi-roll</h1>
+    <div class="toolbar">
+      <select id="output" title="MIDI output device"></select>
+      <select id="slot" title="Pattern slot"></select>
+      <select id="channel" title="MIDI channel (match the track on your box)"></select>
+      <select id="length" title="Pattern length"></select>
+      <label class="field">BPM <input id="bpm" type="number" min="30" max="300" step="1"></label>
+      <label class="field" title="Send MIDI clock + start/stop so your box follows this app">
+        <input id="clock" type="checkbox"> Clock
+      </label>
+      <label class="field" title="Bars of clock sent before the notes start — time to settle after arming live record">
+        Count-in <select id="countin"></select>
+      </label>
+      <label class="field" title="Velocity for new notes (and the selected note)">
+        Vel <input id="velocity" type="range" min="1" max="127"><span id="velLabel"></span>
+      </label>
+      <button id="play">▶ Play</button>
+      <button id="clear" title="Clear all notes in this pattern">Clear</button>
+      <button id="help" title="How to record into your box">?</button>
+    </div>
+    <div id="status"></div>
+  </header>
+
+  <div id="helpPanel" class="hidden">
+    <h2>Getting a pattern onto your Digitakt 2 / Digitone 2</h2>
+    <ol>
+      <li>Connect the box via USB and pick it in the MIDI output menu.</li>
+      <li>On the box: <b>SETTINGS → MIDI CONFIG → SYNC</b> — enable <b>CLOCK RECEIVE</b> and <b>TRANSPORT RECEIVE</b>. Leave <b>Clock</b> checked in this app.</li>
+      <li>Set this app's <b>Ch</b> to the MIDI channel of the destination track (<b>SETTINGS → MIDI CONFIG → CHANNELS</b> on the box). Draw your notes and press Play to audition — the track's sound plays your pattern live.</li>
+      <li>To capture it into the box's own sequencer: select an empty pattern on the box, enter <b>live recording</b> (RECORD + PLAY), then press Play here. The app sends Stop → Start + clock, which snaps the box back to step 1 in sync with bar 1 of your pattern. Let it loop once, exit record mode, done.</li>
+      <li>Quantize on the box afterwards if needed. Notes longer than one step are captured with their length.</li>
+    </ol>
+    <h2>Sync rules (read this if notes land in the wrong place)</h2>
+    <ul>
+      <li><b>One clock master at a time.</b> If your Octatrack (or anything else) is also sending clock/transport to the box, the box can't lock to this app. During capture either stop the OT's clock send, or set the Digi's <b>SETTINGS → MIDI CONFIG → PORT CONFIG → INPUT FROM = USB</b> so it only listens to this app — flip it back afterwards.</li>
+      <li>Every press of Play here sends Stop then Start, so the box restarts from its pattern step 1 — your recording always lines up with the app's bar 1.</li>
+      <li>Use <b>Count-in</b> (1–2 bars) to get a moment between arming live record and the notes arriving. Keep the count-in a multiple of the box's pattern length so the downbeats stay aligned.</li>
+      <li>On <b>auto channel</b> (default 10): notes go to whichever track is currently selected on the box — handy, just make sure the right track is active before recording.</li>
+    </ul>
+    <p>Tips: click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · right-click (or alt-click) to delete · space = play/stop. Patterns auto-save in your browser.</p>
+    <p class="dim">Direct SysEx pattern transfer (writing straight into pattern memory, elk-herd style) is a possible later addition for the Digitakt 2; the Digitone 2's pattern format isn't publicly documented.</p>
+  </div>
+
+  <div id="rollWrap">
+    <canvas id="roll"></canvas>
+  </div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
