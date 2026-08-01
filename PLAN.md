@@ -49,15 +49,26 @@ protocol documentation (its `Drive`/`Path`/`Struct` modules); Elektron's
 Transfer app uses the same protocol against both DT2 and DN2, so one
 implementation should cover both.
 
-- [ ] Request `sysex: true` MIDI access; add a device console page (hex log of
+- [x] Request `sysex: true` MIDI access; add a device console page (hex log of
       every SysEx exchange — this is the debugging window for all later work)
-- [ ] 7-bit ↔ 8-bit payload packing/unpacking + message framing + checksums
-- [ ] Handshake: device identity request → know which box and OS version we're
-      talking to (version gating starts here)
-- [ ] Fetch a whole-project dump from the DT2, then the DN2
-- [ ] **Ship: "Backup project" button** — download the dump as a file. Already
+      → `console.html` + `js/labs/console.js`
+- [x] 7-bit ↔ 8-bit payload packing/unpacking + message framing + checksums
+      → `js/elektron/sevenbit.js`, `js/elektron/protocol.js`
+- [x] Handshake: device identity request → know which box and OS version we're
+      talking to (version gating starts here) → `js/elektron/device.js`
+      (Elektron API 0x01/0x02, not the universal identity request)
+- [x] Fetch a whole-project dump from the DT2 (0x6F request → dump stream).
+      ✓ Verified on real hardware 2026-08-01: DT2 OS 1.15B, 16.3 MB project
+      dump in 17 s, all checksums good.
+      *DN2: identity handshake works (productId 43, OS 1.10D — captured, in
+      `docs/elektron-sysex-protocol.md`), but dumps are blocked on discovering
+      its dump family byte (SysEx byte 4; DT2 = 0x14). Next experiment: with a
+      throwaway project loaded on the DN2, send 0x6F requests with candidate
+      family bytes and watch the console log.*
+- [x] **Ship: "Backup project" button** — download the dump as a file. Already
       a genuinely useful utility (browser-based project backup, no Transfer
       app), and it produces the raw material for Phase 3's diffing lab.
+      ✓ Working against the real DT2.
 
 **Tooling decision:** runtime stays zero-dependency vanilla JS, but the
 protocol/struct code gets **dev-only unit tests (Vitest)** — binary
@@ -65,9 +76,9 @@ encode/decode work without round-trip tests is how projects corrupt.
 Fixtures = real dumps captured from the boxes, committed to the repo
 (they contain no personal data beyond your patterns — keep a sanitized set).
 
-**License note:** check elk-herd's license before porting code directly;
-otherwise treat its source as documentation and re-implement. Credit mzero
-prominently either way.
+**License note:** ~~check elk-herd's license before porting code directly~~
+— checked: **BSD-2-Clause**, porting allowed with attribution. Credited in
+README and `docs/elektron-sysex-protocol.md`.
 
 ## Phase 2 — Digitakt 2 pattern read/write (known territory)
 

@@ -71,6 +71,19 @@ notes arriving.
   auto-saved to localStorage
 - Space bar = play/stop
 
+## Device console (SysEx)
+
+`console.html` is a separate page that talks to the box over SysEx: it shows a
+hex log of every exchange, identifies the device (model + OS version), and has
+a **Backup project** button that fetches a whole-project dump and downloads it
+as a replayable `.syx` file — browser-based project backup, no Transfer app.
+Digitakt / Digitakt II for now; unknown devices stay read-only. Protocol notes
+live in `docs/elektron-sysex-protocol.md`.
+
+The protocol implementation is ported from
+[elk-herd](https://github.com/mzero/elk-herd) by **mzero** (BSD-2-Clause),
+whose source is the de-facto documentation of Elektron's SysEx protocol.
+
 ## Architecture
 
 - `js/state.js` — pattern model + persistence
@@ -78,6 +91,11 @@ notes arriving.
   (timestamped `MIDIOutput.send`, 24 ppqn clock, start/stop transport)
 - `js/pianoroll.js` — canvas editor
 - `js/main.js` — UI wiring
+- `js/elektron/` — SysEx protocol: `sevenbit.js` (7↔8-bit packing),
+  `protocol.js` (framing/checksums), `device.js` (handshake, project dump)
+- `js/labs/console.js` — the device console page
+- `test/` — Vitest unit tests for the protocol code (dev-only; the app itself
+  stays dependency-free): `npm install && npm test`
 
 ## Ideas / later
 

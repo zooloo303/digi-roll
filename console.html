@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>digi-roll — device console</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="console.css">
+</head>
+<body>
+  <header>
+    <h1>digi-roll <span class="sub">device console</span></h1>
+    <div class="toolbar">
+      <select id="port" title="Elektron device (needs both its input and output port)"></select>
+      <button id="connect" title="Ask the device to identify itself">Connect</button>
+      <button id="backup" title="Fetch the whole current project over SysEx and download it as a file" disabled>Backup project</button>
+      <span id="deviceInfo" class="field"></span>
+      <a href="index.html" class="backlink">← piano roll</a>
+    </div>
+    <div id="status"></div>
+  </header>
+
+  <div id="consoleWrap">
+    <div class="logbar">
+      <span class="dim">SysEx log — every byte in and out</span>
+      <label class="field"><input id="autoscroll" type="checkbox" checked> Follow</label>
+      <button id="clearLog">Clear</button>
+    </div>
+    <div id="log"></div>
+  </div>
+
+<script type="module" src="js/labs/console.js"></script>
+</body>
+</html>
