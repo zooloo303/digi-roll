@@ -34,6 +34,7 @@ export function defaultState() {
     defaultVelocity: 100,
     scaleRoot: 0,      // 0 = C
     scale: 'off',      // key into SCALES, or 'off'
+    panel: 'editPanel', // side panel showing in the rail, or null for none
     chord: {           // chord-draw settings (js/chords.js)
       on: false,
       quality: 'auto', // 'auto' = diatonic when a scale is on; else a QUALITIES key

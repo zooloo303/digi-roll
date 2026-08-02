@@ -11,6 +11,50 @@ body {
   overflow: hidden;
 }
 
+/* --- shared controls ------------------------------------------------------ */
+
+select, input[type="number"], input[type="text"], button {
+  background: #21252e;
+  color: #d8dae0;
+  border: 1px solid #363c48;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+}
+
+button { cursor: pointer; }
+button:hover { border-color: #f0913a; }
+button.active { background: #f0913a; color: #14161a; border-color: #f0913a; font-weight: 600; }
+button:disabled { opacity: 0.35; cursor: default; }
+button:disabled:hover { border-color: #363c48; }
+
+#output { max-width: 210px; }
+input[type="number"] { width: 62px; }
+input[type="range"] { accent-color: #f0913a; }
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #9aa0ab;
+}
+
+.dim { color: #7d8590; }
+.hidden { display: none !important; }
+.push { margin-left: auto; }
+
+.pagelink { color: #7d8590; text-decoration: none; }
+.pagelink:hover { color: #f0913a; }
+
+#status {
+  font-size: 12px;
+  color: #7d8590;
+  min-height: 15px;
+}
+#status.error { color: #e46962; }
+
+/* --- device console page (header + .toolbar rows) ------------------------- */
+
 header {
   padding: 10px 14px 8px;
   border-bottom: 1px solid #2a2e38;
@@ -33,96 +77,183 @@ h1 {
   align-items: center;
 }
 .toolbar + .toolbar { margin-top: 7px; }
+header #status { margin-top: 6px; }
 
-select, input[type="number"], button {
-  background: #21252e;
-  color: #d8dae0;
-  border: 1px solid #363c48;
-  border-radius: 5px;
-  padding: 5px 8px;
-  font: inherit;
-}
+/* --- piano roll page: top bar (transport only) ---------------------------- */
 
-button { cursor: pointer; }
-button:hover { border-color: #f0913a; }
-button.active { background: #f0913a; color: #14161a; border-color: #f0913a; font-weight: 600; }
-button:disabled { opacity: 0.35; cursor: default; }
-button:disabled:hover { border-color: #363c48; }
-
-#output { max-width: 220px; }
-input[type="number"] { width: 62px; }
-input[type="range"] { width: 90px; accent-color: #f0913a; }
-
-.field {
-  display: inline-flex;
+.topbar {
+  flex: none;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  color: #9aa0ab;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #171a20;
+  border-bottom: 1px solid #2a2e38;
 }
 
-#velLabel { min-width: 24px; color: #d8dae0; }
+.logo {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #f0913a;
+  white-space: nowrap;
+}
 
-#status {
-  margin-top: 6px;
-  font-size: 12px;
+.sep { width: 1px; height: 22px; background: #2a2e38; margin: 0 2px; flex: none; }
+
+/* The status line shares the top bar; long messages truncate and keep the full
+   text in the tooltip (main.js mirrors it into title). */
+.topbar #status {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.syncwrap { position: relative; flex: none; }
+
+#syncPop {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  background: #1b1f27;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 210px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .55);
+}
+
+/* --- workspace: rail + panel + grid --------------------------------------- */
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.rail {
+  flex: none;
+  width: 62px;
+  background: #171a20;
+  border-right: 1px solid #2a2e38;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  gap: 2px;
+}
+
+.rail button {
+  background: none;
+  border: none;
+  border-left: 2px solid transparent;
+  border-radius: 0;
   color: #7d8590;
-  min-height: 15px;
+  padding: 9px 0 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  letter-spacing: .4px;
 }
-#status.error { color: #e46962; }
+.rail button .ic { font-size: 17px; line-height: 1; }
+/* the rail stacks, so pushing to the end means margin-top, not margin-left */
+.rail .push { margin: auto 0 0; }
+.rail button:hover { color: #d8dae0; background: #1d212a; }
+.rail button.active {
+  color: #f0913a;
+  background: #1d212a;
+  border-left-color: #f0913a;
+  font-weight: 600;
+}
+/* A dot on the rail when something in that panel is armed or in play. */
+.rail button.flag .ic::after {
+  content: '';
+  position: absolute;
+  margin: -2px 0 0 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f0913a;
+}
+.rail button .ic { position: relative; }
 
-#helpPanel {
+.panel {
   flex: none;
-  max-height: 45vh;
+  width: 272px;
+  background: #1b1f27;
+  border-right: 1px solid #2a2e38;
   overflow-y: auto;
-  padding: 4px 18px 10px;
-  background: #1b1f27;
-  border-bottom: 1px solid #2a2e38;
-  font-size: 13px;
+  padding: 12px 14px 20px;
 }
-#helpPanel h2 { font-size: 14px; color: #f0913a; }
-#helpPanel li { margin-bottom: 4px; }
-.dim { color: #7d8590; }
-.hidden { display: none; }
+.panel.wide-panel { width: 430px; }
 
-.pagelink { color: #7d8590; text-decoration: none; }
-.pagelink:hover { color: #f0913a; }
-.push { margin-left: auto; }
-
-#importPanel {
-  flex: none;
-  padding: 10px 18px;
-  background: #1b1f27;
-  border-bottom: 1px solid #2a2e38;
-  font-size: 13px;
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: #f0913a;
+  display: flex;
+  align-items: center;
 }
-#importHint { margin-top: 8px; font-size: 12px; }
+.panel h2 .x { margin-left: auto; color: #7d8590; cursor: pointer; font-size: 15px; }
+.panel h2 .x:hover { color: #d8dae0; }
 
-#bankPanel {
-  flex: none;
-  padding: 10px 18px;
-  background: #1b1f27;
-  border-bottom: 1px solid #2a2e38;
-  font-size: 13px;
+.grp { border-top: 1px solid #2a2e38; margin-top: 14px; padding-top: 12px; }
+.grp:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+.grp .cap {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #5f6672;
+  margin-bottom: 8px;
 }
-.bankCols { display: flex; gap: 14px; align-items: flex-start; }
-#bankList { min-width: 260px; padding: 4px; }
+
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.row .lab { flex: 1; color: #9aa0ab; font-size: 13px; }
+.row select { flex: none; width: 140px; } /* fixed so stacked rows line up */
+.row:last-child { margin-bottom: 0; }
+
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.panel .wide { width: 100%; }
+.panel input[type="range"] { width: 100%; }
+.panel input[type="text"] { width: 100%; }
+.panel #velLabel { color: #d8dae0; }
+
+.hint {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #5f6672;
+  margin: 8px 0 0;
+}
+.hint:empty { margin: 0; }
+
+#bankList {
+  width: 100%;
+  padding: 4px;
+}
 #bankList:focus { outline: none; border-color: #f0913a; }
-.bankControls { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
-.bankControls .spacer { height: 6px; }
-.bankControls button { text-align: left; }
-input[type="text"] {
-  background: #21252e;
-  color: #d8dae0;
-  border: 1px solid #363c48;
-  border-radius: 5px;
-  padding: 5px 8px;
-  font: inherit;
-  width: 180px;
-}
-#bankInfo { margin-top: 8px; color: #7d8590; font-size: 12px; min-height: 15px; }
+
+/* Help is the one panel with prose in it, so it gets more room. */
+#helpPanel { font-size: 13px; }
+#helpPanel h3 { font-size: 13px; color: #f0913a; margin: 16px 0 6px; }
+#helpPanel h3:first-of-type { margin-top: 0; }
+#helpPanel ol, #helpPanel ul { margin: 0; padding-left: 18px; }
+#helpPanel li { margin-bottom: 5px; }
+#helpPanel p { margin: 8px 0; color: #b7bdc8; }
+#helpPanel a { color: #f0913a; }
 
 #rollWrap {
   flex: 1;
+  min-width: 0;
   overflow: auto;
   background: #14161a;
 }

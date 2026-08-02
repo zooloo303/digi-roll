@@ -138,7 +138,7 @@ const rootSel = $('root');
 PITCH_CLASSES.forEach((n, i) => rootSel.add(new Option(n, i)));
 
 const scaleSel = $('scale');
-scaleSel.add(new Option('Scale: off', 'off'));
+scaleSel.add(new Option('Off', 'off'));
 for (const name of Object.keys(SCALES)) scaleSel.add(new Option(name, name));
 
 const chordQualSel = $('chordQuality');
@@ -147,6 +147,56 @@ for (const name of Object.keys(QUALITIES)) chordQualSel.add(new Option(name, nam
 
 const chordInvSel = $('chordInv');
 ['Root pos', '1st inv', '2nd inv', '3rd inv'].forEach((label, i) => chordInvSel.add(new Option(label, i)));
+
+// --- Side panels -------------------------------------------------------------
+// The rail is the whole settings surface: one icon per group, one panel open at
+// a time (click the active icon, or the panel's ×, to get the width back). The
+// open panel is remembered so a reload drops you where you were.
+
+const railBtns = [...$('rail').querySelectorAll('button')];
+
+// Panels that need to catch up on state they don't otherwise track.
+const onPanelOpen = {
+  bankPanel: () => {
+    refreshBank();
+    if (!$('bankName').value) $('bankName').value = pattern().name;
+  },
+};
+
+function showPanel(id) {
+  for (const btn of railBtns) {
+    const target = btn.dataset.panel;
+    const on = target === id;
+    btn.classList.toggle('active', on);
+    $(target).classList.toggle('hidden', !on);
+  }
+  state.panel = id;
+  persist();
+  if (id) onPanelOpen[id]?.();
+}
+
+// A dot on the rail icon for things that are armed while the panel is shut.
+function railFlag(panelId, on) {
+  railBtns.find(b => b.dataset.panel === panelId)?.classList.toggle('flag', on);
+}
+
+for (const btn of railBtns) {
+  btn.onclick = () => showPanel(btn.classList.contains('active') ? null : btn.dataset.panel);
+}
+for (const x of document.querySelectorAll('.panel h2 .x')) x.onclick = () => showPanel(null);
+
+// Clock + count-in live in a popover off the transport bar — set once, then
+// out of the way.
+$('sync').onclick = () => {
+  const open = $('syncPop').classList.toggle('hidden');
+  $('sync').classList.toggle('active', !open);
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('.syncwrap') && !$('syncPop').classList.contains('hidden')) {
+    $('syncPop').classList.add('hidden');
+    $('sync').classList.remove('active');
+  }
+});
 
 function syncToolbar() {
   // Slot labels follow pattern names, so imports from the box ("A01 T11") are
@@ -169,6 +219,7 @@ function syncToolbar() {
   $('chordStrum').value = state.chord.strum;
   $('velocity').value = state.defaultVelocity;
   $('velLabel').textContent = state.defaultVelocity;
+  railFlag('harmonyPanel', state.chord.on);
   syncWriteBack();
 }
 
@@ -210,6 +261,7 @@ scaleSel.onchange = () => { state.scale = scaleSel.value; roll.draw(); persist()
 $('chordMode').onclick = () => {
   state.chord.on = !state.chord.on;
   $('chordMode').classList.toggle('active', state.chord.on);
+  railFlag('harmonyPanel', state.chord.on);
   roll.draw();
   persist();
 };
@@ -273,7 +325,6 @@ $('clear').onclick = () => {
     persist();
   }
 };
-$('help').onclick = () => $('helpPanel').classList.toggle('hidden');
 $('undo').onclick = () => step(undoStack, redoStack);
 $('redo').onclick = () => step(redoStack, undoStack);
 
@@ -393,16 +444,6 @@ function syncBankButtons() {
     (p.source ? ` · from ${sourceLabel(p.source)}` : '') +
     (saved ? ` · saved ${saved}` : '');
 }
-
-$('bank').onclick = () => {
-  const panel = $('bankPanel');
-  panel.classList.toggle('hidden');
-  $('bank').classList.toggle('active', !panel.classList.contains('hidden'));
-  if (!panel.classList.contains('hidden')) {
-    refreshBank();
-    if (!$('bankName').value) $('bankName').value = pattern().name;
-  }
-};
 
 $('bankList').onchange = () => {
   syncBankButtons();
@@ -539,6 +580,7 @@ function syncWriteBack() {
     ? `Re-fetch ${sourceLabel(src)} from the box, replace that track's notes with this pattern, and verify. A backup downloads first.`
     : 'Nothing to write back: this pattern wasn\'t imported from a box. Use the device console to import one, or to write this pattern to any slot.';
   $('sourceInfo').textContent = src ? `from ${sourceLabel(src)}` : '';
+  railFlag('boxPanel', !!src);
 }
 
 // Find and identify the box this pattern came from. Refuses on anything else —
@@ -599,12 +641,6 @@ $('writeBack').onclick = async () => {
 let fetched = null; // { patternKit, label, kindFallback, origin } once decoded
 
 for (let i = 0; i < 128; i++) $('impPattern').add(new Option(bankName(i), i));
-
-$('boxImport').onclick = () => {
-  const panel = $('importPanel');
-  panel.classList.toggle('hidden');
-  $('boxImport').classList.toggle('active', !panel.classList.contains('hidden'));
-};
 
 $('impFetch').onclick = async () => {
   const index = +$('impPattern').value;
@@ -741,6 +777,7 @@ const outSel = $('output');
 function setStatus(msg, isError = false) {
   const el = $('status');
   el.textContent = msg;
+  el.title = msg; // the top bar truncates; the full message stays on hover
   el.classList.toggle('error', isError);
 }
 
@@ -769,6 +806,7 @@ outSel.onchange = () => {
 };
 
 (async () => {
+  showPanel(state.panel && $(state.panel) ? state.panel : null);
   syncToolbar();
   syncHistory();
   roll.resize();

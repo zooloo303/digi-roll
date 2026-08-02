@@ -1,7 +1,7 @@
 {
   "name": "digi-roll",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Browser piano roll for Elektron boxes. Runtime is zero-dependency vanilla JS; this package exists only for dev-time unit tests of the SysEx protocol code.",
   "type": "module",
   "scripts": {

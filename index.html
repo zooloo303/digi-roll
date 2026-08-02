@@ -7,131 +7,209 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>digi-roll</h1>
-    <div class="toolbar">
-      <select id="output" title="MIDI output device"></select>
-      <select id="slot" title="Pattern slot"></select>
-      <select id="channel" title="MIDI channel (match the track on your box)"></select>
-      <select id="length" title="Pattern length"></select>
-      <label class="field">BPM <input id="bpm" type="number" min="30" max="300" step="1"></label>
-      <label class="field" title="Swing amount for this pattern — 50 is straight, 66 is classic triplet feel">
-        Swing <input id="swing" type="number" min="50" max="80" step="1">
-      </label>
-      <label class="field" title="Send MIDI clock + start/stop so your box follows this app">
-        <input id="clock" type="checkbox"> Clock
-      </label>
-      <label class="field" title="Bars of clock sent before the notes start — time to settle after arming live record">
-        Count-in <select id="countin"></select>
-      </label>
-      <button id="play">▶ Play</button>
-      <button id="help" title="How to record into your box">?</button>
-    </div>
-    <div class="toolbar">
-      <label class="field" title="Velocity for new notes (and the selected notes)">
-        Vel <input id="velocity" type="range" min="1" max="127"><span id="velLabel"></span>
-      </label>
-      <button id="undo" title="Undo (Cmd/Ctrl+Z)">↶</button>
-      <button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷</button>
-      <button id="dup" title="Add a bar and copy the last bar's notes into it">Dup bar</button>
-      <select id="root" title="Scale root note"></select>
-      <select id="scale" title="Tint the rows that belong to this scale (visual only)"></select>
-      <button id="export" title="Download this pattern as a Standard MIDI File">Export .mid</button>
-      <button id="import" title="Replace this pattern with the notes from a MIDI file">Import .mid</button>
-      <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
-      <button id="clear" title="Clear all notes in this pattern">Clear</button>
-      <button id="bank" title="Your saved patterns — named saves kept in this browser">Library</button>
-    </div>
-    <div class="toolbar">
-      <span class="dim">Chords</span>
-      <button id="chordMode" title="Chord draw: clicking an empty cell stamps a whole chord rooted there (a ghost preview follows the cursor). Notes you click on still move/resize/delete as usual.">Chord draw</button>
-      <select id="chordQuality" title="In scale = build the chord from the scale menu's scale, so each degree gets its natural quality (falls back to Major when the scale is off). Anything else forces that quality."></select>
-      <label class="field" title="Four-note chords: adds the 7th (diatonic mode picks the scale's own 7th — dominant on V, and so on)">
-        <input id="chordSeventh" type="checkbox"> 7th
-      </label>
-      <select id="chordInv" title="Inversion — or alt+wheel over the grid to cycle it while you aim"></select>
-      <label class="field" title="Drop-2 voicing: second note from the top drops an octave for a wider, less blocky chord">
-        <input id="chordSpread" type="checkbox"> Spread
-      </label>
-      <label class="field" title="Staggers the chord notes' micro-timing bottom-up, like a strummed chord — it's real per-note micro-timing, so it survives write-back to the box">
-        Strum <input id="chordStrum" type="range" min="0" max="100">
-      </label>
-      <button id="harmonize" title="Build a chord under each selected note using the settings on this row — the selected notes stay as they are, the added notes come in a touch softer">Harmonize selection</button>
-    </div>
-    <div class="toolbar">
-      <span class="dim">Box</span>
-      <button id="boxImport" title="Pull a pattern's track from your Digitakt/Digitone straight into this slot">Import from box…</button>
-      <button id="writeBack" disabled>Write back</button>
-      <span id="sourceInfo" class="field"></span>
-      <a href="console.html" class="pagelink push" title="Advanced: project backup, write to any slot, copy tracks between boxes, raw SysEx log">device console →</a>
-    </div>
+  <!-- Top bar is transport only: what you touch while the pattern is running.
+       Everything else lives behind the rail. -->
+  <div class="topbar">
+    <span class="logo">digi-roll</span>
+    <span class="sep"></span>
+    <select id="output" title="MIDI output device"></select>
+    <select id="slot" title="Pattern slot"></select>
+    <select id="channel" title="MIDI channel (match the track on your box)"></select>
+    <select id="length" title="Pattern length"></select>
+    <label class="field">BPM <input id="bpm" type="number" min="30" max="300" step="1"></label>
+    <button id="play">▶ Play</button>
+    <span class="syncwrap">
+      <button id="sync" title="Clock and count-in — how your box follows this app">Sync ▾</button>
+      <div id="syncPop" class="hidden">
+        <label class="field" title="Send MIDI clock + start/stop so your box follows this app">
+          <input id="clock" type="checkbox"> Send MIDI clock
+        </label>
+        <label class="field" title="Bars of clock sent before the notes start — time to settle after arming live record">
+          Count-in <select id="countin" class="push"></select>
+        </label>
+      </div>
+    </span>
     <div id="status"></div>
-  </header>
-
-  <div id="helpPanel" class="hidden">
-    <h2>Getting a pattern onto your Digitakt 2 / Digitone 2</h2>
-    <ol>
-      <li>Connect the box via USB and pick it in the MIDI output menu.</li>
-      <li>On the box: <b>SETTINGS → MIDI CONFIG → SYNC</b> — enable <b>CLOCK RECEIVE</b> and <b>TRANSPORT RECEIVE</b>. Leave <b>Clock</b> checked in this app.</li>
-      <li>Set this app's <b>Ch</b> to the MIDI channel of the destination track (<b>SETTINGS → MIDI CONFIG → CHANNELS</b> on the box). Draw your notes and press Play to audition — the track's sound plays your pattern live.</li>
-      <li>To capture it into the box's own sequencer: select an empty pattern on the box, enter <b>live recording</b> (RECORD + PLAY), then press Play here. The app sends Stop → Start + clock, which snaps the box back to step 1 in sync with bar 1 of your pattern. Let it loop once, exit record mode, done.</li>
-      <li>Quantize on the box afterwards if needed. Notes longer than one step are captured with their length.</li>
-    </ol>
-    <h2>Sync rules (read this if notes land in the wrong place)</h2>
-    <ul>
-      <li><b>One clock master at a time.</b> If your Octatrack (or anything else) is also sending clock/transport to the box, the box can't lock to this app. During capture either stop the OT's clock send, or set the Digi's <b>SETTINGS → MIDI CONFIG → PORT CONFIG → INPUT FROM = USB</b> so it only listens to this app — flip it back afterwards.</li>
-      <li>Every press of Play here sends Stop then Start, so the box restarts from its pattern step 1 — your recording always lines up with the app's bar 1.</li>
-      <li>Use <b>Count-in</b> (1–2 bars) to get a moment between arming live record and the notes arriving. Keep the count-in a multiple of the box's pattern length so the downbeats stay aligned.</li>
-      <li>On <b>auto channel</b> (default 10): notes go to whichever track is currently selected on the box — handy, just make sure the right track is active before recording.</li>
-    </ul>
-    <p>Tips: click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
-    <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Vel slider all apply to the whole selection.</p>
-    <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
-    <p><b>Chords:</b> turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes — that's one trig's worth on the Digitone II.</p>
-    <h2>Straight into pattern memory (no live recording)</h2>
-    <ul>
-      <li>The <b>Box</b> row is the round trip: <b>Import from box…</b> pulls a pattern's track from your Digitakt 2 / Digitone 2 straight into the slot you're editing (pick the box in the MIDI output menu first). Edit it, then <b>Write back</b> sends the notes home to the exact pattern and track they came from.</li>
-      <li>Write back is careful: it re-reads the pattern from the box first, downloads a backup of it, changes only that track's notes, then reads it back and checks every byte. Anything else on the box — sounds, p-locks, other tracks — is left alone.</li>
-      <li>Write back only lights up for imported patterns, and only writes to the same box they came from, on an OS build the format has been verified against.</li>
-      <li><b>Library</b> keeps named saves of your patterns in this browser (with swing, micro-timing and where they came from), and exports them as .json to share or back up.</li>
-      <li>The <a href="console.html">device console</a> is for the advanced jobs: whole-project backup, writing a roll slot to <i>any</i> pattern/track, <b>copying a track between patterns — or between the two boxes</b> via a saved .syx backup — and a raw SysEx log.</li>
-    </ul>
+    <span class="sep"></span>
+    <a href="console.html" class="pagelink" title="Advanced: project backup, write to any slot, copy tracks between boxes, raw SysEx log">device console →</a>
   </div>
 
-  <div id="importPanel" class="hidden">
-    <div class="toolbar">
-      <span class="dim">Import from box</span>
-      <select id="impPattern" title="Pattern slot on the box (current project)"></select>
-      <button id="impFetch" title="Connect to the box picked in the MIDI output menu and fetch this pattern">Fetch from box</button>
-      <span id="impInfo" class="field"></span>
-      <select id="impTrack" title="Which track's notes to import" disabled>
-        <option>— track —</option>
-      </select>
-      <button id="impGo" title="Replace the pattern you're editing with this track's notes (undoable) — Write back then sends your edits home" disabled>Import into this slot</button>
-    </div>
-    <div id="importHint" class="dim">Fetch reads only — nothing on the box changes until you use Write back.</div>
-  </div>
+  <div class="workspace">
+    <nav class="rail" id="rail">
+      <button data-panel="editPanel" title="Velocity, undo, pattern length tools, MIDI files">
+        <span class="ic">✎</span>Edit
+      </button>
+      <button data-panel="harmonyPanel" title="Key, scale tinting and chord draw">
+        <span class="ic">♬</span>Harmony
+      </button>
+      <button data-panel="bankPanel" title="Your saved patterns — named saves kept in this browser">
+        <span class="ic">▤</span>Library
+      </button>
+      <button data-panel="boxPanel" title="The round trip: pull a track off your Digitakt/Digitone and send your edits home">
+        <span class="ic">⇄</span>Box
+      </button>
+      <button data-panel="helpPanel" class="push" title="How to record into your box">
+        <span class="ic">?</span>Help
+      </button>
+    </nav>
 
-  <div id="bankPanel" class="hidden">
-    <div class="bankCols">
+    <!-- ===== Edit ===== -->
+    <aside id="editPanel" class="panel hidden">
+      <h2>Edit <span class="x" title="Close">×</span></h2>
+      <div class="grp">
+        <div class="cap">Notes</div>
+        <div class="row" title="Velocity for new notes (and the selected notes)">
+          <span class="lab">Velocity</span><b id="velLabel"></b>
+        </div>
+        <input id="velocity" type="range" min="1" max="127">
+        <div class="btns" style="margin-top:10px">
+          <button id="undo" title="Undo (Cmd/Ctrl+Z)">↶ Undo</button>
+          <button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷ Redo</button>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="cap">Pattern</div>
+        <div class="row" title="Swing amount for this pattern — 50 is straight, 66 is classic triplet feel">
+          <span class="lab">Swing</span><input id="swing" type="number" min="50" max="80" step="1">
+        </div>
+        <div class="btns">
+          <button id="dup" title="Add a bar and copy the last bar's notes into it">Dup bar</button>
+          <button id="clear" title="Clear all notes in this pattern">Clear</button>
+        </div>
+      </div>
+      <div class="grp">
+        <div class="cap">File</div>
+        <div class="btns">
+          <button id="export" title="Download this pattern as a Standard MIDI File">Export .mid</button>
+          <button id="import" title="Replace this pattern with the notes from a MIDI file">Import .mid</button>
+        </div>
+        <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
+      </div>
+      <p class="hint">Drag a note's right edge to resize · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · right-click to delete.</p>
+    </aside>
+
+    <!-- ===== Harmony ===== -->
+    <aside id="harmonyPanel" class="panel hidden">
+      <h2>Harmony <span class="x" title="Close">×</span></h2>
+      <div class="grp">
+        <div class="cap">Key &amp; scale</div>
+        <div class="row"><span class="lab">Root</span><select id="root" title="Scale root note"></select></div>
+        <div class="row"><span class="lab">Scale</span><select id="scale" title="Tint the rows that belong to this scale (visual only)"></select></div>
+        <p class="hint">Tints matching rows on the grid — it never restricts what you can draw.</p>
+      </div>
+      <div class="grp">
+        <div class="cap">Chord draw</div>
+        <button id="chordMode" class="wide" title="Chord draw: clicking an empty cell stamps a whole chord rooted there (a ghost preview follows the cursor). Notes you click on still move/resize/delete as usual.">Chord draw</button>
+        <div class="row" style="margin-top:10px" title="In scale = build the chord from the scale menu's scale, so each degree gets its natural quality (falls back to Major when the scale is off). Anything else forces that quality.">
+          <span class="lab">Quality</span><select id="chordQuality"></select>
+        </div>
+        <div class="row" title="Inversion — or alt+wheel over the grid to cycle it while you aim">
+          <span class="lab">Inversion</span><select id="chordInv"></select>
+        </div>
+        <div class="row">
+          <label class="field" title="Four-note chords: adds the 7th (diatonic mode picks the scale's own 7th — dominant on V, and so on)">
+            <input id="chordSeventh" type="checkbox"> 7th
+          </label>
+          <label class="field push" title="Drop-2 voicing: second note from the top drops an octave for a wider, less blocky chord">
+            <input id="chordSpread" type="checkbox"> Spread
+          </label>
+        </div>
+        <div class="row" title="Staggers the chord notes' micro-timing bottom-up, like a strummed chord — it's real per-note micro-timing, so it survives write-back to the box">
+          <span class="lab">Strum</span>
+        </div>
+        <input id="chordStrum" type="range" min="0" max="100">
+        <button id="harmonize" class="wide" style="margin-top:10px" title="Build a chord under each selected note using the settings on this panel — the selected notes stay as they are, the added notes come in a touch softer">Harmonize selection</button>
+      </div>
+    </aside>
+
+    <!-- ===== Library ===== -->
+    <aside id="bankPanel" class="panel hidden">
+      <h2>Library <span class="x" title="Close">×</span></h2>
       <select id="bankList" size="7" title="Patterns saved in this browser"></select>
-      <div class="bankControls">
-        <input id="bankName" type="text" placeholder="name this pattern" maxlength="48">
+      <input id="bankName" type="text" placeholder="name this pattern" maxlength="48" style="margin-top:8px">
+      <div class="btns" style="margin-top:6px">
         <button id="bankSave" title="Save the pattern you're editing under this name">Save</button>
-        <button id="bankLoad" title="Replace the current slot with the selected saved pattern" disabled>Load into slot</button>
+        <button id="bankLoad" title="Replace the current slot with the selected saved pattern" disabled>Load</button>
         <button id="bankRename" title="Rename the selected saved pattern" disabled>Rename</button>
         <button id="bankDelete" title="Delete the selected saved pattern" disabled>Delete</button>
-        <span class="spacer"></span>
-        <button id="bankExport" title="Download the selected pattern (or the whole bank) as a .json file">Export .json</button>
-        <button id="bankImport" title="Add patterns from an exported .json file">Import .json</button>
+      </div>
+      <div class="grp">
+        <div class="cap">Share</div>
+        <div class="btns">
+          <button id="bankExport" title="Download the selected pattern (or the whole bank) as a .json file">Export .json</button>
+          <button id="bankImport" title="Add patterns from an exported .json file">Import .json</button>
+        </div>
         <input id="bankFile" type="file" accept=".json,application/json" hidden>
       </div>
-    </div>
-    <div id="bankInfo" class="dim"></div>
-  </div>
+      <p id="bankInfo" class="hint"></p>
+    </aside>
 
-  <div id="rollWrap">
-    <canvas id="roll"></canvas>
+    <!-- ===== Box ===== -->
+    <aside id="boxPanel" class="panel hidden">
+      <h2>Box <span class="x" title="Close">×</span></h2>
+      <div class="grp">
+        <div class="cap">Import from box</div>
+        <div class="row">
+          <select id="impPattern" title="Pattern slot on the box (current project)"></select>
+          <button id="impFetch" class="push" title="Connect to the box picked in the MIDI output menu and fetch this pattern">Fetch</button>
+        </div>
+        <p id="impInfo" class="hint"></p>
+        <select id="impTrack" class="wide" title="Which track's notes to import" disabled>
+          <option>— track —</option>
+        </select>
+        <button id="impGo" class="wide" style="margin-top:6px" title="Replace the pattern you're editing with this track's notes (undoable) — Write back then sends your edits home" disabled>Import into this slot</button>
+        <p id="importHint" class="hint">Fetch reads only — nothing on the box changes until you use Write back.</p>
+      </div>
+      <div class="grp">
+        <div class="cap">Write back</div>
+        <p id="sourceInfo" class="hint"></p>
+        <button id="writeBack" class="wide" disabled>Write back</button>
+        <p class="hint">Write back re-reads the pattern from the box, downloads a backup, changes only that track's notes, then reads it back and checks every byte.</p>
+      </div>
+      <div class="grp">
+        <div class="cap">Advanced</div>
+        <a href="console.html" class="pagelink">device console →</a>
+        <p class="hint">Whole-project backup, writing to <i>any</i> pattern/track, copying a track between boxes, raw SysEx log.</p>
+      </div>
+    </aside>
+
+    <!-- ===== Help ===== -->
+    <aside id="helpPanel" class="panel wide-panel hidden">
+      <h2>Help <span class="x" title="Close">×</span></h2>
+      <h3>Getting a pattern onto your Digitakt 2 / Digitone 2</h3>
+      <ol>
+        <li>Connect the box via USB and pick it in the MIDI output menu.</li>
+        <li>On the box: <b>SETTINGS → MIDI CONFIG → SYNC</b> — enable <b>CLOCK RECEIVE</b> and <b>TRANSPORT RECEIVE</b>. Leave <b>Send MIDI clock</b> checked under <b>Sync</b>.</li>
+        <li>Set this app's <b>Ch</b> to the MIDI channel of the destination track (<b>SETTINGS → MIDI CONFIG → CHANNELS</b> on the box). Draw your notes and press Play to audition — the track's sound plays your pattern live.</li>
+        <li>To capture it into the box's own sequencer: select an empty pattern on the box, enter <b>live recording</b> (RECORD + PLAY), then press Play here. The app sends Stop → Start + clock, which snaps the box back to step 1 in sync with bar 1 of your pattern. Let it loop once, exit record mode, done.</li>
+        <li>Quantize on the box afterwards if needed. Notes longer than one step are captured with their length.</li>
+      </ol>
+      <h3>Sync rules (read this if notes land in the wrong place)</h3>
+      <ul>
+        <li><b>One clock master at a time.</b> If your Octatrack (or anything else) is also sending clock/transport to the box, the box can't lock to this app. During capture either stop the OT's clock send, or set the Digi's <b>SETTINGS → MIDI CONFIG → PORT CONFIG → INPUT FROM = USB</b> so it only listens to this app — flip it back afterwards.</li>
+        <li>Every press of Play here sends Stop then Start, so the box restarts from its pattern step 1 — your recording always lines up with the app's bar 1.</li>
+        <li>Use <b>Count-in</b> (1–2 bars) to get a moment between arming live record and the notes arriving. Keep the count-in a multiple of the box's pattern length so the downbeats stay aligned.</li>
+        <li>On <b>auto channel</b> (default 10): notes go to whichever track is currently selected on the box — handy, just make sure the right track is active before recording.</li>
+      </ul>
+      <h3>Drawing</h3>
+      <p>Click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
+      <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Velocity slider all apply to the whole selection.</p>
+      <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
+      <h3>Chords</h3>
+      <p>In the <b>Harmony</b> panel, turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes — that's one trig's worth on the Digitone II.</p>
+      <h3>Straight into pattern memory (no live recording)</h3>
+      <ul>
+        <li>The <b>Box</b> panel is the round trip: <b>Fetch</b> pulls a pattern's track from your Digitakt 2 / Digitone 2 straight into the slot you're editing (pick the box in the MIDI output menu first). Edit it, then <b>Write back</b> sends the notes home to the exact pattern and track they came from.</li>
+        <li>Write back is careful: it re-reads the pattern from the box first, downloads a backup of it, changes only that track's notes, then reads it back and checks every byte. Anything else on the box — sounds, p-locks, other tracks — is left alone.</li>
+        <li>Write back only lights up for imported patterns, and only writes to the same box they came from, on an OS build the format has been verified against.</li>
+        <li><b>Library</b> keeps named saves of your patterns in this browser (with swing, micro-timing and where they came from), and exports them as .json to share or back up.</li>
+        <li>The <a href="console.html">device console</a> is for the advanced jobs: whole-project backup, writing a roll slot to <i>any</i> pattern/track, <b>copying a track between patterns — or between the two boxes</b> via a saved .syx backup — and a raw SysEx log.</li>
+      </ul>
+    </aside>
+
+    <div id="rollWrap">
+      <canvas id="roll"></canvas>
+    </div>
   </div>
 
 <script type="module" src="js/main.js"></script>
