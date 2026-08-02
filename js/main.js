@@ -3,7 +3,13 @@ import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
 import { ElektronDevice } from './elektron/device.js';
 import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
-import { rollNotesToDevice, sourceLabel, sourceSlotLabel, sourceMatchesIdentity } from './roll-bridge.js';
+import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
+import * as dt2 from './elektron/dt2/pattern.js';
+import * as dn2 from './elektron/dn2/pattern.js';
+import {
+  rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack,
+  makeSource, sourceLabel, sourceSlotLabel, sourceMatchesIdentity,
+} from './roll-bridge.js';
 import { downloadBytes, downloadText } from './download.js';
 import {
   BANK_PREFIX, listBank, bankEntry, saveToBank, loadFromBank, deleteFromBank,
@@ -416,6 +422,29 @@ let sysexAccess = null;
 let box = null;          // ElektronDevice, once identified
 let writingBack = false;
 
+// Patterns digi-roll can decode, by identity slug.
+const DECODERS = { digitakt2: dt2, digitone2: dn2 };
+
+// Connect to whatever box the MIDI output menu points at and identify it.
+// Shared by import and write-back; each caller adds its own checks on top.
+async function connectBox() {
+  if (!navigator.requestMIDIAccess) throw new Error('Web MIDI not supported — use Chrome, Edge, or Brave');
+  sysexAccess ??= await navigator.requestMIDIAccess({ sysex: true });
+  const inputs = [...sysexAccess.inputs.values()];
+  const pairs = [...sysexAccess.outputs.values()]
+    .map(out => ({ out, in: inputs.find(i => i.name === out.name) }))
+    .filter(p => p.in);
+  if (!pairs.length) throw new Error('No two-way MIDI device found — plug the box in over USB');
+
+  const chosen = outSel.options[outSel.selectedIndex]?.text;
+  const pair = pairs.find(p => p.out.name === chosen) ?? (pairs.length === 1 ? pairs[0] : null);
+  if (!pair) throw new Error('Pick your box in the MIDI output menu first');
+
+  box?.close();
+  box = new ElektronDevice(pair.in, pair.out);
+  return box.identify();
+}
+
 function syncWriteBack() {
   const src = pattern().source;
   const btn = $('writeBack');
@@ -431,23 +460,9 @@ function syncWriteBack() {
 // writing a Digitone pattern into a Digitakt slot by accident is exactly the
 // kind of mistake provenance exists to prevent.
 async function connectSourceBox(src) {
-  if (!navigator.requestMIDIAccess) throw new Error('Web MIDI not supported — use Chrome, Edge, or Brave');
-  sysexAccess ??= await navigator.requestMIDIAccess({ sysex: true });
-  const inputs = [...sysexAccess.inputs.values()];
-  const pairs = [...sysexAccess.outputs.values()]
-    .map(out => ({ out, in: inputs.find(i => i.name === out.name) }))
-    .filter(p => p.in);
-  if (!pairs.length) throw new Error('No two-way MIDI device found — plug the box in over USB');
-
-  const chosen = outSel.options[outSel.selectedIndex]?.text;
-  const pair = pairs.find(p => p.out.name === chosen) ?? (pairs.length === 1 ? pairs[0] : null);
-  if (!pair) throw new Error('Pick the box you want to write to in the MIDI output menu first');
-
-  box?.close();
-  box = new ElektronDevice(pair.in, pair.out);
-  const id = await box.identify();
+  const id = await connectBox();
   if (!sourceMatchesIdentity(src, id)) {
-    throw new Error(`this pattern came from a ${src.deviceName || src.slug}, but ${pair.out.name} says it's a ${id.name} — refusing to write`);
+    throw new Error(`this pattern came from a ${src.deviceName || src.slug}, but the connected box says it's a ${id.name} — refusing to write`);
   }
   const gate = writeGate(id);
   if (!gate.ok) throw new Error(gate.reason);
@@ -487,6 +502,89 @@ $('writeBack').onclick = async () => {
     writingBack = false;
     syncWriteBack();
   }
+};
+
+// --- Import from box ---------------------------------------------------------
+// The other half of the round trip, right where the editing happens: fetch a
+// pattern from the box (read-only), pick a track, and its notes replace the
+// slot you're editing — with provenance, so Write back knows the way home.
+// The console page keeps the long-form version (import into any slot, .syx
+// files, cross-device copy); this is the everyday path.
+
+let fetched = null; // { patternKit, label, kindFallback, origin } once decoded
+
+for (let i = 0; i < 128; i++) $('impPattern').add(new Option(bankName(i), i));
+
+$('boxImport').onclick = () => {
+  const panel = $('importPanel');
+  panel.classList.toggle('hidden');
+  $('boxImport').classList.toggle('active', !panel.classList.contains('hidden'));
+};
+
+$('impFetch').onclick = async () => {
+  const index = +$('impPattern').value;
+  $('impFetch').disabled = true;
+  try {
+    setStatus('Looking for the box…');
+    const id = await connectBox();
+    const decoder = DECODERS[id.slug];
+    if (!decoder) throw new Error(`${id.name} isn't a box digi-roll can decode patterns from yet`);
+    setStatus(`Fetching ${bankName(index)} from the ${id.name}…`);
+    const patternKit = decoder.decodePatternKit(await box.fetchPatternKit(index));
+    fetched = {
+      patternKit,
+      label: bankName(index),
+      kindFallback: decoder.SPEC.trackKindFallback,
+      origin: { slug: id.slug, productId: id.productId, deviceName: id.name, patternIndex: index, origin: 'box' },
+    };
+    $('impInfo').textContent =
+      `${id.name} · ${fetched.label}${patternKit.name ? ` “${patternKit.name}”` : ''} · ${patternKit.tempoBpm} BPM`;
+    const any = fillImportTracks(patternKit, fetched.kindFallback);
+    $('impGo').disabled = !any;
+    setStatus(any
+      ? `Fetched ${fetched.label} — pick a track, then Import into this slot`
+      : `Fetched ${fetched.label}, but no track has any trigs`, !any);
+  } catch (err) {
+    setStatus(`Import failed: ${err.message}`, true);
+  } finally {
+    $('impFetch').disabled = false;
+  }
+};
+
+// "T3 · A_303_INNIT · 4 trigs" per track; empty tracks are shown but disabled.
+function fillImportTracks(patternKit, kindFallback) {
+  const sel = $('impTrack');
+  sel.innerHTML = '';
+  for (let t = 0; t < patternKit.tracks.length; t++) {
+    const kind = patternKit.kit.midiMask & (1 << t) ? 'MIDI' : patternKit.kit.soundNames[t] || kindFallback;
+    const trigs = trackTrigCount(patternKit, t);
+    sel.add(new Option(`T${t + 1} · ${kind} · ${trigs} trig${trigs === 1 ? '' : 's'}`, t));
+    if (trigs === 0) sel.options[t].disabled = true;
+  }
+  const first = [...sel.options].find(o => !o.disabled);
+  if (first) sel.value = first.value;
+  sel.disabled = !first;
+  return !!first;
+}
+
+$('impGo').onclick = () => {
+  if (!fetched) return;
+  const t = +$('impTrack').value;
+  const track = fetched.patternKit.tracks[t];
+  const lengthSteps = rollLengthForTrack(track);
+  const notes = trackNotes(fetched.patternKit, t).filter(n => n.step < track.lengthSteps);
+
+  pushUndo();
+  const p = pattern();
+  p.name = `${fetched.label} T${t + 1}`;
+  p.lengthSteps = lengthSteps;
+  p.notes = deviceNotesToRoll(notes, lengthSteps);
+  p.source = makeSource({ ...fetched.origin, trackIndex: t, patternName: fetched.patternKit.name });
+  roll.clearSelection();
+  syncToolbar();
+  roll.resize();
+  persist();
+  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${fetched.label} T${t + 1} — edit away, Write back sends it home (undo to get the old slot back)`);
 };
 
 // --- Keyboard shortcuts --------------------------------------------------------

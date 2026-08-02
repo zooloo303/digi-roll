@@ -40,9 +40,14 @@
       <button id="import" title="Replace this pattern with the notes from a MIDI file">Import .mid</button>
       <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       <button id="clear" title="Clear all notes in this pattern">Clear</button>
+      <button id="bank" title="Your saved patterns — named saves kept in this browser">Library</button>
+    </div>
+    <div class="toolbar">
+      <span class="dim">Box</span>
+      <button id="boxImport" title="Pull a pattern's track from your Digitakt/Digitone straight into this slot">Import from box…</button>
       <button id="writeBack" disabled>Write back</button>
-      <button id="bank" title="Named saves of your patterns, kept in this browser">Bank</button>
       <span id="sourceInfo" class="field"></span>
+      <a href="console.html" class="pagelink push" title="Advanced: project backup, write to any slot, copy tracks between boxes, raw SysEx log">device console →</a>
     </div>
     <div id="status"></div>
   </header>
@@ -68,11 +73,26 @@
     <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
     <h2>Straight into pattern memory (no live recording)</h2>
     <ul>
-      <li>The <a href="console.html">device console</a> talks SysEx to a Digitakt 2 or Digitone 2 directly: back up the project, <b>import</b> a pattern's track into a roll slot, <b>write</b> a roll slot into any pattern track, or <b>copy a track</b> from one pattern to another — even between the two boxes, via a saved .syx backup.</li>
-      <li>Once a slot has been imported, <b>Write back</b> here sends your edits straight home to the pattern and track they came from. It re-reads the pattern first, downloads a backup of it, changes only that track's notes, then reads it back and checks every byte. Anything else on the box — sounds, p-locks, other tracks — is left alone.</li>
+      <li>The <b>Box</b> row is the round trip: <b>Import from box…</b> pulls a pattern's track from your Digitakt 2 / Digitone 2 straight into the slot you're editing (pick the box in the MIDI output menu first). Edit it, then <b>Write back</b> sends the notes home to the exact pattern and track they came from.</li>
+      <li>Write back is careful: it re-reads the pattern from the box first, downloads a backup of it, changes only that track's notes, then reads it back and checks every byte. Anything else on the box — sounds, p-locks, other tracks — is left alone.</li>
       <li>Write back only lights up for imported patterns, and only writes to the same box they came from, on an OS build the format has been verified against.</li>
-      <li><b>Bank</b> keeps named saves of your patterns in this browser (with swing, micro-timing and where they came from), and exports them as .json to share or back up.</li>
+      <li><b>Library</b> keeps named saves of your patterns in this browser (with swing, micro-timing and where they came from), and exports them as .json to share or back up.</li>
+      <li>The <a href="console.html">device console</a> is for the advanced jobs: whole-project backup, writing a roll slot to <i>any</i> pattern/track, <b>copying a track between patterns — or between the two boxes</b> via a saved .syx backup — and a raw SysEx log.</li>
     </ul>
+  </div>
+
+  <div id="importPanel" class="hidden">
+    <div class="toolbar">
+      <span class="dim">Import from box</span>
+      <select id="impPattern" title="Pattern slot on the box (current project)"></select>
+      <button id="impFetch" title="Connect to the box picked in the MIDI output menu and fetch this pattern">Fetch from box</button>
+      <span id="impInfo" class="field"></span>
+      <select id="impTrack" title="Which track's notes to import" disabled>
+        <option>— track —</option>
+      </select>
+      <button id="impGo" title="Replace the pattern you're editing with this track's notes (undoable) — Write back then sends your edits home" disabled>Import into this slot</button>
+    </div>
+    <div id="importHint" class="dim">Fetch reads only — nothing on the box changes until you use Write back.</div>
   </div>
 
   <div id="bankPanel" class="hidden">

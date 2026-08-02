@@ -81,8 +81,21 @@ input[type="range"] { width: 90px; accent-color: #f0913a; }
 }
 #helpPanel h2 { font-size: 14px; color: #f0913a; }
 #helpPanel li { margin-bottom: 4px; }
-#helpPanel .dim { color: #7d8590; }
+.dim { color: #7d8590; }
 .hidden { display: none; }
+
+.pagelink { color: #7d8590; text-decoration: none; }
+.pagelink:hover { color: #f0913a; }
+.push { margin-left: auto; }
+
+#importPanel {
+  flex: none;
+  padding: 10px 18px;
+  background: #1b1f27;
+  border-bottom: 1px solid #2a2e38;
+  font-size: 13px;
+}
+#importHint { margin-top: 8px; font-size: 12px; }
 
 #bankPanel {
   flex: none;
