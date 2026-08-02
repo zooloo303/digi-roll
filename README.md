@@ -87,6 +87,8 @@ notes arriving.
   copy, cut and paste — the clipboard survives switching pattern slots
 - **Dup bar** adds a bar and copies the last one into it (up to 8 bars)
 - Scale menu (root + scale) tints the in-scale rows; purely visual
+- Octave numbering follows the boxes: the key column calls MIDI 60 **C5**, the
+  same as the DT2/DN2 display, one higher than the middle-C = C4 convention
 - **Export .mid** writes a type 0 Standard MIDI File of the current pattern
   (tempo, velocities, swing and micro-timing baked in); **Import .mid** reads
   a type 0/1 file back in, quantized to 16ths with the remainder as

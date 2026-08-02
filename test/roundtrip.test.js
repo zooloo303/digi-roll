@@ -173,8 +173,8 @@ describe.skipIf(!have)('roll-bridge note conversion', () => {
 
   it('clamps pitch and length to what the roll can draw', () => {
     const roll = deviceNotesToRoll([
-      { step: 0, pitch: 12, velocity: 90, lenSteps: 1, micro: 0 },   // below C1
-      { step: 0, pitch: 120, velocity: 90, lenSteps: 1, micro: 0 },  // above C7
+      { step: 0, pitch: 12, velocity: 90, lenSteps: 1, micro: 0 },   // below the roll's lowest row
+      { step: 0, pitch: 120, velocity: 90, lenSteps: 1, micro: 0 },  // above the roll's highest row
       { step: 14, pitch: 60, velocity: 90, lenSteps: 32, micro: 0 }, // runs past the end
       { step: 0, pitch: 60, velocity: 90, lenSteps: 0.25, micro: 0 }, // shorter than a step
     ], 16);

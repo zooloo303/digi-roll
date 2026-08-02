@@ -13,8 +13,8 @@
 
 import { makeNote } from './state.js';
 
-export const PITCH_MAX = 96; // C7
-export const PITCH_MIN = 24; // C1
+export const PITCH_MAX = 96; // C8 as the box labels it
+export const PITCH_MIN = 24; // C2 as the box labels it
 const ROWS = PITCH_MAX - PITCH_MIN + 1;
 const CELL_H = 16;
 const CELL_W = 34;
@@ -36,8 +36,12 @@ export const SCALES = {
   'Blues': [0, 3, 5, 6, 7, 10],
 };
 
+// Octave numbering follows the boxes, not the middle-C = C4 convention: an
+// Elektron displays MIDI 60 as C5, so that is what the key column says too.
+// Keeping the two in step matters because the roll's job is to tell you which
+// note you will see on the DT2/DN2 after a write.
 export function noteName(pitch) {
-  return NAMES[pitch % 12] + (Math.floor(pitch / 12) - 1); // C4 = 60
+  return NAMES[pitch % 12] + Math.floor(pitch / 12); // MIDI 60 = C5, as the box shows it
 }
 
 export class PianoRoll {
