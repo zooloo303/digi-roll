@@ -43,6 +43,22 @@
       <button id="bank" title="Your saved patterns — named saves kept in this browser">Library</button>
     </div>
     <div class="toolbar">
+      <span class="dim">Chords</span>
+      <button id="chordMode" title="Chord draw: clicking an empty cell stamps a whole chord rooted there (a ghost preview follows the cursor). Notes you click on still move/resize/delete as usual.">Chord draw</button>
+      <select id="chordQuality" title="In scale = build the chord from the scale menu's scale, so each degree gets its natural quality (falls back to Major when the scale is off). Anything else forces that quality."></select>
+      <label class="field" title="Four-note chords: adds the 7th (diatonic mode picks the scale's own 7th — dominant on V, and so on)">
+        <input id="chordSeventh" type="checkbox"> 7th
+      </label>
+      <select id="chordInv" title="Inversion — or alt+wheel over the grid to cycle it while you aim"></select>
+      <label class="field" title="Drop-2 voicing: second note from the top drops an octave for a wider, less blocky chord">
+        <input id="chordSpread" type="checkbox"> Spread
+      </label>
+      <label class="field" title="Staggers the chord notes' micro-timing bottom-up, like a strummed chord — it's real per-note micro-timing, so it survives write-back to the box">
+        Strum <input id="chordStrum" type="range" min="0" max="100">
+      </label>
+      <button id="harmonize" title="Build a chord under each selected note using the settings on this row — the selected notes stay as they are, the added notes come in a touch softer">Harmonize selection</button>
+    </div>
+    <div class="toolbar">
       <span class="dim">Box</span>
       <button id="boxImport" title="Pull a pattern's track from your Digitakt/Digitone straight into this slot">Import from box…</button>
       <button id="writeBack" disabled>Write back</button>
@@ -71,6 +87,7 @@
     <p>Tips: click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
     <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Vel slider all apply to the whole selection.</p>
     <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
+    <p><b>Chords:</b> turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes — that's one trig's worth on the Digitone II.</p>
     <h2>Straight into pattern memory (no live recording)</h2>
     <ul>
       <li>The <b>Box</b> row is the round trip: <b>Import from box…</b> pulls a pattern's track from your Digitakt 2 / Digitone 2 straight into the slot you're editing (pick the box in the MIDI output menu first). Edit it, then <b>Write back</b> sends the notes home to the exact pattern and track they came from.</li>

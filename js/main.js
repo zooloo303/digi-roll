@@ -1,6 +1,7 @@
 import { loadState, saveState, defaultPattern, makeNote, NUM_SLOTS } from './state.js';
 import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
+import { chordPitches, voiceChord, QUALITIES } from './chords.js';
 import { ElektronDevice } from './elektron/device.js';
 import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
 import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
@@ -73,12 +74,43 @@ const engine = new MidiEngine(() => ({
   countIn: state.countIn,
 }));
 
+// --- Chord draw --------------------------------------------------------------
+// The pitch math is js/chords.js; this closes it over the toolbar settings.
+// 'auto' quality means diatonic when the scale menu has a scale, so what you
+// stamp always agrees with the tinted rows.
+
+const STRUM_STEP = 0.12; // per-note micro stagger at Strum = 100
+
+function chordSpecs(rootPitch, velocity, taper = true) {
+  const c = state.chord;
+  const diatonic = c.quality === 'auto' && state.scale !== 'off';
+  const pitches = chordPitches(rootPitch, {
+    scale: diatonic ? { root: state.scaleRoot, intervals: SCALES[state.scale] } : null,
+    quality: c.quality === 'auto' ? 'Major' : c.quality,
+    seventh: c.seventh,
+    inversion: c.inversion,
+    spread: c.spread,
+    min: PITCH_MIN,
+    max: PITCH_MAX,
+  });
+  return voiceChord(pitches, { velocity, strum: c.strum / 100 * STRUM_STEP, taper });
+}
+
 const roll = new PianoRoll($('roll'), {
   getPattern: pattern,
   getDefaultVelocity: () => state.defaultVelocity,
   onChange: () => { dropUnchangedUndo(); persist(); },
   onBeforeEdit: pushUndo,
   getScale: () => state.scale === 'off' ? null : { root: state.scaleRoot, set: new Set(SCALES[state.scale]) },
+  getChord: pitch => state.chord.on ? chordSpecs(pitch, state.defaultVelocity) : null,
+  onChordWheel: dir => {
+    if (!state.chord.on) return false;
+    state.chord.inversion = (state.chord.inversion + dir + 4) % 4;
+    $('chordInv').value = state.chord.inversion;
+    roll.draw();
+    persist();
+    return true;
+  },
   onPreview: (pitch, vel) => { if (!engine.playing) engine.audition(pattern().channel, pitch, vel); },
   onSelect: note => {
     // Slider mirrors the touched note; its velocity becomes the default for new notes.
@@ -109,6 +141,13 @@ const scaleSel = $('scale');
 scaleSel.add(new Option('Scale: off', 'off'));
 for (const name of Object.keys(SCALES)) scaleSel.add(new Option(name, name));
 
+const chordQualSel = $('chordQuality');
+chordQualSel.add(new Option('In scale', 'auto'));
+for (const name of Object.keys(QUALITIES)) chordQualSel.add(new Option(name, name));
+
+const chordInvSel = $('chordInv');
+['Root pos', '1st inv', '2nd inv', '3rd inv'].forEach((label, i) => chordInvSel.add(new Option(label, i)));
+
 function syncToolbar() {
   // Slot labels follow pattern names, so imports from the box ("A01 T11") are
   // recognizable in the dropdown.
@@ -122,6 +161,12 @@ function syncToolbar() {
   countSel.value = state.countIn;
   rootSel.value = state.scaleRoot;
   scaleSel.value = state.scale;
+  $('chordMode').classList.toggle('active', state.chord.on);
+  chordQualSel.value = state.chord.quality;
+  $('chordSeventh').checked = state.chord.seventh;
+  chordInvSel.value = state.chord.inversion;
+  $('chordSpread').checked = state.chord.spread;
+  $('chordStrum').value = state.chord.strum;
   $('velocity').value = state.defaultVelocity;
   $('velLabel').textContent = state.defaultVelocity;
   syncWriteBack();
@@ -161,6 +206,46 @@ $('clock').onchange = () => { state.sendClock = $('clock').checked; persist(); }
 countSel.onchange = () => { state.countIn = +countSel.value; persist(); };
 rootSel.onchange = () => { state.scaleRoot = +rootSel.value; roll.draw(); persist(); };
 scaleSel.onchange = () => { state.scale = scaleSel.value; roll.draw(); persist(); };
+// Chord controls redraw the roll so the ghost preview tracks them live.
+$('chordMode').onclick = () => {
+  state.chord.on = !state.chord.on;
+  $('chordMode').classList.toggle('active', state.chord.on);
+  roll.draw();
+  persist();
+};
+chordQualSel.onchange = () => { state.chord.quality = chordQualSel.value; roll.draw(); persist(); };
+$('chordSeventh').onchange = () => { state.chord.seventh = $('chordSeventh').checked; roll.draw(); persist(); };
+chordInvSel.onchange = () => { state.chord.inversion = +chordInvSel.value; roll.draw(); persist(); };
+$('chordSpread').onchange = () => { state.chord.spread = $('chordSpread').checked; roll.draw(); persist(); };
+$('chordStrum').oninput = () => { state.chord.strum = +$('chordStrum').value; roll.draw(); persist(); };
+
+// Build a chord under each selected note. The melody notes are left exactly
+// as drawn; added notes inherit their note's length and micro-timing (plus
+// strum stagger) and come in softer so the line stays on top.
+$('harmonize').onclick = () => {
+  const sel = roll.selectedNotes();
+  if (!sel.length) { setStatus('Select some notes to harmonize first', true); return; }
+  pushUndo();
+  const p = pattern();
+  const added = [];
+  for (const note of sel) {
+    const specs = chordSpecs(note.pitch, note.velocity, false);
+    for (const s of specs) {
+      if (s.pitch === note.pitch) continue;
+      if (p.notes.some(x => x.step === note.step && x.pitch === s.pitch)) continue;
+      const micro = Math.max(-0.49, Math.min(0.49, (note.micro ?? 0) + s.micro));
+      added.push(makeNote(note.step, s.pitch, note.len, Math.max(1, Math.round(note.velocity * 0.85)), micro));
+    }
+  }
+  p.notes.push(...added);
+  roll.setSelection([...roll.selected, ...added.map(n => n.id)]);
+  roll.draw();
+  dropUnchangedUndo();
+  persist();
+  setStatus(added.length
+    ? `Harmonized ${sel.length} note${sel.length === 1 ? '' : 's'} — added ${added.length}`
+    : 'Nothing to add — those chords are already there', !added.length);
+};
 let velGesture = false; // one undo entry per slider drag, not per input event
 $('velocity').oninput = () => {
   const sel = roll.selectedNotes();

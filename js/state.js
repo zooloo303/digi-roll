@@ -34,6 +34,14 @@ export function defaultState() {
     defaultVelocity: 100,
     scaleRoot: 0,      // 0 = C
     scale: 'off',      // key into SCALES, or 'off'
+    chord: {           // chord-draw settings (js/chords.js)
+      on: false,
+      quality: 'auto', // 'auto' = diatonic when a scale is on; else a QUALITIES key
+      seventh: false,
+      inversion: 0,
+      spread: false,
+      strum: 0,        // 0-100, mapped to a per-note micro stagger
+    },
   };
 }
 
@@ -41,7 +49,9 @@ export function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultState();
-    const state = { ...defaultState(), ...JSON.parse(raw) };
+    const defaults = defaultState();
+    const state = { ...defaults, ...JSON.parse(raw) };
+    state.chord = { ...defaults.chord, ...state.chord };
     // Re-seed note ids above anything stored so new notes never collide, and
     // backfill fields added after a pattern was saved.
     for (const p of state.patterns) {

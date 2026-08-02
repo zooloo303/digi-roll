@@ -51,15 +51,22 @@ export class PianoRoll {
     this.onSelect = opts.onSelect;             // (note) selection / velocity changed
     this.onBeforeEdit = opts.onBeforeEdit;     // about to mutate: snapshot for undo (once per gesture)
     this.getScale = opts.getScale;             // () => { root, set } | null — row tinting only
+    this.getChord = opts.getChord;             // (pitch) => [{pitch, velocity, micro}] | null — chord mode off ⇒ null
+    this.onChordWheel = opts.onChordWheel;     // (dir) => handled? — alt+wheel cycles inversion in chord mode
     this.selected = new Set();                 // note ids
     this.lastTouched = null;                   // id the velocity slider mirrors
     this.drag = null;
+    this.hover = null;                         // {step, pitch} the chord ghost follows
     this.playhead = null;
 
     canvas.addEventListener('mousedown', e => this._down(e));
     window.addEventListener('mousemove', e => this._move(e));
     window.addEventListener('mouseup', () => this._up());
     canvas.addEventListener('contextmenu', e => e.preventDefault());
+    // Plain wheel keeps scrolling the grid; alt+wheel is the chord voicing dial.
+    canvas.addEventListener('wheel', e => {
+      if (e.altKey && this.onChordWheel?.(Math.sign(e.deltaY))) e.preventDefault();
+    }, { passive: false });
     window.addEventListener('keydown', e => {
       const typing = e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT';
       if ((e.key === 'Delete' || e.key === 'Backspace') && this.selected.size && !typing) {
@@ -188,18 +195,30 @@ export class PianoRoll {
       this.drag = { mode: 'marquee', x0: pos.x, y0: pos.y, x1: pos.x, y1: pos.y };
     } else {
       this.onBeforeEdit?.();
-      const n = makeNote(pos.step, pos.pitch, 1, this.getDefaultVelocity());
-      p.notes.push(n);
-      this.select(n);
-      this.drag = { mode: 'resize', note: n, created: true };
-      this.onPreview(n.pitch, n.velocity);
+      const chord = this.getChord?.(pos.pitch);
+      if (chord?.length) {
+        // Stamp the whole chord; the group stays selected so an immediate
+        // drag transposes it, and dragging right lengthens every note.
+        const made = chord.map(c => makeNote(pos.step, c.pitch, 1, c.velocity, c.micro));
+        p.notes.push(...made);
+        this.setSelection(made.map(n => n.id));
+        this.hover = null;
+        this.drag = { mode: 'resize', note: made.at(-1), chord: made, created: true };
+        for (const c of chord) this.onPreview(c.pitch, c.velocity);
+      } else {
+        const n = makeNote(pos.step, pos.pitch, 1, this.getDefaultVelocity());
+        p.notes.push(n);
+        this.select(n);
+        this.drag = { mode: 'resize', note: n, created: true };
+        this.onPreview(n.pitch, n.velocity);
+      }
       this.onChange();
     }
     this.draw();
   }
 
   _move(e) {
-    if (!this.drag) return;
+    if (!this.drag) { this._trackHover(e); return; }
     const pos = this._pos(e);
     const p = this.getPattern();
     const n = this.drag.note;
@@ -234,7 +253,10 @@ export class PianoRoll {
       if (micro !== n.micro) { n.micro = micro; this.draw(); }
     } else if (this.drag.mode === 'resize') {
       const len = Math.max(1, Math.min(pos.step - n.step + 1, p.lengthSteps - n.step));
-      if (len !== n.len) { n.len = len; this.draw(); }
+      if (len !== n.len) {
+        for (const cn of this.drag.chord ?? [n]) cn.len = len; // chord notes share a step, so one clamp fits all
+        this.draw();
+      }
     } else if (this.drag.mode === 'move') {
       // One delta for the whole selection, clamped so no member leaves the grid.
       const g = this.drag.group;
@@ -249,6 +271,19 @@ export class PianoRoll {
         this.drag.dP = dPitch;
         this.draw();
       }
+    }
+  }
+
+  // Ghost preview: with chord mode on, the chord that a click would stamp
+  // follows the cursor over empty cells.
+  _trackHover(e) {
+    if (!this.getChord) return;
+    const pos = this._pos(e);
+    const want = pos.inGrid && !pos.note && this.getChord(pos.pitch)?.length
+      ? { step: pos.step, pitch: pos.pitch } : null;
+    if (want?.step !== this.hover?.step || want?.pitch !== this.hover?.pitch) {
+      this.hover = want;
+      this.draw();
     }
   }
 
@@ -341,6 +376,25 @@ export class PianoRoll {
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
         ctx.stroke();
+      }
+    }
+
+    // Chord ghost under the cursor (re-queried each draw, so the voicing
+    // controls and alt+wheel update it in place)
+    if (this.hover) {
+      const chord = this.getChord?.(this.hover.pitch);
+      if (chord) {
+        for (const c of chord) {
+          const x = KEY_W + (this.hover.step + (c.micro ?? 0)) * CELL_W;
+          const y = (PITCH_MAX - c.pitch) * CELL_H;
+          ctx.fillStyle = 'rgba(240, 145, 58, 0.28)';
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(x + 1, y + 1.5, CELL_W - 3, CELL_H - 3, 3);
+          ctx.fill();
+          ctx.stroke();
+        }
       }
     }
 
