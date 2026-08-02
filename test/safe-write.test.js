@@ -8,8 +8,8 @@ import {
   decoderFor, PRODUCT_BY_FAMILY, WRITE_ALLOWED_BUILDS,
 } from '../js/elektron/safe-write.js';
 
-// js/elektron/safe-write.js is the one write path the Phase 4 features share,
-// so PLAN.md's safety rules are provable here rather than only observable on
+// js/elektron/safe-write.js is the one write path every write feature shares,
+// so CLAUDE.md's safety rules are provable here rather than only observable on
 // hardware: backup before send, always re-fetch, allowlist, verify-after-write.
 const FIXTURE = fileURLToPath(new URL('../dumps/digitakt2-project-2026-08-01T23-37-04.syx', import.meta.url));
 const have = existsSync(FIXTURE);

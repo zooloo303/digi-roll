@@ -145,6 +145,10 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 
 ## Ideas / later
 
-See `PLAN.md` for the roadmap. Next up: the cross-device pattern librarian —
-read a pattern from one box, write it to the other — and p-lock lanes in the
-roll. (The Octatrack stays on the live-record path; it has no pattern SysEx.)
+- **p-lock lanes** in the roll (filter, pitch, … as automation lanes) — needs
+  more struct mapping with `difflab.html`
+- **Pattern chaining preview** — audition slots A→B→C as a sequence
+- **Wider firmware support** — the write allowlist pins one verified OS build per
+  box, so an OS update drops writes to read-only until the format is re-checked
+
+The Octatrack stays on the live-record path; it has no pattern SysEx.

@@ -285,7 +285,8 @@ $('impGo').onclick = () => {
 };
 
 // --- Write to box: piano-roll pattern → DT2 track --------------------------------
-// The Phase 2 milestone. Safety rules from PLAN.md, enforced here:
+// The original hardware-verified write path. Safety rules from CLAUDE.md,
+// enforced here:
 //   1. the target pattern is fetched and downloaded as a backup before writing;
 //   2. the encoder only touches the track's step words + the trig-record pool
 //      (everything else round-trips byte-identical);

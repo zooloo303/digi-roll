@@ -2,7 +2,7 @@
 //
 // This is the Phase 2 "Write to pattern" sequence from js/labs/console.js —
 // the hardware-verified reference implementation — lifted into one function so
-// that a new caller physically cannot skip a step. PLAN.md's safety rules map
+// that a new caller physically cannot skip a step. CLAUDE.md's safety rules map
 // onto it like this:
 //
 //   1. auto-backup    the untouched target pattern goes to onBackup (which the

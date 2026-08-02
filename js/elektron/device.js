@@ -10,7 +10,7 @@ import { buildApiMessage, buildDumpMessage, parseSysEx, API, DUMP } from './prot
 
 // Product ids from the Device response. Only boxes with a known dump family
 // byte (`family`) can be backed up; anything else stays read-only until we
-// learn its protocol (Digitone II dumps are PLAN.md Phase 3).
+// learn its protocol.
 const PRODUCTS = {
   12: { name: 'Digitakt', slug: 'digitakt', family: 0x0a },
   42: { name: 'Digitakt II', slug: 'digitakt2', family: 0x14 },
