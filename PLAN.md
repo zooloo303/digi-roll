@@ -163,12 +163,27 @@ excellent.
 
 ## Phase 4 — The amazing little utility
 
+> Handoff spec for this phase: `PHASE4.md` (scope, hard rules, acceptance
+> criteria — written so it can be delegated without drift).
+
 With read+write for both boxes, features compose:
 
-- [ ] **Cross-device copy**: read a pattern's notes from the DT2, write them
+- [x] Full round-trip editing: import → edit in piano roll → write back.
+      Pattern slots carry provenance (device, pattern, track); the roll's
+      "Write back" button re-fetches the pattern, replaces just that track and
+      verifies. *Unit-tested against the fixtures; hardware smoke test pending.*
+- [x] Pattern bank in the browser: named saves, export/share
+      → `js/bank.js` + the Bank panel in `index.html` (localStorage, one
+      versioned entry per pattern, JSON export/import). Pure frontend.
+- [x] **Cross-device copy**: read a pattern's notes from the DT2, write them
       to the DN2 (or between projects/slots on one box) — pattern librarian
-- [ ] Full round-trip editing: import → edit in piano roll → write back
-- [ ] Pattern bank in the browser: named saves, undo history, export/share
+      → `js/elektron/copy-track.js` + the copy bar in `console.html`. The note
+      model is the interchange format; DN2 chords too fat for a DT2 trig keep
+      the 4 highest-velocity notes and say so. *Unit-tested against the
+      fixtures; hardware smoke test pending.*
+- Shared by both new write paths: `js/elektron/safe-write.js`, the Phase 2
+      write sequence (re-fetch → backup → minimal-diff encode → send → read
+      back → `diffPayloads`) as one function, so a caller can't skip a rule.
 - [ ] p-lock lanes in the roll (filter, pitch, etc. as automation lanes) —
       stretch goal, needs more struct mapping
 - [ ] Sync-to-external-clock (Octatrack as master) for the live path, if the
@@ -189,6 +204,10 @@ js/
     device.js     identity, version gating, backup/fetch/write API
     dt2/          structs + encode/decode for Digitakt 2
     dn2/          structs + encode/decode for Digitone 2 (Phase 3 output)
+    safe-write.js the safe write flow (backup → write → verify), Phase 4
+    copy-track.js cross-device track copy + chord policy (Phase 4)
+  roll-bridge.js  roll ↔ device note conversion + provenance (Phase 4)
+  bank.js         named pattern saves in localStorage (Phase 4)
   labs/
     console.js    SysEx hex console
     difflab.js    dump-diffing workbench (Phase 3)

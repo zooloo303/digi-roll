@@ -20,8 +20,11 @@ const DECODER_BY_FAMILY = {
   [FAMILY.DIGITAKT_2]: { mod: dt2, label: 'Digitakt II' },
   [FAMILY.DIGITONE_2]: { mod: dn2, label: 'Digitone II' },
 };
-import { loadState, saveState, makeNote, NUM_SLOTS } from '../state.js';
-import { PITCH_MIN, PITCH_MAX } from '../pianoroll.js';
+import { loadState, saveState, NUM_SLOTS } from '../state.js';
+import { deviceNotesToRoll, rollLengthForTrack, makeSource } from '../roll-bridge.js';
+import { PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage } from '../elektron/safe-write.js';
+import { trackNotesForTarget, describeChordDrops } from '../elektron/copy-track.js';
+import { downloadBytes } from '../download.js';
 
 const $ = id => document.getElementById(id);
 
@@ -161,29 +164,43 @@ $('backup').onclick = async () => {
 // file), pick a track, and its trigs land in a piano-roll slot via the shared
 // localStorage state. Decoding lives in js/elektron/dt2/pattern.js.
 
-let imported = null; // { patternKit, label } once something is decoded
+let imported = null; // { patternKit, label, origin } once something is decoded
 
 for (let i = 0; i < 128; i++) $('impPattern').add(new Option(bankName(i), i));
 for (let i = 0; i < NUM_SLOTS; i++) $('impSlot').add(new Option(`Pattern ${i + 1}`, i));
 
-function showPatternKit(patternKit, label, kindFallback = 'sample') {
-  imported = { patternKit, label };
-  const named = patternKit.name ? ` “${patternKit.name}”` : '';
-  $('impPatternInfo').textContent =
-    `${label}${named} · kit ${patternKit.kit.name || '—'} · ${patternKit.tempoBpm} BPM`;
-  const trackSel = $('impTrack');
-  trackSel.innerHTML = '';
+// `origin` describes where the pattern came from ({ slug, productId,
+// deviceName, patternIndex, origin }); it becomes the imported slot's
+// provenance so the piano roll can write it back to the same place.
+// Fill a track picker from a decoded pattern: "T3 · A_303_INNIT · 4 trigs".
+// Tracks with no trigs are disabled unless `allowEmpty` (the copy bar allows
+// them — copying an empty track is how you clear one). Returns whether any
+// track is selectable.
+function fillTrackOptions(sel, patternKit, kindFallback, allowEmpty = false) {
+  sel.innerHTML = '';
   for (let t = 0; t < patternKit.tracks.length; t++) {
     const kind = patternKit.kit.midiMask & (1 << t) ? 'MIDI' : patternKit.kit.soundNames[t] || kindFallback;
     const trigs = trackTrigCount(patternKit, t);
-    trackSel.add(new Option(`T${t + 1} · ${kind} · ${trigs} trig${trigs === 1 ? '' : 's'}`, t));
-    if (trigs === 0) trackSel.options[t].disabled = true;
+    sel.add(new Option(`T${t + 1} · ${kind} · ${trigs} trig${trigs === 1 ? '' : 's'}`, t));
+    if (trigs === 0 && !allowEmpty) sel.options[t].disabled = true;
   }
-  const first = [...trackSel.options].find(o => !o.disabled);
-  if (first) trackSel.value = first.value;
-  trackSel.disabled = false;
-  $('impGo').disabled = !first;
-  if (!first) setStatus(`${label} decoded, but no track has any trigs`, true);
+  const first = [...sel.options].find(o => !o.disabled);
+  if (first) sel.value = first.value;
+  sel.disabled = false;
+  return !!first;
+}
+
+function patternSummary(patternKit, label) {
+  const named = patternKit.name ? ` “${patternKit.name}”` : '';
+  return `${label}${named} · kit ${patternKit.kit.name || '—'} · ${patternKit.tempoBpm} BPM`;
+}
+
+function showPatternKit(patternKit, label, kindFallback = 'sample', origin = null) {
+  imported = { patternKit, label, origin };
+  $('impPatternInfo').textContent = patternSummary(patternKit, label);
+  const any = fillTrackOptions($('impTrack'), patternKit, kindFallback);
+  $('impGo').disabled = !any;
+  if (!any) setStatus(`${label} decoded, but no track has any trigs`, true);
 }
 
 $('impFetch').onclick = async () => {
@@ -195,7 +212,13 @@ $('impFetch').onclick = async () => {
   try {
     logNote(`Requesting pattern-kit ${bankName(index)}…`);
     const payload = await device.fetchPatternKit(index);
-    showPatternKit(decoder.decodePatternKit(payload), bankName(index), decoder.SPEC.trackKindFallback);
+    showPatternKit(decoder.decodePatternKit(payload), bankName(index), decoder.SPEC.trackKindFallback, {
+      slug: device.identity.slug,
+      productId: device.identity.productId,
+      deviceName: device.identity.name,
+      patternIndex: index,
+      origin: 'box',
+    });
     setStatus(`Fetched ${bankName(index)} — pick a track to import`);
   } catch (err) {
     setStatus(`Pattern fetch failed: ${err.message}`, true);
@@ -217,8 +240,15 @@ $('impFileInput').onchange = async () => {
     const msg = kits.find(m => m.index === wanted) ?? kits[0];
     if (!msg.checksumOk || !msg.countOk) throw new Error(`pattern ${bankName(msg.index)} is corrupt in this file`);
     const { mod, label } = DECODER_BY_FAMILY[msg.family];
+    const product = PRODUCT_BY_FAMILY[msg.family];
     $('impPattern').value = msg.index;
-    showPatternKit(mod.decodePatternKit(msg.payload), bankName(msg.index), mod.SPEC.trackKindFallback);
+    showPatternKit(mod.decodePatternKit(msg.payload), bankName(msg.index), mod.SPEC.trackKindFallback, {
+      slug: product.slug,
+      productId: product.productId,
+      deviceName: product.name,
+      patternIndex: msg.index,
+      origin: 'file',
+    });
     setStatus(`Decoded ${label} ${bankName(msg.index)} from ${file.name} (${kits.length} pattern${kits.length > 1 ? 's' : ''} in file) — pick a track`);
   } catch (err) {
     setStatus(`Couldn't decode ${file.name}: ${err.message}`, true);
@@ -232,20 +262,19 @@ $('impGo').onclick = () => {
   const t = +$('impTrack').value;
   const slot = +$('impSlot').value;
   const track = imported.patternKit.tracks[t];
-  const lengthSteps = Math.min(128, Math.max(16, Math.ceil(track.lengthSteps / 16) * 16));
+  const lengthSteps = rollLengthForTrack(track);
   const notes = trackNotes(imported.patternKit, t).filter(n => n.step < track.lengthSteps);
 
   const st = loadState(); // fresh — the piano-roll tab may have written since we loaded
   const p = st.patterns[slot];
   p.name = `${imported.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
-  p.notes = notes.map(n => makeNote(
-    n.step,
-    Math.max(PITCH_MIN, Math.min(PITCH_MAX, n.pitch)),
-    Math.max(1, Math.min(Math.round(n.lenSteps), lengthSteps - n.step)),
-    n.velocity,
-    n.micro,
-  ));
+  p.notes = deviceNotesToRoll(notes, lengthSteps);
+  // Provenance: the roll's "Write back" button targets exactly this pattern
+  // and track, and refuses if a different box is plugged in.
+  p.source = imported.origin
+    ? makeSource({ ...imported.origin, trackIndex: t, patternName: imported.patternKit.name })
+    : null;
   saveState(st);
 
   setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${imported.label} T${t + 1} into Pattern ${slot + 1} — open the piano roll`);
@@ -295,6 +324,7 @@ function syncWriteButtons() {
   $('wrInfo').textContent = DECODERS[slug] && !writable
     ? `OS build ${device.identity.build} isn't write-verified yet — read-only`
     : '';
+  syncCopyButtons();
 }
 
 function downloadPayloadBackup(index, payload) {
@@ -372,6 +402,141 @@ $('wrRestore').onclick = async () => {
   } catch (err) {
     setStatus(`Restore failed: ${err.message}`, true);
     logError(`Restore failed: ${err.message}`);
+  } finally {
+    syncWriteButtons();
+  }
+};
+
+// --- Cross-device copy: any pattern's track → a track on the connected box --------
+// Phase 4's pattern librarian. The piano-roll note model is the interchange
+// format: decode the source with its own device spec, hand those notes to the
+// target device's encoder (js/elektron/copy-track.js). There is no bytes-level
+// DT2↔DN2 converter and there shouldn't be — the structs only look alike.
+//
+// The source is either a pattern on the connected box (copy between slots) or a
+// .syx file, which is how you copy from the *other* box: back it up once, then
+// copy tracks out of the file into whatever is plugged in. The target is always
+// the connected box, and the write runs the same safe flow as everything else:
+// re-fetch, backup, minimal-diff encode, read back, verify.
+
+let copySource = null; // { patternKit, mod, label, deviceName }
+
+for (let i = 0; i < 128; i++) $('copySrcPattern').add(new Option(bankName(i), i));
+for (let i = 0; i < 128; i++) $('copyDstPattern').add(new Option(bankName(i), i));
+for (let t = 0; t < 16; t++) $('copyDstTrack').add(new Option(`T${t + 1}`, t));
+queueMicrotask(syncCopyButtons); // once the whole module has evaluated
+
+function syncCopyButtons() {
+  const fromFile = $('copySrcWhere').value === 'file';
+  const gate = writeGate(device?.identity);
+  $('copySrcLoad').disabled = !fromFile && !DECODERS[device?.identity?.slug];
+  $('copyGo').disabled = !copySource || !gate.ok;
+  // Only the gate message is owned here — a chord-truncation warning from the
+  // last copy must survive the button re-sync that follows it.
+  if (copySource && !gate.ok) {
+    $('copyInfo').textContent = `Can't copy into this box: ${gate.reason}`;
+    $('copyInfo').classList.remove('warn');
+  }
+}
+
+function setCopySource(patternKit, mod, label, deviceName) {
+  copySource = { patternKit, mod, label, deviceName };
+  $('copyInfo').textContent = '';
+  $('copyInfo').classList.remove('warn');
+  $('copySrcInfo').textContent = `${deviceName} · ${patternSummary(patternKit, label)}`;
+  fillTrackOptions($('copySrcTrack'), patternKit, mod.SPEC.trackKindFallback, true);
+  syncCopyButtons();
+  setStatus(`Copy source: ${deviceName} ${label} — pick the track to copy`);
+}
+
+$('copySrcWhere').onchange = syncCopyButtons;
+
+$('copySrcLoad').onclick = async () => {
+  if ($('copySrcWhere').value === 'file') { $('copySrcFileInput').click(); return; }
+  const decoder = DECODERS[device?.identity?.slug];
+  if (!decoder) return;
+  const index = +$('copySrcPattern').value;
+  $('copySrcLoad').disabled = true;
+  try {
+    logNote(`Copy source: requesting pattern-kit ${bankName(index)}…`);
+    const payload = await device.fetchPatternKit(index);
+    setCopySource(decoder.decodePatternKit(payload), decoder, bankName(index), device.identity.name);
+  } catch (err) {
+    setStatus(`Couldn't load copy source: ${err.message}`, true);
+    logError(`Copy source fetch failed: ${err.message}`);
+  } finally {
+    syncCopyButtons();
+  }
+};
+
+$('copySrcFileInput').onchange = async () => {
+  const file = $('copySrcFileInput').files[0];
+  if (!file) return;
+  try {
+    const kits = splitSysExStream(new Uint8Array(await file.arrayBuffer()))
+      .filter(m => m.kind === 'dump' && DECODER_BY_FAMILY[m.family] && m.type === DUMP.PATTERN_KIT);
+    if (!kits.length) throw new Error('no Digitakt II or Digitone II pattern-kit messages in this file');
+    const wanted = +$('copySrcPattern').value;
+    const msg = kits.find(m => m.index === wanted) ?? kits[0];
+    if (!msg.checksumOk || !msg.countOk) throw new Error(`pattern ${bankName(msg.index)} is corrupt in this file`);
+    const { mod, label } = DECODER_BY_FAMILY[msg.family];
+    $('copySrcPattern').value = msg.index;
+    setCopySource(mod.decodePatternKit(msg.payload), mod, bankName(msg.index), label);
+  } catch (err) {
+    setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
+    logError(`Copy source decode failed: ${err.message}`);
+  }
+  $('copySrcFileInput').value = '';
+};
+
+$('copyGo').onclick = async () => {
+  if (!device || !copySource) return;
+  const gate = writeGate(device.identity);
+  if (!gate.ok) { setStatus(gate.reason, true); return; }
+  const srcTrack = +$('copySrcTrack').value;
+  const index = +$('copyDstPattern').value;
+  const dstTrack = +$('copyDstTrack').value;
+  const from = `${copySource.deviceName} ${copySource.label} T${srcTrack + 1}`;
+
+  $('copyGo').disabled = true;
+  try {
+    // Chord policy first, so the user is told what won't fit *before* deciding.
+    const { notes, drops } = trackNotesForTarget(copySource.mod, copySource.patternKit, srcTrack, gate.mod);
+    const warnings = describeChordDrops(drops, device.identity.name);
+    for (const w of warnings) logError(`Chord truncated — ${w}`);
+    if (warnings.length) {
+      $('copyInfo').textContent = `${warnings.length} chord${warnings.length === 1 ? '' : 's'} truncated — see the log`;
+      $('copyInfo').classList.add('warn');
+    }
+
+    const result = await safeWriteTrack(device, {
+      index, trackIndex: dstTrack, notes,
+      onStatus: setStatus,
+      onLog: logNote,
+      onBackup: b => downloadBytes(b.name, b.bytes),
+      confirm: ({ label, existingTrigs, patternKit }) => confirm(
+        `Copy ${notes.length} note${notes.length === 1 ? '' : 's'} from ${from} to ` +
+        `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${dstTrack + 1} on the ${device.identity.name}?\n\n` +
+        (existingTrigs ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track. ` : 'That track is currently empty. ') +
+        'Only notes are copied — sounds, p-locks and pattern settings stay exactly as they are.\n' +
+        (warnings.length ? `\nToo many notes on a trig for this box:\n${warnings.join('\n')}\n` : '') +
+        '\nA backup of the whole pattern downloads first.'
+      ),
+    });
+
+    if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload };
+    const { text, isError } = writeResultMessage(result);
+    setStatus(text, isError);
+    if (isError) {
+      logError('Verify mismatch (sent vs re-read): ' +
+        result.diffs.slice(0, 16).map(d => `@${d.offset} ${d.sent?.toString(16)}→${d.read?.toString(16)}`).join('  '));
+    } else if (!result.cancelled) {
+      logNote(`Copy verified: ${from} → ${result.label} T${dstTrack + 1}, ${result.written} notes` +
+        (warnings.length ? ` (${warnings.length} chord truncated)` : ''));
+    }
+  } catch (err) {
+    setStatus(`Copy failed: ${err.message}`, true);
+    logError(`Copy failed: ${err.message}`);
   } finally {
     syncWriteButtons();
   }

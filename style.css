@@ -84,6 +84,30 @@ input[type="range"] { width: 90px; accent-color: #f0913a; }
 #helpPanel .dim { color: #7d8590; }
 .hidden { display: none; }
 
+#bankPanel {
+  flex: none;
+  padding: 10px 18px;
+  background: #1b1f27;
+  border-bottom: 1px solid #2a2e38;
+  font-size: 13px;
+}
+.bankCols { display: flex; gap: 14px; align-items: flex-start; }
+#bankList { min-width: 260px; padding: 4px; }
+#bankList:focus { outline: none; border-color: #f0913a; }
+.bankControls { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+.bankControls .spacer { height: 6px; }
+.bankControls button { text-align: left; }
+input[type="text"] {
+  background: #21252e;
+  color: #d8dae0;
+  border: 1px solid #363c48;
+  border-radius: 5px;
+  padding: 5px 8px;
+  font: inherit;
+  width: 180px;
+}
+#bankInfo { margin-top: 8px; color: #7d8590; font-size: 12px; min-height: 15px; }
+
 #rollWrap {
   flex: 1;
   overflow: auto;

@@ -16,6 +16,10 @@ export function defaultPattern(index) {
     channel: index,    // 0-based MIDI channel; defaults line up with Elektron track channels 1-8
     swing: 50,         // 50 = straight, up to 80 like the Elektron range
     notes: [],
+    // Provenance: the box/pattern/track this slot was imported from, so the
+    // roll can write it straight back. null on locally drawn patterns —
+    // see makeSource() in js/roll-bridge.js for the shape.
+    source: null,
   };
 }
 
@@ -42,6 +46,7 @@ export function loadState() {
     // backfill fields added after a pattern was saved.
     for (const p of state.patterns) {
       if (typeof p.swing !== 'number') p.swing = 50;
+      if (p.source === undefined) p.source = null;
       for (const n of p.notes) {
         if (typeof n.micro !== 'number') n.micro = 0;
         nextNoteId = Math.max(nextNoteId, n.id + 1);

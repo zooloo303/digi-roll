@@ -1,6 +1,14 @@
 import { loadState, saveState, defaultPattern, makeNote, NUM_SLOTS } from './state.js';
 import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
+import { ElektronDevice } from './elektron/device.js';
+import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
+import { rollNotesToDevice, sourceLabel, sourceSlotLabel, sourceMatchesIdentity } from './roll-bridge.js';
+import { downloadBytes, downloadText } from './download.js';
+import {
+  BANK_PREFIX, listBank, bankEntry, saveToBank, loadFromBank, deleteFromBank,
+  renameInBank, exportBank, parseBankFile, importBank,
+} from './bank.js';
 
 const $ = id => document.getElementById(id);
 
@@ -110,6 +118,7 @@ function syncToolbar() {
   scaleSel.value = state.scale;
   $('velocity').value = state.defaultVelocity;
   $('velLabel').textContent = state.defaultVelocity;
+  syncWriteBack();
 }
 
 slotSel.onchange = () => {
@@ -160,7 +169,13 @@ $('velocity').onchange = () => { velGesture = false; };
 $('clear').onclick = () => {
   if (!pattern().notes.length || confirm(`Clear all notes in ${pattern().name}?`)) {
     pushUndo();
-    state.patterns[state.current] = { ...defaultPattern(state.current), channel: pattern().channel, lengthSteps: pattern().lengthSteps, swing: pattern().swing };
+    // Provenance survives a clear: emptying an imported slot and writing it
+    // back is how you erase that track on the box.
+    state.patterns[state.current] = {
+      ...defaultPattern(state.current),
+      channel: pattern().channel, lengthSteps: pattern().lengthSteps,
+      swing: pattern().swing, source: pattern().source,
+    };
     roll.clearSelection();
     syncToolbar();
     roll.resize();
@@ -228,6 +243,7 @@ $('importFile').onchange = async () => {
     const p = pattern();
     p.lengthSteps = lengthSteps;
     p.notes = notes.map(n => makeNote(n.step, Math.max(PITCH_MIN, Math.min(PITCH_MAX, n.pitch)), n.len, n.velocity, n.micro));
+    p.source = null; // these notes came from a file, not from a box track
     roll.clearSelection();
     syncToolbar();
     roll.resize();
@@ -253,6 +269,224 @@ $('dup').onclick = () => {
   roll.resize();
   persist();
   setStatus(`Duplicated bar ${from / 16 + 1} into bar ${p.lengthSteps / 16}`);
+};
+
+// --- Pattern bank ------------------------------------------------------------------
+// Named saves in localStorage, one key per pattern (js/bank.js). Eight slots is
+// plenty to work in and nowhere near enough to keep ideas in.
+
+function selectedBankName() {
+  return $('bankList').value || null;
+}
+
+function refreshBank(keepSelection = selectedBankName()) {
+  const list = $('bankList');
+  list.innerHTML = '';
+  for (const name of listBank()) list.add(new Option(name, name));
+  if (keepSelection && [...list.options].some(o => o.value === keepSelection)) list.value = keepSelection;
+  else list.value = '';
+  syncBankButtons();
+}
+
+function syncBankButtons() {
+  const name = selectedBankName();
+  for (const id of ['bankLoad', 'bankRename', 'bankDelete']) $(id).disabled = !name;
+  if (!name) { $('bankInfo').textContent = listBank().length ? 'Pick a saved pattern.' : 'Nothing saved yet — name the pattern you\'re editing and hit Save.'; return; }
+  const entry = bankEntry(name);
+  if (!entry?.pattern) { $('bankInfo').textContent = `“${name}” is unreadable — delete it.`; return; }
+  const p = entry.pattern;
+  const saved = (entry.savedAt || '').slice(0, 16).replace('T', ' ');
+  $('bankInfo').textContent =
+    `“${p.name}” · ${p.notes.length} note${p.notes.length === 1 ? '' : 's'} · ${p.lengthSteps / 16} bar${p.lengthSteps === 16 ? '' : 's'}` +
+    ` · swing ${p.swing} · ch ${p.channel + 1}` +
+    (p.source ? ` · from ${sourceLabel(p.source)}` : '') +
+    (saved ? ` · saved ${saved}` : '');
+}
+
+$('bank').onclick = () => {
+  const panel = $('bankPanel');
+  panel.classList.toggle('hidden');
+  $('bank').classList.toggle('active', !panel.classList.contains('hidden'));
+  if (!panel.classList.contains('hidden')) {
+    refreshBank();
+    if (!$('bankName').value) $('bankName').value = pattern().name;
+  }
+};
+
+$('bankList').onchange = () => {
+  syncBankButtons();
+  $('bankName').value = selectedBankName() ?? $('bankName').value;
+};
+$('bankList').ondblclick = () => $('bankLoad').click();
+
+$('bankSave').onclick = () => {
+  const name = ($('bankName').value || pattern().name).trim();
+  if (!name) { setStatus('Give the pattern a name before saving', true); return; }
+  if (bankEntry(name) && !confirm(`“${name}” is already in the bank. Overwrite it?`)) return;
+  try {
+    saveToBank(name, pattern());
+    refreshBank(name);
+    setStatus(`Saved “${name}” to the bank`);
+  } catch (err) {
+    setStatus(`Couldn't save: ${err.message}`, true);
+  }
+};
+
+$('bankLoad').onclick = () => {
+  const name = selectedBankName();
+  if (!name) return;
+  try {
+    const loaded = loadFromBank(name, makeNote);
+    pushUndo();
+    state.patterns[state.current] = loaded;
+    roll.clearSelection();
+    syncToolbar();
+    roll.resize();
+    persist();
+    setStatus(`Loaded “${name}” into slot ${state.current + 1}` +
+      ` — ${loaded.notes.length} note${loaded.notes.length === 1 ? '' : 's'}` +
+      (loaded.source ? `, from ${sourceLabel(loaded.source)}` : ''));
+  } catch (err) {
+    setStatus(`Couldn't load “${name}”: ${err.message}`, true);
+  }
+};
+
+$('bankRename').onclick = () => {
+  const name = selectedBankName();
+  if (!name) return;
+  const to = ($('bankName').value || '').trim();
+  if (!to || to === name) { setStatus('Type the new name in the box first', true); return; }
+  if (bankEntry(to) && !confirm(`“${to}” already exists. Overwrite it?`)) return;
+  try {
+    renameInBank(name, to);
+    refreshBank(to);
+    setStatus(`Renamed “${name}” → “${to}”`);
+  } catch (err) {
+    setStatus(`Couldn't rename: ${err.message}`, true);
+  }
+};
+
+$('bankDelete').onclick = () => {
+  const name = selectedBankName();
+  if (!name || !confirm(`Delete “${name}” from the bank? This can't be undone.`)) return;
+  deleteFromBank(name);
+  refreshBank(null);
+  setStatus(`Deleted “${name}”`);
+};
+
+$('bankExport').onclick = () => {
+  const one = selectedBankName();
+  const names = one ? [one] : listBank();
+  if (!names.length) { setStatus('Nothing in the bank to export', true); return; }
+  const file = one ? `${one.replace(/[^\w -]+/g, '') || 'pattern'}.json` : 'digi-roll-bank.json';
+  downloadText(file, exportBank(names));
+  setStatus(`Exported ${names.length} pattern${names.length === 1 ? '' : 's'} to ${file}`);
+};
+
+$('bankImport').onclick = () => $('bankFile').click();
+$('bankFile').onchange = async () => {
+  const file = $('bankFile').files[0];
+  if (!file) return;
+  try {
+    const added = importBank(parseBankFile(await file.text()));
+    refreshBank(added[0] ?? null);
+    setStatus(`Imported ${added.length} pattern${added.length === 1 ? '' : 's'} from ${file.name}: ${added.join(', ')}`);
+  } catch (err) {
+    setStatus(`Couldn't import ${file.name}: ${err.message}`, true);
+  }
+  $('bankFile').value = '';
+};
+
+// Another tab saving to the bank shouldn't leave this list stale.
+window.addEventListener('storage', e => {
+  if (e.key?.startsWith(BANK_PREFIX) && !$('bankPanel').classList.contains('hidden')) refreshBank();
+});
+
+// --- Write back to the box -------------------------------------------------------
+// Closes the round trip: import a track in the device console, edit it here,
+// send it straight back to the pattern it came from. The heavy lifting (fetch,
+// backup, encode, write, verify) is js/elektron/safe-write.js — the same flow
+// the console's Phase 2 write button runs.
+//
+// This page normally holds sysex-free MIDI access on purpose, so the everyday
+// piano roll never triggers the scarier browser permission prompt. Write-back
+// asks for SysEx access lazily, the first time you actually use it.
+
+let sysexAccess = null;
+let box = null;          // ElektronDevice, once identified
+let writingBack = false;
+
+function syncWriteBack() {
+  const src = pattern().source;
+  const btn = $('writeBack');
+  btn.disabled = !src || writingBack;
+  btn.textContent = src ? `Write back → ${sourceSlotLabel(src)}` : 'Write back';
+  btn.title = src
+    ? `Re-fetch ${sourceLabel(src)} from the box, replace that track's notes with this pattern, and verify. A backup downloads first.`
+    : 'Nothing to write back: this pattern wasn\'t imported from a box. Use the device console to import one, or to write this pattern to any slot.';
+  $('sourceInfo').textContent = src ? `from ${sourceLabel(src)}` : '';
+}
+
+// Find and identify the box this pattern came from. Refuses on anything else —
+// writing a Digitone pattern into a Digitakt slot by accident is exactly the
+// kind of mistake provenance exists to prevent.
+async function connectSourceBox(src) {
+  if (!navigator.requestMIDIAccess) throw new Error('Web MIDI not supported — use Chrome, Edge, or Brave');
+  sysexAccess ??= await navigator.requestMIDIAccess({ sysex: true });
+  const inputs = [...sysexAccess.inputs.values()];
+  const pairs = [...sysexAccess.outputs.values()]
+    .map(out => ({ out, in: inputs.find(i => i.name === out.name) }))
+    .filter(p => p.in);
+  if (!pairs.length) throw new Error('No two-way MIDI device found — plug the box in over USB');
+
+  const chosen = outSel.options[outSel.selectedIndex]?.text;
+  const pair = pairs.find(p => p.out.name === chosen) ?? (pairs.length === 1 ? pairs[0] : null);
+  if (!pair) throw new Error('Pick the box you want to write to in the MIDI output menu first');
+
+  box?.close();
+  box = new ElektronDevice(pair.in, pair.out);
+  const id = await box.identify();
+  if (!sourceMatchesIdentity(src, id)) {
+    throw new Error(`this pattern came from a ${src.deviceName || src.slug}, but ${pair.out.name} says it's a ${id.name} — refusing to write`);
+  }
+  const gate = writeGate(id);
+  if (!gate.ok) throw new Error(gate.reason);
+  return id;
+}
+
+$('writeBack').onclick = async () => {
+  const p = pattern();
+  const src = p.source;
+  if (!src || writingBack) return;
+  writingBack = true;
+  syncWriteBack();
+  try {
+    setStatus('Looking for the box…');
+    const id = await connectSourceBox(src);
+    const result = await safeWriteTrack(box, {
+      index: src.patternIndex,
+      trackIndex: src.trackIndex,
+      notes: rollNotesToDevice(p.notes),
+      onStatus: setStatus,
+      onBackup: b => downloadBytes(b.name, b.bytes),
+      confirm: ({ label, existingTrigs, patternKit }) => window.confirm(
+        `Write ${p.notes.length} note${p.notes.length === 1 ? '' : 's'} from “${p.name}” back to ` +
+        `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${src.trackIndex + 1} on the ${id.name}?\n\n` +
+        (existingTrigs
+          ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track. `
+          : 'That track is currently empty. ') +
+        'A backup of the whole pattern downloads first.'
+      ),
+    });
+    const { text, isError } = writeResultMessage(result);
+    setStatus(text, isError);
+    if (isError) window.alert(text); // rule 4: a verify mismatch must never be quiet
+  } catch (err) {
+    setStatus(`Write back failed: ${err.message}`, true);
+  } finally {
+    writingBack = false;
+    syncWriteBack();
+  }
 };
 
 // --- Keyboard shortcuts --------------------------------------------------------

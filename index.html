@@ -40,6 +40,9 @@
       <button id="import" title="Replace this pattern with the notes from a MIDI file">Import .mid</button>
       <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       <button id="clear" title="Clear all notes in this pattern">Clear</button>
+      <button id="writeBack" disabled>Write back</button>
+      <button id="bank" title="Named saves of your patterns, kept in this browser">Bank</button>
+      <span id="sourceInfo" class="field"></span>
     </div>
     <div id="status"></div>
   </header>
@@ -63,7 +66,31 @@
     <p>Tips: click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
     <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Vel slider all apply to the whole selection.</p>
     <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
-    <p class="dim">Direct SysEx pattern transfer (writing straight into pattern memory, elk-herd style) is a possible later addition for the Digitakt 2; the Digitone 2's pattern format isn't publicly documented.</p>
+    <h2>Straight into pattern memory (no live recording)</h2>
+    <ul>
+      <li>The <a href="console.html">device console</a> talks SysEx to a Digitakt 2 or Digitone 2 directly: back up the project, <b>import</b> a pattern's track into a roll slot, <b>write</b> a roll slot into any pattern track, or <b>copy a track</b> from one pattern to another — even between the two boxes, via a saved .syx backup.</li>
+      <li>Once a slot has been imported, <b>Write back</b> here sends your edits straight home to the pattern and track they came from. It re-reads the pattern first, downloads a backup of it, changes only that track's notes, then reads it back and checks every byte. Anything else on the box — sounds, p-locks, other tracks — is left alone.</li>
+      <li>Write back only lights up for imported patterns, and only writes to the same box they came from, on an OS build the format has been verified against.</li>
+      <li><b>Bank</b> keeps named saves of your patterns in this browser (with swing, micro-timing and where they came from), and exports them as .json to share or back up.</li>
+    </ul>
+  </div>
+
+  <div id="bankPanel" class="hidden">
+    <div class="bankCols">
+      <select id="bankList" size="7" title="Patterns saved in this browser"></select>
+      <div class="bankControls">
+        <input id="bankName" type="text" placeholder="name this pattern" maxlength="48">
+        <button id="bankSave" title="Save the pattern you're editing under this name">Save</button>
+        <button id="bankLoad" title="Replace the current slot with the selected saved pattern" disabled>Load into slot</button>
+        <button id="bankRename" title="Rename the selected saved pattern" disabled>Rename</button>
+        <button id="bankDelete" title="Delete the selected saved pattern" disabled>Delete</button>
+        <span class="spacer"></span>
+        <button id="bankExport" title="Download the selected pattern (or the whole bank) as a .json file">Export .json</button>
+        <button id="bankImport" title="Add patterns from an exported .json file">Import .json</button>
+        <input id="bankFile" type="file" accept=".json,application/json" hidden>
+      </div>
+    </div>
+    <div id="bankInfo" class="dim"></div>
   </div>
 
   <div id="rollWrap">

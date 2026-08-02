@@ -45,6 +45,24 @@
     <span id="wrInfo" class="field"></span>
   </div>
 
+  <div id="copyBar">
+    <span class="dim">Copy track</span>
+    <select id="copySrcWhere" title="Where the notes come from">
+      <option value="box">from connected box</option>
+      <option value="file">from .syx file</option>
+    </select>
+    <select id="copySrcPattern" title="Source pattern slot"></select>
+    <button id="copySrcLoad" title="Load that pattern as the copy source">Load source</button>
+    <input id="copySrcFileInput" type="file" accept=".syx" hidden>
+    <span id="copySrcInfo" class="field"></span>
+    <select id="copySrcTrack" title="Which track's notes to copy" disabled></select>
+    <span class="dim">→</span>
+    <select id="copyDstPattern" title="Target pattern slot on the connected box"></select>
+    <select id="copyDstTrack" title="Target track — only its notes change"></select>
+    <button id="copyGo" title="Backs up the target pattern, replaces that track's notes with the source track's, then reads back and verifies" disabled>Copy to track…</button>
+    <span id="copyInfo" class="field"></span>
+  </div>
+
   <div id="consoleWrap">
     <div class="logbar">
       <span class="dim">SysEx log — every byte in and out</span>
