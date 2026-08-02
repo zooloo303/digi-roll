@@ -83,9 +83,9 @@ hex log of every exchange, identifies the device (model + OS version), and can
   track, and its trigs land in the piano roll with exact notes, velocities,
   lengths and micro-timing (Digitakt II + Digitone II);
 - **Write to pattern** — the reverse: a piano-roll pattern written straight
-  into a pattern slot's track, with automatic pre-write backup, an OS-version
-  allowlist and byte-level verify-after-write (Digitakt II; the Digitone II
-  stays import-only until its write path is hardware-verified).
+  into a pattern slot's track, with automatic pre-write backup, a per-device
+  OS-version allowlist and byte-level verify-after-write (Digitakt II +
+  Digitone II, both hardware-verified).
 
 `difflab.html` is the reverse-engineering workbench that mapped those formats:
 capture a pattern, make one edit on the box, capture again, and read a hex
@@ -116,7 +116,6 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 
 ## Ideas / later
 
-See `PLAN.md` for the roadmap. Next up: hardware-verifying the Digitone II
-write path (controlled experiments via the diff lab), then the cross-device
-pattern librarian — read a pattern from one box, write it to the other.
-(The Octatrack stays on the live-record path; it has no pattern SysEx.)
+See `PLAN.md` for the roadmap. Next up: the cross-device pattern librarian —
+read a pattern from one box, write it to the other — and p-lock lanes in the
+roll. (The Octatrack stays on the live-record path; it has no pattern SysEx.)

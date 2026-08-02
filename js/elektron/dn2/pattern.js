@@ -3,16 +3,19 @@
 //
 // Nobody had published this format; every offset here is digi-roll's own
 // reverse engineering (2026-08-01, DN2 OS 1.10D, pattern struct v3, kit v3),
-// done by diffing real DN2 project dumps against the known DT2 layout —
-// method and per-field provenance in docs/dn2-pattern-format.md. Summary: the
-// DN2 pattern struct is the DT2 one with a track struct 3 bytes larger
-// (1187), which pushes the trig-record pool to 18996 and everything after the
-// tracks up by 48; total struct size is identical. The kit struct differs
-// (synth presets, no sample slots) and is round-tripped untouched.
+// done by diffing real DN2 project dumps against the known DT2 layout, then
+// hardware-verified field-by-field with a controlled experiment pass —
+// method, per-field provenance and the experiment log are in
+// docs/dn2-pattern-format.md. Summary: the DN2 pattern struct is the DT2 one
+// with a track struct 3 bytes larger (1187), which pushes the trig-record
+// pool to 18996 and everything after the tracks up by 48; total struct size
+// is identical. Trigs store one record per sounding note (chords = several
+// records sharing track/step), unlike the DT2's fixed quads. The kit struct
+// differs (synth presets, no sample slots) and is round-tripped untouched.
 //
-// The write path is encodable but NOT yet hardware-verified for the DN2 —
-// the console keeps DN2 read-only until a controlled write experiment passes
-// (PLAN.md safety rule: writes only on [V]-confirmed formats).
+// Write path hardware-verified 2026-08-01 on OS build 0049: encode → send →
+// re-read came back byte-identical, chords included (the console gates
+// writes on its per-device build allowlist).
 
 import * as core from '../pattern-core.js';
 
@@ -40,10 +43,12 @@ export const SPEC = {
     defaults: 1152,
     lengthSteps: 1164,
   },
-  // Observed: one 6-byte record per trig, not DT2's quad of four. How the DN2
-  // stores chords (if it packs extra note slots at all) is unverified — until
-  // a controlled experiment says otherwise, one note slot per trig.
-  noteSlotsPerTrig: 1,
+  // One 6-byte record per sounding note (not DT2's quad of four): a chord is
+  // several consecutive records sharing (track, step) — hardware-verified
+  // with a 3-note chord. Deleting a trig blanks track/step/note to 0xFF but
+  // can leave stray length/micro bytes. maxNotes caps what we write per trig
+  // (3 verified on hardware; 4 matches the DT2 note-slot count).
+  trig: { layout: 'perNote', maxNotes: 4 },
   kits: {
     // 16 × 359-byte synth-preset structs at +60, then 16 × 268-byte MIDI-track
     // structs at +5964; per-track MIDI mask location still unmapped (null).

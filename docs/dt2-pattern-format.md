@@ -69,7 +69,7 @@ Record layout:
 | +2 | note — absolute MIDI note; `FF` = track default / slot unused (NOTE +3 stored as 0x3F = 63 [V]) |
 | +3 | velocity — 0–127; `FF` = track default (VEL 37 → 0x25 [V]) |
 | +4 | length byte — scale below; `FF` = track default (LEN 1/4 → 0x2E = 46 [V]) |
-| +5 | micro-timing — **signed byte**, ticks of 1/24 step; resting value 0, not `FF` (left nudge → 0xFE = −2 [V]) |
+| +5 | micro-timing — **signed byte**, ticks of 1/24 step; resting value 0, not `FF` (the verification capture shows 0xFE = −2 ticks, from two left nudges — the DN2 experiment later confirmed one nudge = one tick [V]) |
 
 Behavior:
 

@@ -52,7 +52,8 @@ export function stepsToLengthByte(steps) {
 }
 
 // Signed micro-timing byte → offset in steps. Ticks are 1/24 of a step
-// (the box displays n/384 of a bar); a left-nudge produced 0xFE = −2.
+// (the box displays n/384 of a bar); one nudge = one tick (0xFF = −1),
+// hardware-verified on both DT2 and DN2.
 function microByteToSteps(v) {
   return ((v << 24) >> 24) / 24;
 }
@@ -88,20 +89,39 @@ export function decodePatternKit(spec, payload) {
     });
   }
 
-  // Walk the trig-record pool. Records are appended as trigs are created, so
-  // on the rare chance a (track, step) pair appears twice (delete + re-add),
-  // the later group wins.
-  const slotsPer = spec.noteSlotsPerTrig;
-  for (let r = 0; r < P.trigPoolRecords; r += slotsPer) {
-    const o = P.trigPool + r * 6;
-    const [track, step] = [payload[o], payload[o + 1]];
-    if (track >= P.numTracks || step >= T.numSteps) continue; // free/foreign
-    const slots = [];
-    for (let n = 0; n < slotsPer; n++) {
-      const s = o + n * 6;
-      slots.push({ note: payload[s + 2], velocity: payload[s + 3], length: payload[s + 4], micro: payload[s + 5] });
+  // Walk the trig-record pool. Two layouts exist (spec.trig.layout):
+  //
+  //   'quad' (DT2): every trig owns a fixed group of `maxNotes` consecutive
+  //   quad-aligned records — one per note slot. Deleted trigs' quads linger
+  //   with track/step intact, so on delete + re-add the same (track, step)
+  //   can appear twice: the later quad wins.
+  //
+  //   'perNote' (DN2): one record per sounding note, so a chord is several
+  //   consecutive records sharing (track, step) — accumulate them. Deleting
+  //   a trig blanks its records' track/step/note to 0xFF (hardware-verified),
+  //   so a live (track, step) can never collide with stale records.
+  if (spec.trig.layout === 'quad') {
+    const slotsPer = spec.trig.maxNotes;
+    for (let r = 0; r < P.trigPoolRecords; r += slotsPer) {
+      const o = P.trigPool + r * 6;
+      const [track, step] = [payload[o], payload[o + 1]];
+      if (track >= P.numTracks || step >= T.numSteps) continue; // free/foreign
+      const slots = [];
+      for (let n = 0; n < slotsPer; n++) {
+        const s = o + n * 6;
+        slots.push({ note: payload[s + 2], velocity: payload[s + 3], length: payload[s + 4], micro: payload[s + 5] });
+      }
+      tracks[track].trigs.set(step, slots);
     }
-    tracks[track].trigs.set(step, slots);
+  } else {
+    for (let r = 0; r < P.trigPoolRecords; r++) {
+      const o = P.trigPool + r * 6;
+      const [track, step] = [payload[o], payload[o + 1]];
+      if (track >= P.numTracks || step >= T.numSteps) continue; // free/foreign
+      const slots = tracks[track].trigs.get(step) ?? [];
+      slots.push({ note: payload[o + 2], velocity: payload[o + 3], length: payload[o + 4], micro: payload[o + 5] });
+      tracks[track].trigs.set(step, slots);
+    }
   }
 
   const kitBase = P.size;
@@ -137,26 +157,30 @@ export function decodePatternKit(spec, payload) {
 export function trackNotes(patternKit, trackIndex) {
   const track = patternKit.tracks[trackIndex];
   const notes = [];
+  const toNote = (s, sl, pitch) => {
+    const velocity = (sl == null || sl.velocity === 0xff ? track.defaultVelocity : sl.velocity) & 0x7f;
+    const lenByte = sl == null || sl.length === 0xff ? track.defaultLength : sl.length;
+    const lenSteps = lengthByteToSteps(lenByte);
+    return {
+      step: s,
+      pitch: pitch & 0x7f,
+      velocity,
+      lenSteps: isFinite(lenSteps) ? lenSteps : track.lengthSteps,
+      micro: sl ? microByteToSteps(sl.micro) : 0,
+    };
+  };
   for (let s = 0; s < track.steps.length; s++) {
     if (!(track.steps[s] & TRIG_ENABLED)) continue;
-    const slots = track.trigs.get(s);
-    const first = slots?.[0];
-    const velocity = (first == null || first.velocity === 0xff ? track.defaultVelocity : first.velocity) & 0x7f;
-    const lenByte = first == null || first.length === 0xff ? track.defaultLength : first.length;
-    const lenSteps = lengthByteToSteps(lenByte);
-    const micro = first ? microByteToSteps(first.micro) : 0;
-    // Every filled note slot is a note; a trig with no slot data (or all
-    // slots at 0xFF) plays the track's default note.
-    const pitches = (slots ?? []).filter(sl => sl.note !== 0xff).map(sl => sl.note & 0x7f);
-    if (!pitches.length) pitches.push(track.defaultNote & 0x7f);
-    for (const pitch of pitches) {
-      notes.push({
-        step: s,
-        pitch,
-        velocity,
-        lenSteps: isFinite(lenSteps) ? lenSteps : track.lengthSteps,
-        micro,
-      });
+    const slots = track.trigs.get(s) ?? [];
+    // Every filled note slot is a note, carrying its own record's velocity/
+    // length/micro (the DT2 mirrors those across a quad, so per-slot reads
+    // are identical there). A trig with no slot data — or slots that are all
+    // 0xFF — plays the track's default note.
+    const filled = slots.filter(sl => sl.note !== 0xff);
+    if (filled.length) {
+      for (const sl of filled) notes.push(toNote(s, sl, sl.note));
+    } else {
+      notes.push(toNote(s, slots[0] ?? null, track.defaultNote));
     }
   }
   return notes;
@@ -192,50 +216,67 @@ export function encodeTrackNotes(spec, payload, trackIndex, notes) {
 
   // Free every record group belonging to this track (including groups
   // lingering from long-deleted trigs — the box only reads records for
-  // enabled steps).
-  const GROUP = 6 * spec.noteSlotsPerTrig;
+  // enabled steps). Groups are quads on 'quad' devices, single records on
+  // 'perNote' ones.
+  const { layout, maxNotes } = spec.trig;
+  const GROUP = 6 * (layout === 'quad' ? maxNotes : 1);
   for (let o = P.trigPool; o < P.pLocksIndex; o += GROUP) {
     if (out[o] === trackIndex) out.fill(0xff, o, o + GROUP);
   }
 
-  // Group notes by step, at most one pitch per note slot.
+  // Group notes by step, at most `maxNotes` pitches per trig.
   const byStep = new Map();
   let dropped = 0;
   for (const n of [...notes].sort((a, b) => a.step - b.step || a.pitch - b.pitch)) {
     if (!Number.isInteger(n.step) || n.step < 0 || n.step >= T.numSteps) { dropped++; continue; }
     const group = byStep.get(n.step) ?? [];
-    if (group.length >= spec.noteSlotsPerTrig) { dropped++; continue; }
+    if (group.length >= maxNotes) { dropped++; continue; }
     group.push(n);
     byStep.set(n.step, group);
   }
 
-  // Write one record group per trigged step into free pool space. Velocity,
-  // length and micro-timing are mirrored across all slots, exactly as the box
-  // stores them; chord slots beyond the first carry only their note.
+  // A record group is claimable when its first record's track byte is 0xFF:
+  // free space is all-0xFF, and both boxes blank the track byte when a trig
+  // is deleted ('perNote' deletes leave stray length/micro bytes behind —
+  // still dead records). We overwrite every byte of a claimed group.
   let nextGroup = P.trigPool;
   const freeGroup = () => {
     for (; nextGroup < P.pLocksIndex; nextGroup += GROUP) {
-      let free = true;
-      for (let i = 0; i < GROUP; i++) if (out[nextGroup + i] !== 0xff) { free = false; break; }
-      if (free) return nextGroup;
+      if (out[nextGroup] === 0xff) return nextGroup;
     }
     throw new Error('pattern trig storage is full — too many trigs across all tracks');
   };
+
+  // Write the records for one trigged step. Velocity, length and micro are
+  // taken from the step's first note and mirrored across the group — exactly
+  // how both boxes store chords.
   for (const [step, group] of byStep) {
-    const o = freeGroup();
-    nextGroup += GROUP;
     const first = group[0];
     const vel = first.velocity & 0x7f;
     const len = stepsToLengthByte(first.len);
     const micro = Math.max(-23, Math.min(23, Math.round((first.micro ?? 0) * 24))) & 0xff;
-    for (let slot = 0; slot < spec.noteSlotsPerTrig; slot++) {
-      const s = o + slot * 6;
+    const writeRecord = (s, pitch) => {
       out[s] = trackIndex;
       out[s + 1] = step;
-      out[s + 2] = group[slot] ? group[slot].pitch & 0x7f : 0xff;
+      out[s + 2] = pitch;
       out[s + 3] = vel;
       out[s + 4] = len;
       out[s + 5] = micro;
+    };
+    if (layout === 'quad') {
+      // One quad per trig; unused note slots carry 0xFF notes.
+      const o = freeGroup();
+      nextGroup += GROUP;
+      for (let slot = 0; slot < maxNotes; slot++) {
+        writeRecord(o + slot * 6, group[slot] ? group[slot].pitch & 0x7f : 0xff);
+      }
+    } else {
+      // One record per note, consecutive, sharing (track, step).
+      for (const n of group) {
+        const o = freeGroup();
+        nextGroup += GROUP;
+        writeRecord(o, n.pitch & 0x7f);
+      }
     }
     out[base + step * 2] |= TRIG_SET_HI;
     out[base + step * 2 + 1] |= TRIG_SET_LO;

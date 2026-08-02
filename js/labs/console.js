@@ -260,8 +260,14 @@ $('impGo').onclick = () => {
 //   3. firmware allowlist — only OS builds the format was verified on;
 //   4. verify-after-write: re-read, byte-compare, loud diff on mismatch.
 
-// DT2 OS builds the pattern format has been verified against on real hardware.
-const WRITE_ALLOWED_BUILDS = ['0070']; // 1.15B
+// OS builds the pattern write path has been verified against on real
+// hardware, per device — a full encode → send → re-read → byte-compare
+// cycle plus a controlled-experiment pass over the trig fields (see the
+// format docs). Extend a list only after re-verifying on the new build.
+const WRITE_ALLOWED_BUILDS = {
+  digitakt2: ['0070'],  // 1.15B, verified 2026-08-01
+  digitone2: ['0049'],  // 1.10D, verified 2026-08-01
+};
 
 let lastBackup = null; // { index, payload } of the last pattern we overwrote
 
@@ -281,22 +287,20 @@ window.addEventListener('storage', e => { if (e.key === 'digiroll-v1') refreshWr
 refreshWriteSlots();
 
 function syncWriteButtons() {
-  const writable = !!device && device.identity?.slug === 'digitakt2'
-    && WRITE_ALLOWED_BUILDS.includes(device.identity.build);
+  const slug = device?.identity?.slug;
+  const writable = !!DECODERS[slug]
+    && WRITE_ALLOWED_BUILDS[slug]?.includes(device.identity.build);
   $('wrGo').disabled = !writable;
   $('wrRestore').disabled = !writable || !lastBackup;
-  $('wrInfo').textContent =
-    device && device.identity?.slug === 'digitakt2' && !writable
-      ? `OS build ${device.identity.build} isn't write-verified yet — read-only`
-      : device && device.identity?.slug === 'digitone2'
-        ? 'Digitone II is import-only for now — its write path isn\'t hardware-verified yet'
-        : '';
+  $('wrInfo').textContent = DECODERS[slug] && !writable
+    ? `OS build ${device.identity.build} isn't write-verified yet — read-only`
+    : '';
 }
 
 function downloadPayloadBackup(index, payload) {
-  const bytes = buildDumpMessage(FAMILY.DIGITAKT_2, DUMP.PATTERN_KIT, index, payload);
+  const bytes = buildDumpMessage(device.identity.family, DUMP.PATTERN_KIT, index, payload);
   const stamp = new Date().toISOString().slice(0, 19).replaceAll(':', '-');
-  const name = `digitakt2-${bankName(index)}-backup-${stamp}.syx`;
+  const name = `${device.identity.slug}-${bankName(index)}-backup-${stamp}.syx`;
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
   const a = Object.assign(document.createElement('a'), { href: url, download: name });
   a.click();
@@ -315,7 +319,7 @@ $('wrGo').onclick = async () => {
   try {
     setStatus(`Fetching ${bankName(index)} for backup…`);
     const original = await device.fetchPatternKit(index);
-    const target = dt2.decodePatternKit(original);
+    const target = DECODERS[device.identity.slug].decodePatternKit(original);
     const existing = trackTrigCount(target, t);
 
     const named = target.name ? ` “${target.name}”` : '';
@@ -330,7 +334,7 @@ $('wrGo').onclick = async () => {
     lastBackup = { index, payload: original };
     logNote(`Pre-write backup saved: ${backupName}`);
 
-    const { payload, dropped } = dt2.encodeTrackNotes(original, t, rollPattern.notes);
+    const { payload, dropped } = DECODERS[device.identity.slug].encodeTrackNotes(original, t, rollPattern.notes);
     setStatus(`Writing ${bankName(index)} T${t + 1}…`);
     await device.sendPatternKit(index, payload);
 

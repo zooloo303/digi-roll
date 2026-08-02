@@ -25,9 +25,11 @@ Provenance key:
 - **[S]** sibling inference: the DT2 semantics at the corresponding offset,
   where the DN2 dump is consistent with them but no DN2-specific edit has
   pinned the field on its own.
-- **[V]** confirmed by a controlled hardware experiment. **None yet for the
-  DN2** — the section at the end lists the experiments still owed. The write
-  path stays disabled until they pass.
+- **[V]** confirmed by a **controlled hardware experiment** (2026-08-01,
+  OS 1.10D build 0049): one edit per capture on a fresh throwaway project,
+  each diff read with the diffing lab — the experiment log is at the end.
+  The pass finished with a write smoke test (encode → send → re-read →
+  byte-identical), so the write path is enabled for build 0049.
 
 Applies to **pattern struct version 3** (what OS 1.10D emits [F]). Any other
 version is refused rather than guessed at.
@@ -86,42 +88,44 @@ Same record layout as the DT2's hardware-verified pool, same pool size
 
 | byte | field |
 |------|-------|
-| +0 | track (0–15) [F] |
-| +1 | step (0–127) [F] |
-| +2 | note — absolute MIDI note (observed values matched the imported pitches) [F] |
-| +3 | velocity — 0–127; `FF` = track default (observed 105/96/113 alongside `FF`s) [F] |
-| +4 | length byte — same scale as DT2 assumed (below); `FF` = track default [F location, S scale] |
-| +5 | micro-timing — signed byte, ticks of 1/24 step on the DT2; resting value 0 observed [F location, S scale] |
+| +0 | track (0–15) [V] |
+| +1 | step (0–127, 0-based) [V] |
+| +2 | note — absolute MIDI note; stored **explicitly even on a plain trig** (a default-C trig writes `0x3C`, where the DT2 leaves `FF`); NOTE set to the box's "E5" stored `0x40` = MIDI 64, so Elektron's octave display is +1 vs the middle-C=C4 convention [V] |
+| +3 | velocity — 0–127; `FF` = track default (VEL 37 → `0x25`) [V] |
+| +4 | length byte — same scale as the DT2 (below); `FF` = track default (LEN 1/4 → `0x2E` = 46) [V] |
+| +5 | micro-timing — **signed byte**, ticks of 1/24 step; resting value 0, one nudge = one tick (left nudge → `0xFF` = −1) [V] |
 
-Differences from the DT2 observed so far [F]:
+Differences from the DT2, all hardware-verified [V]:
 
-- **One record per trig, not the DT2's quad-aligned four.** Seven live trigs
-  in the fixture pattern → exactly seven consecutive records. How the DN2
-  stores chords (several notes on one trig) is unknown — see experiments
-  below. Until then digi-roll treats DN2 trigs as single-note.
-- Deleted-trig residue looks different: the fixture pool has records with
-  track and step **both `FF`** but leftover length/micro values, where DT2
-  leftovers keep their track/step. Either way, only steps whose trig bit is
-  set in the track's step words are live — residue is ignored.
+- **One record per sounding note, not the DT2's quad-aligned four.** A plain
+  trig is one record; a chord is several **consecutive records sharing
+  (track, step)**, one note each (3-note chord → 3 records; a written
+  4-note chord stores and plays correctly too). Decoders must accumulate
+  records per (track, step), not take the last.
+- **Deleting a trig blanks its records' track/step/note (and velocity) to
+  `FF`** but can leave stray length/micro bytes behind (`ff ff ff ff ff 00`).
+  DT2 leftovers keep their track/step intact instead. Consequences: a live
+  (track, step) can never collide with stale records (accumulation is safe),
+  and "record is free" must be judged by the track byte alone, not
+  all-six-bytes-`FF`.
 - Free pool space is all-`FF`, records append in creation order, same as DT2.
 
 ## Step word bits
 
-Identical to the DT2 [F]:
+Identical to the DT2 [V]:
 
 | bit | meaning |
 |-----|---------|
-| `0x0001` | trig enabled (the box writes `0x0381` on a live trig) |
-| `0x0380` | flag group set on every box-created trig; left behind on delete (`0x0380` words with bit 0 clear appear in the fixture) |
-| `0x0010` | scattered on steps even in blank patterns — not trig-related, masked out |
+| `0x0001` | trig enabled (the box writes `0x0381` on a live trig; deleting cleared exactly this bit, `0391` → `0390`) |
+| `0x0380` | flag group set on every box-created trig; left behind on delete |
+| `0x0010` | scattered on steps even in blank patterns — not trig-related, masked out (a trig on such a step read `0x0391`) |
 
 ## Length byte scale
 
-Assumed identical to the DT2 / Analog Rytm piecewise-linear scale
-(`0` = 0.125 steps, `14` = 1, `30` = 2, `46` = 4, …, `127` = infinite) [S].
-The fixture is consistent: default `0x0E` = one step, and the one explicit
-length byte (49 → 4.75 steps) round-trips plausibly. Needs a [V] landmark
-check (set LEN 1/4 on the box, expect 46).
+Identical to the DT2 / Analog Rytm piecewise-linear scale
+(`0` = 0.125 steps, `14` = 1, `30` = 2, `46` = 4, …, `127` = infinite):
+the landmark check passed — LEN 1/4 set on the box stored exactly 46
+(`0x2E`) [V] — and the default `0x0E` = one step matches [F].
 
 ## Kit struct (relative to kit start at 89088)
 
@@ -143,24 +147,34 @@ DT2 — live trig steps joined with their pool records, `FF` → track-default
 fallback. Verified against real hardware 2026-08-01: a live-fetched pattern
 imported with exact per-trig velocities and lengths.
 
-**Write**: `encodeTrackNotes` exists (shared core, DN2 spec) and round-trips
-in tests, but the console keeps the DN2 **read-only** — no write is sent
-until the [V] experiments below pass on a throwaway project (PLAN.md safety
-rule 3).
+**Write** ("Write to pattern", console page): same read-modify-write
+contract as the DT2 — clear the track's trig bits, free its pool records,
+write one record per note (consecutive per-note records for chords, values
+mirrored across a chord's records exactly as the box stores them), touch
+nothing else. Enabled for OS build 0049 via the console's per-device
+allowlist.
 
-## Controlled experiments still owed ([V] pass)
+## The [V] experiment log (2026-08-01, fresh throwaway project, OS 1.10D)
 
-Run these with the diffing lab (`difflab.html`) on a throwaway DN2 project,
-one edit per capture:
+One edit per capture, diffed with the lab; every diff was surgical (only
+the predicted bytes changed):
 
-1. **NOTE**: set a trig's note to a known value → pins the note byte and
-   confirms absolute-MIDI encoding.
-2. **VEL / LEN landmarks**: VEL 37 → `0x25`; LEN 1/4 → length byte 46.
-3. **Micro-nudge**: one left nudge → `0xFE` at record byte +5.
-4. **Chord**: put several notes on one trig (if the DN2 allows it) → how do
-   extra note slots appear in the pool?
-5. **Write smoke test**: after 1–4 pass, `encodeTrackNotes` → send → re-read
-   → byte-compare, then flip the console's DN2 write gate with an OS-build
-   allowlist (`0049`).
-6. **Firmware drift**: re-run the fixture assertions after any OS update
-   before allowing writes on the new build.
+1. **Plain trig** t1 s1 → step word `0000`→`0381`; record `00 00 3c ff ff 00`
+   (note stored explicitly, vel/len default, micro 0).
+2. **NOTE → "E5"** on that trig → exactly one byte: note `3c`→`40` (MIDI 64).
+3. **VEL 37** on a new trig s5 → velocity byte `25`; records allocate
+   consecutively (#1 right after #0).
+4. **LEN 1/4** on a new trig s9 → length byte `2e` (46) — scale landmark hit.
+5. **Micro left ×1** on a new trig s13 → micro `00`→`ff` (−1 tick). (First
+   attempt showed the nudge hadn't registered on the box — the lab's
+   "no differences" answer caught it.)
+6. **3-note chord** on s16 → three consecutive records, same (track, step),
+   one note each. **Delete** of that chord → step word `0391`→`0390`,
+   records blanked to `ff ff ff ff ff 00`.
+7. **Write smoke test** to blank A02, track 1: 11 notes including mixed
+   velocities/lengths, ± micro, a 3-note and a **4-note** chord →
+   stored **byte-identical** on re-read, decoded back exactly, and the box
+   played all chord notes. First known SysEx pattern write to a Digitone II.
+
+Still open: re-verify on any new OS build before extending the write
+allowlist (the fixture suite + this experiment list is the checklist).

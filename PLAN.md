@@ -139,19 +139,22 @@ dump for DT2-shaped trig structures.
 - [x] Map the note-trig record: trig enable bits, note, velocity, length,
       micro-timing. *Turned out to be the DT2 sequencer block with a
       1187-byte track struct (+3) and everything after the tracks shifted
-      +48; mapped by diffing a real DN2 dump against the DT2 layout, no
-      box-side edits needed. Controlled-experiment ([V]) pass still owed for
-      the length/micro scales and chord storage — listed at the end of the
-      format doc.*
+      +48; mapped by diffing a real DN2 dump against the DT2 layout, then
+      **[V]-verified field-by-field 2026-08-01** with the diffing lab on a
+      throwaway project (experiment log in the format doc). One real
+      difference: trigs store one pool record per sounding note — chords are
+      consecutive records sharing (track, step), not DT2-style quads.*
 - [ ] Confirm stability across a firmware update cycle (pin versions)
 - [x] Publish findings as `docs/dn2-pattern-format.md`
 - [x] **Import from box for DN2** — same console flow as the DT2, decoder
       generalised into `js/elektron/pattern-core.js` + per-device specs.
       ✓ Verified against the real DN2 2026-08-01 (live-fetched A01, exact
       velocities/lengths in the roll).
-- [ ] **Write to pattern for DN2** — encoder exists and round-trips in
-      tests; stays disabled until the [V] experiments pass on a throwaway
-      project (then gate on an OS-build allowlist like the DT2)
+- [x] **Write to pattern for DN2** — ✓ smoke test passed 2026-08-01: 11
+      notes (mixed vel/len, ± micro, 3- and 4-note chords) written to A02,
+      stored byte-identical, box played them. First known SysEx pattern
+      write to a Digitone II. Console gate: per-device build allowlist
+      (DN2: 0049).
 
 Risk & fallback: if the DN2 sequencer block turns out deeply different, the
 diffing lab still works — it just takes more evenings. Worst case, DN2 stays

@@ -119,11 +119,33 @@ describe.skipIf(!haveFixture)('DN2 encodeTrackNotes (not yet written to hardware
     expect(trackNotes(decodePatternKit(payload), 8)).toEqual(before);
   });
 
-  it('drops chord notes — a DN2 trig has one verified note slot so far', () => {
+  it('round-trips chords as consecutive per-note records sharing (track, step)', () => {
+    // Hardware-verified 2026-08-01: a 3-note chord on one trig is stored as
+    // three consecutive records with the same track/step, one note each.
     const chord = [60, 64, 67].map(pitch => ({ step: 0, pitch, velocity: 100, len: 1, micro: 0 }));
     const { payload, dropped } = encodeTrackNotes(blank(), 0, chord);
-    expect(dropped).toBe(2);
-    expect(trackNotes(decodePatternKit(payload), 0).map(n => n.pitch)).toEqual([60]);
+    expect(dropped).toBe(0);
+    // records: track 0, step 0, notes 60/64/67, consecutive from the pool top
+    expect([...payload.subarray(18996, 18996 + 18)]).toEqual([
+      0, 0, 60, 100, 14, 0,
+      0, 0, 64, 100, 14, 0,
+      0, 0, 67, 100, 14, 0,
+    ]);
+    expect(trackNotes(decodePatternKit(payload), 0).map(n => n.pitch)).toEqual([60, 64, 67]);
+  });
+
+  it('drops chord notes past maxNotes and reclaims delete-residue records', () => {
+    const fat = [60, 62, 64, 65, 67].map(pitch => ({ step: 0, pitch, velocity: 100, len: 1, micro: 0 }));
+    const { payload, dropped } = encodeTrackNotes(blank(), 0, fat);
+    expect(dropped).toBe(1); // 5th pitch over the maxNotes: 4 cap
+    expect(trackNotes(decodePatternKit(payload), 0)).toHaveLength(4);
+
+    // A record the box half-blanked on delete (track/step/note 0xFF, stray
+    // micro) is dead space the encoder may claim.
+    const residue = Uint8Array.from(blank());
+    residue.set([0xff, 0xff, 0xff, 0xff, 0xff, 0x00], 18996);
+    const { payload: reused } = encodeTrackNotes(residue, 0, [{ step: 0, pitch: 60, velocity: 100, len: 1, micro: 0 }]);
+    expect([...reused.subarray(18996, 19002)]).toEqual([0, 0, 60, 100, 14, 0]);
   });
 });
 

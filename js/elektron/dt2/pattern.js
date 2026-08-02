@@ -44,7 +44,7 @@ export const SPEC = {
   // Each trig the box creates allocates four consecutive 6-byte records — one
   // per note slot (chords on MIDI tracks); velocity, length and micro are
   // mirrored across all four, the note only fills slots it uses.
-  noteSlotsPerTrig: 4,
+  trig: { layout: 'quad', maxNotes: 4 },
   // Kit offsets by kit struct version (the kit follows the pattern in a
   // pattern-kit payload and begins with magic 0xBEEFBACE).
   kits: {
