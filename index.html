@@ -31,7 +31,7 @@
     </span>
     <div id="status"></div>
     <span class="sep"></span>
-    <a href="console.html" class="pagelink" title="Advanced: project backup, write to any slot, copy tracks between boxes, raw SysEx log">device console →</a>
+    <a href="console.html" class="pagelink" title="Advanced: whole-project backup, .syx files, copying tracks between boxes, raw SysEx log">device console →</a>
   </div>
 
   <div class="workspace">
@@ -45,10 +45,10 @@
       <button data-panel="bankPanel" title="Your saved patterns — named saves kept in this browser">
         <span class="ic">▤</span>Library
       </button>
-      <button data-panel="boxPanel" title="The round trip: pull a track off your Digitakt/Digitone and send your edits home">
+      <button data-panel="boxPanel" title="Send this pattern to a track on your Digitakt/Digitone — or pull a track off it to edit">
         <span class="ic">⇄</span>Box
       </button>
-      <button data-panel="helpPanel" class="push" title="How to record into your box">
+      <button data-panel="helpPanel" class="push" title="How to get patterns onto your box">
         <span class="ic">?</span>Help
       </button>
     </nav>
@@ -148,6 +148,17 @@
     <aside id="boxPanel" class="panel hidden">
       <h2>Box <span class="x" title="Close">×</span></h2>
       <div class="grp">
+        <div class="cap">Send to box</div>
+        <div class="row dest" title="The pattern and track on the box this goes to. An imported pattern starts aimed at where it came from.">
+          <span class="lab">To</span>
+          <select id="dstPattern" title="Destination pattern slot on the box (current project)"></select>
+          <select id="dstTrack" title="Destination track"></select>
+        </div>
+        <button id="sendToBox" class="wide">Send to box</button>
+        <p id="sourceInfo" class="hint"></p>
+        <p class="hint">Works for any pattern — freshly drawn or imported. It re-reads the destination from the box, downloads a backup, changes only that track's notes, then reads it back and checks every byte. Sounds, p-locks and other tracks are left alone.</p>
+      </div>
+      <div class="grp">
         <div class="cap">Import from box</div>
         <div class="row">
           <select id="impPattern" title="Pattern slot on the box (current project)"></select>
@@ -157,19 +168,13 @@
         <select id="impTrack" class="wide" title="Which track's notes to import" disabled>
           <option>— track —</option>
         </select>
-        <button id="impGo" class="wide" style="margin-top:6px" title="Replace the pattern you're editing with this track's notes (undoable) — Write back then sends your edits home" disabled>Import into this slot</button>
-        <p id="importHint" class="hint">Fetch reads only — nothing on the box changes until you use Write back.</p>
-      </div>
-      <div class="grp">
-        <div class="cap">Write back</div>
-        <p id="sourceInfo" class="hint"></p>
-        <button id="writeBack" class="wide" disabled>Write back</button>
-        <p class="hint">Write back re-reads the pattern from the box, downloads a backup, changes only that track's notes, then reads it back and checks every byte.</p>
+        <button id="impGo" class="wide" style="margin-top:6px" title="Replace the pattern you're editing with this track's notes (undoable) — Send to box then aims straight back at it" disabled>Import into this slot</button>
+        <p id="importHint" class="hint">Fetch reads only — nothing on the box changes until you send.</p>
       </div>
       <div class="grp">
         <div class="cap">Advanced</div>
         <a href="console.html" class="pagelink">device console →</a>
-        <p class="hint">Whole-project backup, writing to <i>any</i> pattern/track, copying a track between boxes, raw SysEx log.</p>
+        <p class="hint">Whole-project backup, copying a track between boxes, raw SysEx log.</p>
       </div>
     </aside>
 
@@ -177,34 +182,48 @@
     <aside id="helpPanel" class="panel wide-panel hidden">
       <h2>Help <span class="x" title="Close">×</span></h2>
       <h3>Getting a pattern onto your Digitakt 2 / Digitone 2</h3>
+      <p>Everything happens in the <b>Box</b> panel (⇄). Both routes write straight into the box's pattern memory over USB — no live recording, no timing to get right — and both are safe: the destination pattern is re-read and downloaded as a backup first, only that one track's notes change, and the result is read back and checked byte for byte.</p>
+      <h4>Draw something new → send it to a track</h4>
       <ol>
         <li>Connect the box via USB and pick it in the MIDI output menu.</li>
-        <li>On the box: <b>SETTINGS → MIDI CONFIG → SYNC</b> — enable <b>CLOCK RECEIVE</b> and <b>TRANSPORT RECEIVE</b>. Leave <b>Send MIDI clock</b> checked under <b>Sync</b>.</li>
-        <li>Set this app's <b>Ch</b> to the MIDI channel of the destination track (<b>SETTINGS → MIDI CONFIG → CHANNELS</b> on the box). Draw your notes and press Play to audition — the track's sound plays your pattern live.</li>
-        <li>To capture it into the box's own sequencer: select an empty pattern on the box, enter <b>live recording</b> (RECORD + PLAY), then press Play here. The app sends Stop → Start + clock, which snaps the box back to step 1 in sync with bar 1 of your pattern. Let it loop once, exit record mode, done.</li>
-        <li>Quantize on the box afterwards if needed. Notes longer than one step are captured with their length.</li>
+        <li>Draw your pattern. Set the pattern length with the bars menu in the top bar.</li>
+        <li>Open <b>Box</b>, pick the destination <b>pattern and track</b> under <i>Send to box</i>, and press the button (it reads <b>Send → A01 T1</b>, naming exactly where it's going).</li>
+        <li>Check the confirmation — it names the pattern, the track and its sound, and how many trigs you're about to replace — then let the backup download. Done: the notes are in the box's sequencer.</li>
+        <li>If your pattern is longer than that track, the confirmation says so. The extra notes are stored, but the box only plays as far as the track's own <b>LEN</b> — raise it on the box (<b>FUNC + PAGE</b>) to hear the rest.</li>
       </ol>
-      <h3>Sync rules (read this if notes land in the wrong place)</h3>
-      <ul>
-        <li><b>One clock master at a time.</b> If your Octatrack (or anything else) is also sending clock/transport to the box, the box can't lock to this app. During capture either stop the OT's clock send, or set the Digi's <b>SETTINGS → MIDI CONFIG → PORT CONFIG → INPUT FROM = USB</b> so it only listens to this app — flip it back afterwards.</li>
-        <li>Every press of Play here sends Stop then Start, so the box restarts from its pattern step 1 — your recording always lines up with the app's bar 1.</li>
-        <li>Use <b>Count-in</b> (1–2 bars) to get a moment between arming live record and the notes arriving. Keep the count-in a multiple of the box's pattern length so the downbeats stay aligned.</li>
-        <li>On <b>auto channel</b> (default 10): notes go to whichever track is currently selected on the box — handy, just make sure the right track is active before recording.</li>
-      </ul>
+      <p>Optional: to <i>hear</i> the pattern while you draw, set <b>Ch</b> to the destination track's MIDI channel (<b>SETTINGS → MIDI CONFIG → CHANNELS</b>) and press Play. That's live monitoring only — it isn't how the pattern gets there.</p>
+      <h4>Pull a track in → edit it → send it home</h4>
+      <ol>
+        <li>In <b>Box</b>, under <i>Import from box</i>, pick a pattern slot and press <b>Fetch</b> (this only reads).</li>
+        <li>Choose a track — the list shows each track's sound and trig count — and press <b>Import into this slot</b>. Its notes, lengths, velocities and micro-timing land in the slot you're editing (undo brings the old slot back).</li>
+        <li>Edit, then press <b>Write back → A01 T3</b>. The destination is already aimed at where the notes came from, and it refuses to write to a different box than the one they came from.</li>
+        <li>Want the edit somewhere else instead? Change the destination pattern/track and the button becomes a plain <b>Send</b>.</li>
+      </ol>
+      <p>After a successful send the pattern remembers where it lives, so the next send is a write-back to the same place. <b>Library</b> keeps named saves in this browser — with swing, micro-timing and provenance — and exports them as .json.</p>
       <h3>Drawing</h3>
       <p>Click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
       <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Velocity slider all apply to the whole selection.</p>
       <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
       <h3>Chords</h3>
       <p>In the <b>Harmony</b> panel, turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes — that's one trig's worth on the Digitone II.</p>
-      <h3>Straight into pattern memory (no live recording)</h3>
+      <h3>Fallback: capture by live recording</h3>
+      <p>Only needed when digi-roll can't write to your box directly — an older Digitakt, a Digitone I, an Analog Rytm, or an OS build the pattern format hasn't been verified against yet (the app says so when you try to send). It plays the pattern out as MIDI while the box records it, so it's at the mercy of clock and timing; sending is better whenever it's available.</p>
+      <ol>
+        <li>Connect the box via USB and pick it in the MIDI output menu.</li>
+        <li>On the box: <b>SETTINGS → MIDI CONFIG → SYNC</b> — enable <b>CLOCK RECEIVE</b> and <b>TRANSPORT RECEIVE</b>. Leave <b>Send MIDI clock</b> checked under <b>Sync</b>.</li>
+        <li>Set this app's <b>Ch</b> to the MIDI channel of the destination track (<b>SETTINGS → MIDI CONFIG → CHANNELS</b> on the box).</li>
+        <li>Select an empty pattern on the box, enter <b>live recording</b> (RECORD + PLAY), then press Play here. The app sends Stop → Start + clock, which snaps the box back to step 1 in sync with bar 1 of your pattern. Let it loop once, exit record mode, done.</li>
+        <li>Quantize on the box afterwards if needed. Notes longer than one step are captured with their length.</li>
+      </ol>
+      <h4>Sync rules (read this if notes land in the wrong place)</h4>
       <ul>
-        <li>The <b>Box</b> panel is the round trip: <b>Fetch</b> pulls a pattern's track from your Digitakt 2 / Digitone 2 straight into the slot you're editing (pick the box in the MIDI output menu first). Edit it, then <b>Write back</b> sends the notes home to the exact pattern and track they came from.</li>
-        <li>Write back is careful: it re-reads the pattern from the box first, downloads a backup of it, changes only that track's notes, then reads it back and checks every byte. Anything else on the box — sounds, p-locks, other tracks — is left alone.</li>
-        <li>Write back only lights up for imported patterns, and only writes to the same box they came from, on an OS build the format has been verified against.</li>
-        <li><b>Library</b> keeps named saves of your patterns in this browser (with swing, micro-timing and where they came from), and exports them as .json to share or back up.</li>
-        <li>The <a href="console.html">device console</a> is for the advanced jobs: whole-project backup, writing a roll slot to <i>any</i> pattern/track, <b>copying a track between patterns — or between the two boxes</b> via a saved .syx backup — and a raw SysEx log.</li>
+        <li><b>One clock master at a time.</b> If your Octatrack (or anything else) is also sending clock/transport to the box, the box can't lock to this app. During capture either stop the OT's clock send, or set the Digi's <b>SETTINGS → MIDI CONFIG → PORT CONFIG → INPUT FROM = USB</b> so it only listens to this app — flip it back afterwards.</li>
+        <li>Every press of Play here sends Stop then Start, so the box restarts from its pattern step 1 — your recording always lines up with the app's bar 1.</li>
+        <li>Use <b>Count-in</b> (1–2 bars) to get a moment between arming live record and the notes arriving. Keep the count-in a multiple of the box's pattern length so the downbeats stay aligned.</li>
+        <li>On <b>auto channel</b> (default 10): notes go to whichever track is currently selected on the box — handy, just make sure the right track is active before recording.</li>
       </ul>
+      <h3>Advanced: the device console</h3>
+      <p>The <a href="console.html">device console</a> is for the jobs the Box panel deliberately doesn't carry: whole-project backup and restore, importing from a saved .syx file, <b>copying a track between patterns — or between the two boxes</b>, and a raw SysEx log for when something needs proving. You never need it for the two routes above.</p>
     </aside>
 
     <div id="rollWrap">

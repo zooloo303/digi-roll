@@ -1,10 +1,10 @@
 # digi-roll
 
-A minimal browser-based piano roll for getting MIDI patterns onto Elektron boxes
-(Digitakt 2, Digitone 2 — anything that receives notes and clock, so the
-Octatrack works too). Draw a pattern, point it at the track's MIDI channel, and
-either play it live from the laptop or capture it into the box's own sequencer
-via live recording.
+A minimal browser-based piano roll for getting MIDI patterns onto Elektron boxes.
+Draw a pattern and send it straight into a Digitakt II / Digitone II pattern
+slot over SysEx — or pull a track off the box, edit it, and write it back.
+Anything else that receives notes and clock (the Octatrack, older Digis) can
+still capture the pattern by live recording.
 
 No build step, no dependencies — plain HTML/JS using the Web MIDI API
 (same approach as [elk-herd](https://github.com/mzero/elk-herd)).
@@ -26,7 +26,31 @@ python3 -m http.server 8123
 
 Allow the MIDI permission prompt, pick your box in the output menu.
 
-## Workflow: capturing a pattern into the box
+## Workflow: sending a pattern to the box (Digitakt II / Digitone II)
+
+Both everyday routes live in the **Box** panel (⇄) on the main page; the device
+console is only for the advanced jobs.
+
+**New pattern → a track:** draw it, open **Box**, pick the destination pattern
+and track under *Send to box*, press **Send → A01 T1**, confirm. The notes are
+in the box's sequencer — no live recording, no clock to line up. If the pattern
+is longer than that track, the confirmation says so: the notes are all stored,
+but the box plays only as far as the track's own **LEN**.
+
+**Round trip:** *Import from box* → **Fetch** a pattern (read-only), pick a
+track, **Import into this slot**. Edit, then **Write back → A01 T3** — already
+aimed at where the notes came from, and it refuses to write to a different box
+than the one they came from.
+
+Every write is the same safe flow: re-read the destination pattern, download a
+`.syx` backup of it, change only that track's notes, read it back and compare
+every byte. Sounds, p-locks and other tracks are untouched, and writes are
+gated on a per-device OS-build allowlist.
+
+## Fallback: capturing a pattern by live recording
+
+For boxes digi-roll can't write to directly (Octatrack, older Digitakt,
+Digitone I, or an OS build not on the allowlist):
 
 1. Box connected over USB, selected as the MIDI output.
 2. On the box: **SETTINGS → MIDI CONFIG → SYNC** — enable **CLOCK RECEIVE**
@@ -82,10 +106,13 @@ hex log of every exchange, identifies the device (model + OS version), and can
 - **Import from box** — fetch any pattern (or open a `.syx` backup), pick a
   track, and its trigs land in the piano roll with exact notes, velocities,
   lengths and micro-timing (Digitakt II + Digitone II);
-- **Write to pattern** — the reverse: a piano-roll pattern written straight
-  into a pattern slot's track, with automatic pre-write backup, a per-device
+- **Write to pattern** — the reference implementation of the write path the
+  main page's *Send to box* runs: a piano-roll pattern written straight into a
+  pattern slot's track, with automatic pre-write backup, a per-device
   OS-version allowlist and byte-level verify-after-write (Digitakt II +
-  Digitone II, both hardware-verified).
+  Digitone II, both hardware-verified);
+- **Copy track** — a track from one pattern (or one box) into another, via a
+  live fetch or a saved `.syx`.
 
 `difflab.html` is the reverse-engineering workbench that mapped those formats:
 capture a pattern, make one edit on the box, capture again, and read a hex

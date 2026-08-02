@@ -9,7 +9,7 @@ import * as dt2 from './elektron/dt2/pattern.js';
 import * as dn2 from './elektron/dn2/pattern.js';
 import {
   rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack,
-  makeSource, sourceLabel, sourceSlotLabel, sourceMatchesIdentity,
+  makeSource, sourceLabel, sourceMatchesIdentity,
 } from './roll-bridge.js';
 import { downloadBytes, downloadText } from './download.js';
 import {
@@ -220,7 +220,7 @@ function syncToolbar() {
   $('velocity').value = state.defaultVelocity;
   $('velLabel').textContent = state.defaultVelocity;
   railFlag('harmonyPanel', state.chord.on);
-  syncWriteBack();
+  syncSend();
 }
 
 slotSel.onchange = () => {
@@ -534,19 +534,29 @@ window.addEventListener('storage', e => {
   if (e.key?.startsWith(BANK_PREFIX) && !$('bankPanel').classList.contains('hidden')) refreshBank();
 });
 
-// --- Write back to the box -------------------------------------------------------
-// Closes the round trip: import a track in the device console, edit it here,
-// send it straight back to the pattern it came from. The heavy lifting (fetch,
-// backup, encode, write, verify) is js/elektron/safe-write.js — the same flow
-// the console's Phase 2 write button runs.
+// --- Send to box -------------------------------------------------------------
+// The write half of both everyday journeys, and deliberately one control for
+// both: draw a fresh pattern and send it to any pattern/track, or import a
+// track, edit it, and send it home. "Write back" is just this with the
+// destination pre-filled from where the pattern came from — nobody should have
+// to visit the device console to get notes onto the box.
+//
+// The heavy lifting (re-fetch, backup, encode, write, verify) is
+// js/elektron/safe-write.js — the same flow the console's Phase 2 write button
+// runs, so every write from this page is backed up and byte-verified.
 //
 // This page normally holds sysex-free MIDI access on purpose, so the everyday
-// piano roll never triggers the scarier browser permission prompt. Write-back
+// piano roll never triggers the scarier browser permission prompt. Sending
 // asks for SysEx access lazily, the first time you actually use it.
 
 let sysexAccess = null;
 let box = null;          // ElektronDevice, once identified
-let writingBack = false;
+let sending = false;
+
+// Both boxes digi-roll writes to have 16 tracks; the destination picker is
+// filled once, and the real track names/kinds are reported in the confirm
+// dialog after the pattern is re-fetched.
+const NUM_DEVICE_TRACKS = 16;
 
 // Patterns digi-roll can decode, by identity slug.
 const DECODERS = { digitakt2: dt2, digitone2: dn2 };
@@ -571,24 +581,69 @@ async function connectBox() {
   return box.identify();
 }
 
-function syncWriteBack() {
-  const src = pattern().source;
-  const btn = $('writeBack');
-  btn.disabled = !src || writingBack;
-  btn.textContent = src ? `Write back → ${sourceSlotLabel(src)}` : 'Write back';
-  btn.title = src
+const dstPatSel = $('dstPattern'), dstTrkSel = $('dstTrack');
+for (let i = 0; i < 128; i++) dstPatSel.add(new Option(bankName(i), i));
+for (let t = 0; t < NUM_DEVICE_TRACKS; t++) dstTrkSel.add(new Option(`T${t + 1}`, t));
+
+// Where this slot's Send button is aimed. An imported pattern starts aimed at
+// where it came from; a freshly drawn one at wherever you last sent something.
+// Resolved lazily and then kept on the pattern, so re-syncing the toolbar can
+// never quietly re-aim a destination you picked by hand.
+function destFor(p) {
+  p.dest ??= p.source
+    ? { patternIndex: p.source.patternIndex, trackIndex: p.source.trackIndex }
+    : { ...state.sendTarget };
+  return p.dest;
+}
+
+const sameSlot = (dest, src) =>
+  !!src && dest.patternIndex === src.patternIndex && dest.trackIndex === src.trackIndex;
+
+const destLabel = dest => `${bankName(dest.patternIndex)} T${dest.trackIndex + 1}`;
+
+function syncSend() {
+  const p = pattern();
+  const src = p.source;
+  const dest = destFor(p);
+  dstPatSel.value = dest.patternIndex;
+  dstTrkSel.value = dest.trackIndex;
+
+  // Same place it came from = "write back"; anywhere else = a plain send, and
+  // the hint spells out that it isn't going home.
+  const home = sameSlot(dest, src);
+  const btn = $('sendToBox');
+  btn.disabled = sending;
+  btn.textContent = `${home ? 'Write back' : 'Send'} → ${destLabel(dest)}`;
+  btn.title = home
     ? `Re-fetch ${sourceLabel(src)} from the box, replace that track's notes with this pattern, and verify. A backup downloads first.`
-    : 'Nothing to write back: this pattern wasn\'t imported from a box. Use the device console to import one, or to write this pattern to any slot.';
-  $('sourceInfo').textContent = src ? `from ${sourceLabel(src)}` : '';
+    : `Replace the notes on ${destLabel(dest)} with this pattern, on the box picked in the MIDI output menu. `
+      + 'The pattern is re-read and backed up first, and verified byte for byte afterwards.';
+  $('sourceInfo').textContent = !src ? ''
+    : home ? `from ${sourceLabel(src)}` : `from ${sourceLabel(src)} — sending elsewhere`;
   railFlag('boxPanel', !!src);
 }
 
-// Find and identify the box this pattern came from. Refuses on anything else —
-// writing a Digitone pattern into a Digitakt slot by accident is exactly the
-// kind of mistake provenance exists to prevent.
-async function connectSourceBox(src) {
+// Picking a destination by hand sticks to this slot, and becomes the default
+// for the next pattern that has never been near a box.
+function onDestChange() {
+  const dest = destFor(pattern());
+  dest.patternIndex = +dstPatSel.value;
+  dest.trackIndex = +dstTrkSel.value;
+  state.sendTarget = { ...dest };
+  persist();
+  syncSend();
+}
+dstPatSel.onchange = onDestChange;
+dstTrkSel.onchange = onDestChange;
+
+// Connect, then check we may write here. Writing to the slot a pattern was
+// imported from is held to the stricter rule: it must be the same box, because
+// putting a Digitone pattern into a Digitakt slot by accident is exactly the
+// mistake provenance exists to prevent. Deliberately aiming somewhere else is
+// allowed — the confirm dialog says whose pattern is going where.
+async function connectForSend(src, home) {
   const id = await connectBox();
-  if (!sourceMatchesIdentity(src, id)) {
+  if (home && !sourceMatchesIdentity(src, id)) {
     throw new Error(`this pattern came from a ${src.deviceName || src.slug}, but the connected box says it's a ${id.name} — refusing to write`);
   }
   const gate = writeGate(id);
@@ -596,47 +651,82 @@ async function connectSourceBox(src) {
   return id;
 }
 
-$('writeBack').onclick = async () => {
+// What the destination track is called on the box: MIDI tracks say so, sample/
+// synth tracks give their sound name.
+function trackKindLabel(patternKit, trackIndex, kindFallback) {
+  return patternKit.kit.midiMask & (1 << trackIndex)
+    ? 'MIDI'
+    : patternKit.kit.soundNames[trackIndex] || kindFallback;
+}
+
+$('sendToBox').onclick = async () => {
   const p = pattern();
   const src = p.source;
-  if (!src || writingBack) return;
-  writingBack = true;
-  syncWriteBack();
+  const dest = { ...destFor(p) };
+  if (sending) return;
+  sending = true;
+  syncSend();
   try {
     setStatus('Looking for the box…');
-    const id = await connectSourceBox(src);
+    const id = await connectForSend(src, sameSlot(dest, src));
     const result = await safeWriteTrack(box, {
-      index: src.patternIndex,
-      trackIndex: src.trackIndex,
+      index: dest.patternIndex,
+      trackIndex: dest.trackIndex,
       notes: rollNotesToDevice(p.notes),
       onStatus: setStatus,
       onBackup: b => downloadBytes(b.name, b.bytes),
-      confirm: ({ label, existingTrigs, patternKit }) => window.confirm(
-        `Write ${p.notes.length} note${p.notes.length === 1 ? '' : 's'} from “${p.name}” back to ` +
-        `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${src.trackIndex + 1} on the ${id.name}?\n\n` +
-        (existingTrigs
-          ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track. `
-          : 'That track is currently empty. ') +
-        'A backup of the whole pattern downloads first.'
-      ),
+      confirm: ({ label, existingTrigs, patternKit }) => {
+        const track = patternKit.tracks[dest.trackIndex];
+        const kind = trackKindLabel(patternKit, dest.trackIndex, DECODERS[id.slug].SPEC.trackKindFallback);
+        const lines = [
+          `Send ${p.notes.length} note${p.notes.length === 1 ? '' : 's'} from “${p.name}” to `
+          + `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${dest.trackIndex + 1}`
+          + `${kind ? ` (${kind})` : ''} on the ${id.name}?`,
+          '',
+          existingTrigs
+            ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} already on that track.`
+            : 'That track is currently empty.',
+        ];
+        // The write never changes a track's length, so a pattern longer than
+        // the track it lands on is stored in full but only heard as far as the
+        // box's own LEN. Better said here than discovered on playback.
+        if (track.lengthSteps < p.lengthSteps) {
+          lines.push(`That track is ${track.lengthSteps} steps long and this pattern is ${p.lengthSteps} — `
+            + `the rest is stored but won't play until you raise the track's LEN on the box.`);
+        }
+        if (src && !sourceMatchesIdentity(src, id)) {
+          lines.push(`Note: this pattern came from a ${src.deviceName || src.slug}.`);
+        }
+        lines.push('', 'A backup of the whole destination pattern downloads first.');
+        return window.confirm(lines.join('\n'));
+      },
     });
     const { text, isError } = writeResultMessage(result);
     setStatus(text, isError);
     if (isError) window.alert(text); // rule 4: a verify mismatch must never be quiet
+    if (result.ok) {
+      // The pattern now lives on the box at the place it was just sent, so
+      // that becomes its home: the next send is a write-back to here.
+      p.source = makeSource({
+        slug: id.slug, productId: id.productId, deviceName: id.name,
+        patternIndex: dest.patternIndex, trackIndex: dest.trackIndex, origin: 'sent',
+      });
+      persist();
+    }
   } catch (err) {
-    setStatus(`Write back failed: ${err.message}`, true);
+    setStatus(`Send failed: ${err.message}`, true);
   } finally {
-    writingBack = false;
-    syncWriteBack();
+    sending = false;
+    syncSend();
   }
 };
 
 // --- Import from box ---------------------------------------------------------
 // The other half of the round trip, right where the editing happens: fetch a
 // pattern from the box (read-only), pick a track, and its notes replace the
-// slot you're editing — with provenance, so Write back knows the way home.
-// The console page keeps the long-form version (import into any slot, .syx
-// files, cross-device copy); this is the everyday path.
+// slot you're editing — with provenance, which aims Send to box straight back
+// at where it came from. The console page keeps the long-form version (import
+// into any slot, .syx files, cross-device copy); this is the everyday path.
 
 let fetched = null; // { patternKit, label, kindFallback, origin } once decoded
 
@@ -701,11 +791,14 @@ $('impGo').onclick = () => {
   p.lengthSteps = lengthSteps;
   p.notes = deviceNotesToRoll(notes, lengthSteps);
   p.source = makeSource({ ...fetched.origin, trackIndex: t, patternName: fetched.patternKit.name });
+  // Aim Send at where these notes came from, overriding any target this slot
+  // was carrying — an import is a fresh start for the slot.
+  p.dest = { patternIndex: p.source.patternIndex, trackIndex: t };
   roll.clearSelection();
   syncToolbar();
   roll.resize();
   persist();
-  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${fetched.label} T${t + 1} — edit away, Write back sends it home (undo to get the old slot back)`);
+  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${fetched.label} T${t + 1} — edit away, Send writes it home (undo to get the old slot back)`);
 };
 
 // --- Keyboard shortcuts --------------------------------------------------------

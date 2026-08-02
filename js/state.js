@@ -16,10 +16,15 @@ export function defaultPattern(index) {
     channel: index,    // 0-based MIDI channel; defaults line up with Elektron track channels 1-8
     swing: 50,         // 50 = straight, up to 80 like the Elektron range
     notes: [],
-    // Provenance: the box/pattern/track this slot was imported from, so the
-    // roll can write it straight back. null on locally drawn patterns —
-    // see makeSource() in js/roll-bridge.js for the shape.
+    // Provenance: the box/pattern/track this slot was imported from — or was
+    // last sent to. null on patterns that have never met a box; see
+    // makeSource() in js/roll-bridge.js for the shape.
     source: null,
+    // Where "Send to box" is currently aimed: { patternIndex, trackIndex }.
+    // Kept per slot so switching slots doesn't move another slot's target.
+    // null until the Box panel first resolves one (from source, or the last
+    // destination used on this browser).
+    dest: null,
   };
 }
 
@@ -31,6 +36,9 @@ export function defaultState() {
     sendClock: true,
     countIn: 0, // bars of clock before the notes start
     outputId: null,
+    // Last destination "Send to box" wrote to, so a freshly drawn pattern
+    // starts aimed near where you were last working.
+    sendTarget: { patternIndex: 0, trackIndex: 0 },
     defaultVelocity: 100,
     scaleRoot: 0,      // 0 = C
     scale: 'off',      // key into SCALES, or 'off'
@@ -53,11 +61,13 @@ export function loadState() {
     const defaults = defaultState();
     const state = { ...defaults, ...JSON.parse(raw) };
     state.chord = { ...defaults.chord, ...state.chord };
+    state.sendTarget = { ...defaults.sendTarget, ...state.sendTarget };
     // Re-seed note ids above anything stored so new notes never collide, and
     // backfill fields added after a pattern was saved.
     for (const p of state.patterns) {
       if (typeof p.swing !== 'number') p.swing = 50;
       if (p.source === undefined) p.source = null;
+      if (p.dest === undefined) p.dest = null;
       for (const n of p.notes) {
         if (typeof n.micro !== 'number') n.micro = 0;
         nextNoteId = Math.max(nextNoteId, n.id + 1);

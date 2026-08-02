@@ -270,10 +270,13 @@ $('impGo').onclick = () => {
   p.name = `${imported.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
   p.notes = deviceNotesToRoll(notes, lengthSteps);
-  // Provenance: the roll's "Write back" button targets exactly this pattern
-  // and track, and refuses if a different box is plugged in.
+  // Provenance: the roll's "Send to box" button starts aimed at exactly this
+  // pattern and track, and refuses if a different box is plugged in.
   p.source = imported.origin
     ? makeSource({ ...imported.origin, trackIndex: t, patternName: imported.patternKit.name })
+    : null;
+  p.dest = p.source
+    ? { patternIndex: p.source.patternIndex, trackIndex: t }
     : null;
   saveState(st);
 
