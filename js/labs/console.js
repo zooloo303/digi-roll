@@ -5,8 +5,10 @@
 // the scarier browser permission prompt.
 
 import { ElektronDevice } from '../elektron/device.js';
-import { splitSysExStream, DUMP, FAMILY } from '../elektron/protocol.js';
-import { decodePatternKit, trackNotes, trackTrigCount, bankName } from '../elektron/dt2/pattern.js';
+import { splitSysExStream, buildDumpMessage, DUMP, FAMILY } from '../elektron/protocol.js';
+import {
+  decodePatternKit, trackNotes, trackTrigCount, bankName, encodeTrackNotes, diffPayloads,
+} from '../elektron/dt2/pattern.js';
 import { loadState, saveState, makeNote, NUM_SLOTS } from '../state.js';
 import { PITCH_MIN, PITCH_MAX } from '../pianoroll.js';
 
@@ -82,6 +84,7 @@ function disconnect() {
   $('backup').disabled = true;
   $('impFetch').disabled = true;
   $('deviceInfo').textContent = '';
+  syncWriteButtons();
 }
 
 $('port').onchange = disconnect;
@@ -104,6 +107,7 @@ $('connect').onclick = async () => {
       $('backup').disabled = false;
       // Pattern decode only exists for the DT2 so far (Digitone II is Phase 3).
       $('impFetch').disabled = id.slug !== 'digitakt2';
+      syncWriteButtons();
     } else {
       setStatus(`${id.name} identified, but digi-roll doesn't know its dump protocol — console stays read-only`, true);
     }
@@ -233,6 +237,124 @@ $('impGo').onclick = () => {
 
   setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${imported.label} T${t + 1} into Pattern ${slot + 1} — open the piano roll`);
   logNote(`Imported ${imported.label} T${t + 1} → piano-roll slot ${slot + 1} (${notes.length} notes)`);
+};
+
+// --- Write to box: piano-roll pattern → DT2 track --------------------------------
+// The Phase 2 milestone. Safety rules from PLAN.md, enforced here:
+//   1. the target pattern is fetched and downloaded as a backup before writing;
+//   2. the encoder only touches the track's step words + the trig-record pool
+//      (everything else round-trips byte-identical);
+//   3. firmware allowlist — only OS builds the format was verified on;
+//   4. verify-after-write: re-read, byte-compare, loud diff on mismatch.
+
+// DT2 OS builds the pattern format has been verified against on real hardware.
+const WRITE_ALLOWED_BUILDS = ['0070']; // 1.15B
+
+let lastBackup = null; // { index, payload } of the last pattern we overwrote
+
+for (let i = 0; i < NUM_SLOTS; i++) $('wrSlot').add(new Option(`Pattern ${i + 1}`, i));
+for (let i = 0; i < 128; i++) $('wrPattern').add(new Option(bankName(i), i));
+for (let t = 0; t < 16; t++) $('wrTrack').add(new Option(`T${t + 1}`, t));
+
+// Slot labels mirror the shared piano-roll state ("A01 T11", note counts).
+function refreshWriteSlots() {
+  const st = loadState();
+  for (let i = 0; i < NUM_SLOTS; i++) {
+    const p = st.patterns[i];
+    $('wrSlot').options[i].text = `${p.name} · ${p.notes.length} note${p.notes.length === 1 ? '' : 's'}`;
+  }
+}
+window.addEventListener('storage', e => { if (e.key === 'digiroll-v1') refreshWriteSlots(); });
+refreshWriteSlots();
+
+function syncWriteButtons() {
+  const writable = !!device && device.identity?.slug === 'digitakt2'
+    && WRITE_ALLOWED_BUILDS.includes(device.identity.build);
+  $('wrGo').disabled = !writable;
+  $('wrRestore').disabled = !writable || !lastBackup;
+  $('wrInfo').textContent = device && device.identity?.slug === 'digitakt2' && !writable
+    ? `OS build ${device.identity.build} isn't write-verified yet — read-only`
+    : '';
+}
+
+function downloadPayloadBackup(index, payload) {
+  const bytes = buildDumpMessage(FAMILY.DIGITAKT_2, DUMP.PATTERN_KIT, index, payload);
+  const stamp = new Date().toISOString().slice(0, 19).replaceAll(':', '-');
+  const name = `digitakt2-${bankName(index)}-backup-${stamp}.syx`;
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  a.click();
+  URL.revokeObjectURL(url);
+  return name;
+}
+
+$('wrGo').onclick = async () => {
+  if (!device) return;
+  const slot = +$('wrSlot').value;
+  const index = +$('wrPattern').value;
+  const t = +$('wrTrack').value;
+  const rollPattern = loadState().patterns[slot];
+
+  $('wrGo').disabled = true;
+  try {
+    setStatus(`Fetching ${bankName(index)} for backup…`);
+    const original = await device.fetchPatternKit(index);
+    const target = decodePatternKit(original);
+    const existing = trackTrigCount(target, t);
+
+    const named = target.name ? ` “${target.name}”` : '';
+    if (!confirm(
+      `Write ${rollPattern.notes.length} notes from “${rollPattern.name}” to ${bankName(index)}${named} track ${t + 1} ` +
+      `on the ${device.identity.name}?\n\n` +
+      (existing ? `This replaces the ${existing} trig${existing === 1 ? '' : 's'} on that track. ` : 'That track is currently empty. ') +
+      `A backup of the whole pattern downloads first.`
+    )) { setStatus('Write cancelled'); return; }
+
+    const backupName = downloadPayloadBackup(index, original);
+    lastBackup = { index, payload: original };
+    logNote(`Pre-write backup saved: ${backupName}`);
+
+    const { payload, dropped } = encodeTrackNotes(original, t, rollPattern.notes);
+    setStatus(`Writing ${bankName(index)} T${t + 1}…`);
+    await device.sendPatternKit(index, payload);
+
+    setStatus('Verifying — reading the pattern back…');
+    const reread = await device.fetchPatternKit(index);
+    const diffs = diffPayloads(payload, reread);
+    if (diffs.length === 0) {
+      setStatus(`✓ Wrote ${rollPattern.notes.length - dropped} notes to ${bankName(index)} T${t + 1} — verified byte-identical` +
+        (dropped ? ` (${dropped} notes didn't fit and were dropped)` : ''));
+      logNote(`Write verified: ${bankName(index)} T${t + 1}, ${rollPattern.notes.length - dropped} notes`);
+    } else {
+      setStatus(`⚠ Write verify FAILED for ${bankName(index)}: ${diffs.length}+ bytes differ — check the log, backup is ready to restore`, true);
+      logError(`Verify mismatch (sent vs re-read): ` +
+        diffs.slice(0, 16).map(d => `@${d.offset} ${d.sent?.toString(16)}→${d.read?.toString(16)}`).join('  '));
+    }
+  } catch (err) {
+    setStatus(`Write failed: ${err.message}`, true);
+    logError(`Write failed: ${err.message}`);
+  } finally {
+    syncWriteButtons();
+  }
+};
+
+$('wrRestore').onclick = async () => {
+  if (!device || !lastBackup) return;
+  const { index, payload } = lastBackup;
+  if (!confirm(`Restore the pre-write backup of ${bankName(index)}?`)) return;
+  $('wrRestore').disabled = true;
+  try {
+    await device.sendPatternKit(index, payload);
+    const reread = await device.fetchPatternKit(index);
+    const ok = diffPayloads(payload, reread).length === 0;
+    setStatus(ok ? `✓ ${bankName(index)} restored from backup — verified` : `⚠ Restore verify failed for ${bankName(index)} — check the log`, !ok);
+    logNote(`Restore ${ok ? 'verified' : 'MISMATCH'}: ${bankName(index)}`);
+  } catch (err) {
+    setStatus(`Restore failed: ${err.message}`, true);
+    logError(`Restore failed: ${err.message}`);
+  } finally {
+    syncWriteButtons();
+  }
 };
 
 // --- Boot -----------------------------------------------------------------------

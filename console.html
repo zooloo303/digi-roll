@@ -33,6 +33,17 @@
     <button id="impGo" title="Replace that piano-roll slot with this track's trigs" disabled>Import to piano roll</button>
   </div>
 
+  <div id="writeBar">
+    <span class="dim">Write to box</span>
+    <select id="wrSlot" title="Piano-roll pattern to write"></select>
+    <span class="dim">→</span>
+    <select id="wrPattern" title="Pattern slot on the box (current project)"></select>
+    <select id="wrTrack" title="Which track's trigs to replace"></select>
+    <button id="wrGo" title="Backs up the target pattern, replaces that track's trigs, then reads back and verifies" disabled>Write to pattern…</button>
+    <button id="wrRestore" title="Send the pre-write backup of the last written pattern back to the box" disabled>Restore backup</button>
+    <span id="wrInfo" class="field"></span>
+  </div>
+
   <div id="consoleWrap">
     <div class="logbar">
       <span class="dim">SysEx log — every byte in and out</span>

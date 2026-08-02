@@ -101,14 +101,25 @@ research.
       → console page: fetch one pattern (0x60 request) or open a .syx
       backup, pick track + piano-roll slot. ✓ Verified against the real
       DT2 (fetched A01 live, 8 trigs landed in the roll).
-- [ ] Encode: read-modify-write — replace the note trigs on one track inside
+- [x] Encode: read-modify-write — replace the note trigs on one track inside
       a fetched pattern, leave every other byte untouched, fix checksums
-- [ ] Verify layer: re-read after write, byte-compare the untouched regions
-- [ ] **Ship: "Write to pattern" for DT2** — with automatic pre-write backup
-      and a firmware-version allowlist (refuse politely on unknown OS)
+      → `encodeTrackNotes()` in `js/elektron/dt2/pattern.js` (clears the
+      track's trig bits + record-pool quads, writes fresh quads, only
+      touches hardware-verified bytes; unit-tested minimal-diff property)
+- [x] Verify layer: re-read after write, byte-compare → `diffPayloads()`,
+      loud mismatch report in the console page
+- [x] **Ship: "Write to pattern" for DT2** — with automatic pre-write backup
+      (auto-downloaded .syx + in-session "Restore backup" button) and a
+      firmware-version allowlist (build 0070 / OS 1.15B; refuses politely
+      on unknown OS)
 
 Milestone test: draw a bassline → write to DT2 pattern A16 → notes play on
 the box, lengths and velocities exact.
+✓ Ran 2026-08-01 against the real DT2: 7-note bassline (velocities,
+lengths, ± micro-timing) written to A16 T1, box stored it byte-identical,
+and importing it back reproduced every field exactly. (There is no "write
+pattern" request in the protocol — you send an unsolicited 0x50 dump
+response and the box stores it; confirmed working.)
 
 ## Phase 3 — Digitone 2 reverse engineering (the research phase)
 

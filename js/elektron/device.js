@@ -145,6 +145,19 @@ export class ElektronDevice {
     });
   }
 
+  // Write a pattern-kit: there is no "write request" in the protocol — you
+  // send an unsolicited dump *response* (0x50) and the box stores it in that
+  // slot. No reply comes back; resolves after a pacing delay so the box can
+  // digest before the caller re-reads to verify (elk-herd paces sends at
+  // 800 bytes/ms for the DT family).
+  sendPatternKit(index, payload) {
+    const family = this.identity?.family;
+    if (family == null) throw new Error(`no known dump protocol for ${this.identity?.name ?? 'this device'}`);
+    const msg = buildDumpMessage(family, DUMP.PATTERN_KIT, index, payload);
+    this._send(msg);
+    return new Promise(resolve => setTimeout(resolve, Math.ceil(msg.length / 800) + 100));
+  }
+
   // Fetch a whole-project dump: one 0x6F request, then the box streams
   // pattern-kit (0x50) and sound (0x53) responses and finishes with a single
   // project-settings (0x54) response — the only end-of-stream marker there is.

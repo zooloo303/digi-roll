@@ -114,9 +114,23 @@ landmarks each increment adds 1/16 of the current base. A step = one 16th.
 
 ## What digi-roll does with all this
 
-Import ("Import from box", console page): live trig steps (step-word bit 0)
-joined with their record-pool quads — note/velocity/length with `FF`→default
-fallback, micro as a signed fraction of a step, one piano-roll note per
-filled note slot. Everything unknown is never interpreted — and the future
-write path (read-modify-write) will only touch bytes documented here as
-[E]/[V]-confirmed.
+**Import** ("Import from box", console page): live trig steps (step-word
+bit 0) joined with their record-pool quads — note/velocity/length with
+`FF`→default fallback, micro as a signed fraction of a step, one piano-roll
+note per filled note slot.
+
+**Write** ("Write to pattern", console page): read-modify-write. Fetch the
+target pattern-kit, clear the chosen track's trig-enable bits and free its
+record-pool quads, write one fresh quad per trigged step (explicit note/
+velocity/length, micro rounded to ±23 ticks; chords fill extra note slots),
+set `0x0381` on trigged step words — and leave every other byte, including
+the whole kit, byte-identical. The result goes back as an unsolicited `0x50`
+dump response (there is no "write request" in the protocol — the box just
+stores what it's sent [V]) after an automatic backup, then is re-read and
+byte-compared.
+
+Hardware-verified 2026-08-01 [V]: a 7-note bassline with mixed velocities,
+lengths and ± micro-timing written to A16 track 1 came back byte-identical
+on re-read, and importing it reproduced every field exactly.
+
+Everything documented as unknown is never interpreted or modified.

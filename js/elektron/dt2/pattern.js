@@ -201,3 +201,95 @@ export function trackNotes(patternKit, trackIndex) {
 export function trackTrigCount(patternKit, trackIndex) {
   return patternKit.tracks[trackIndex].steps.filter(w => w & TRIG_ENABLED).length;
 }
+
+// --- Write path ---------------------------------------------------------------
+
+// Bits the box sets on every trig it creates: enable (0x0001) plus the 0x0380
+// flag group. We mirror the box exactly and never touch any other bit.
+const TRIG_SET_HI = 0x03, TRIG_SET_LO = 0x81;
+
+// Replace track `trackIndex`'s note trigs inside a fetched pattern-kit payload
+// with digi-roll notes ({step, pitch, velocity, len (steps), micro (fraction
+// of a step)}). Returns { payload, dropped } where payload is a new
+// Uint8Array and dropped counts notes that couldn't be represented (step
+// outside 0–127, or more than four pitches on one step). Every byte outside
+// the track's step words and the trig-record pool is byte-identical — the
+// read-modify-write contract the verify layer checks.
+export function encodeTrackNotes(payload, trackIndex, notes) {
+  const version = u32(payload, 0);
+  if (version !== 3 && version !== 4) {
+    throw new Error(`unsupported DT2 pattern struct version ${version} — refusing to write`);
+  }
+  if (trackIndex < 0 || trackIndex >= PATTERN.numTracks) throw new Error(`no track ${trackIndex}`);
+
+  const out = Uint8Array.from(payload);
+  const base = PATTERN.tracksOffset + trackIndex * TRACK.size;
+
+  // Clear the track's trig-enable bits. Other step-word bits stay — deleting
+  // a trig on the box leaves its flag bits behind too.
+  for (let s = 0; s < TRACK.numSteps; s++) out[base + s * 2 + 1] &= ~TRIG_ENABLED;
+
+  // Free every record quad belonging to this track (including quads lingering
+  // from long-deleted trigs — the box only reads quads for enabled steps).
+  const QUAD = 6 * TRIG_NOTE_SLOTS;
+  for (let o = PATTERN.trigPool; o < PATTERN.pLocksIndex; o += QUAD) {
+    if (out[o] === trackIndex) out.fill(0xff, o, o + QUAD);
+  }
+
+  // Group notes by step, at most four pitches per step (the four note slots).
+  const byStep = new Map();
+  let dropped = 0;
+  for (const n of [...notes].sort((a, b) => a.step - b.step || a.pitch - b.pitch)) {
+    if (!Number.isInteger(n.step) || n.step < 0 || n.step >= TRACK.numSteps) { dropped++; continue; }
+    const group = byStep.get(n.step) ?? [];
+    if (group.length >= TRIG_NOTE_SLOTS) { dropped++; continue; }
+    group.push(n);
+    byStep.set(n.step, group);
+  }
+
+  // Write one quad per trigged step into free pool space. Velocity, length
+  // and micro-timing are mirrored across all four slots, exactly as the box
+  // stores them; chord slots beyond the first carry only their note.
+  let nextQuad = PATTERN.trigPool;
+  const freeQuad = () => {
+    for (; nextQuad < PATTERN.pLocksIndex; nextQuad += QUAD) {
+      let free = true;
+      for (let i = 0; i < QUAD; i++) if (out[nextQuad + i] !== 0xff) { free = false; break; }
+      if (free) return nextQuad;
+    }
+    throw new Error('pattern trig storage is full — too many trigs across all tracks');
+  };
+  for (const [step, group] of byStep) {
+    const o = freeQuad();
+    nextQuad += QUAD;
+    const first = group[0];
+    const vel = first.velocity & 0x7f;
+    const len = stepsToLengthByte(first.len);
+    const micro = Math.max(-23, Math.min(23, Math.round((first.micro ?? 0) * 24))) & 0xff;
+    for (let slot = 0; slot < TRIG_NOTE_SLOTS; slot++) {
+      const s = o + slot * 6;
+      out[s] = trackIndex;
+      out[s + 1] = step;
+      out[s + 2] = group[slot] ? group[slot].pitch & 0x7f : 0xff;
+      out[s + 3] = vel;
+      out[s + 4] = len;
+      out[s + 5] = micro;
+    }
+    out[base + step * 2] |= TRIG_SET_HI;
+    out[base + step * 2 + 1] |= TRIG_SET_LO;
+  }
+
+  return { payload: out, dropped };
+}
+
+// Byte-diff two payloads for the verify layer. Returns up to `cap` differing
+// offsets with both values — empty means byte-identical.
+export function diffPayloads(a, b, cap = 64) {
+  const diffs = [];
+  const len = Math.max(a.length, b.length);
+  for (let i = 0; i < len && diffs.length < cap; i++) {
+    if (a[i] !== b[i]) diffs.push({ offset: i, sent: a[i], read: b[i] });
+  }
+  if (a.length !== b.length) diffs.push({ offset: len, sent: a.length, read: b.length, lengthMismatch: true });
+  return diffs;
+}
