@@ -74,11 +74,27 @@ notes arriving.
 ## Device console (SysEx)
 
 `console.html` is a separate page that talks to the box over SysEx: it shows a
-hex log of every exchange, identifies the device (model + OS version), and has
-a **Backup project** button that fetches a whole-project dump and downloads it
-as a replayable `.syx` file — browser-based project backup, no Transfer app.
-Digitakt / Digitakt II for now; unknown devices stay read-only. Protocol notes
-live in `docs/elektron-sysex-protocol.md`.
+hex log of every exchange, identifies the device (model + OS version), and can
+
+- **Backup project** — fetch a whole-project dump and download it as a
+  replayable `.syx` file, no Transfer app needed (Digitakt, Digitakt II,
+  Digitone II);
+- **Import from box** — fetch any pattern (or open a `.syx` backup), pick a
+  track, and its trigs land in the piano roll with exact notes, velocities,
+  lengths and micro-timing (Digitakt II + Digitone II);
+- **Write to pattern** — the reverse: a piano-roll pattern written straight
+  into a pattern slot's track, with automatic pre-write backup, an OS-version
+  allowlist and byte-level verify-after-write (Digitakt II; the Digitone II
+  stays import-only until its write path is hardware-verified).
+
+`difflab.html` is the reverse-engineering workbench that mapped those formats:
+capture a pattern, make one edit on the box, capture again, and read a hex
+diff annotated with struct-region names, saved to a lab notebook.
+
+Protocol notes live in `docs/elektron-sysex-protocol.md`; the pattern formats
+— including what we believe is the first public documentation of the
+Digitone II pattern format — in `docs/dt2-pattern-format.md` and
+`docs/dn2-pattern-format.md`.
 
 The protocol implementation is ported from
 [elk-herd](https://github.com/mzero/elk-herd) by **mzero** (BSD-2-Clause),
@@ -92,18 +108,15 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 - `js/pianoroll.js` — canvas editor
 - `js/main.js` — UI wiring
 - `js/elektron/` — SysEx protocol: `sevenbit.js` (7↔8-bit packing),
-  `protocol.js` (framing/checksums), `device.js` (handshake, project dump)
-- `js/labs/console.js` — the device console page
+  `protocol.js` (framing/checksums), `device.js` (handshake, dumps),
+  `pattern-core.js` + `dt2/` + `dn2/` (pattern struct decode/encode)
+- `js/labs/` — the device console and diffing-lab pages
 - `test/` — Vitest unit tests for the protocol code (dev-only; the app itself
   stays dependency-free): `npm install && npm test`
 
 ## Ideas / later
 
-- **Direct pattern write to Digitakt 2 via SysEx** — elk-herd has
-  reverse-engineered the DT/DT2 pattern dump format; a "send to pattern slot"
-  button could write the piano roll straight into pattern memory, no live
-  recording needed. (Not possible for Digitone 2 — format undocumented — or
-  Octatrack, which has no pattern SysEx.)
-- Per-note micro-timing / swing
-- Multiple lanes → multiple channels in one pattern (chords across tracks)
-- Import/export MIDI files
+See `PLAN.md` for the roadmap. Next up: hardware-verifying the Digitone II
+write path (controlled experiments via the diff lab), then the cross-device
+pattern librarian — read a pattern from one box, write it to the other.
+(The Octatrack stays on the live-record path; it has no pattern SysEx.)

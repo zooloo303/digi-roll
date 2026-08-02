@@ -76,8 +76,10 @@ F0 00 20 3C <family> 00 <type> 01 01 <index>
 ```
 
 - `family` (byte 4): whose structs these are — `0x0A` Digitakt, `0x14`
-  Digitakt II. **Digitone II: unknown, to be captured** (plausibly its own
-  value; do not guess).
+  Digitakt II, `0x15` **Digitone II** (not in elk-herd — discovered
+  2026-08-01 by sweeping candidate family bytes in `0x60` requests against a
+  real DN2 on OS 1.10D; it answered `0x15` with a 114 kB pattern-kit response
+  and ignored `0x0B–0x0E`, `0x14`, `0x16`).
 - `01 01`: a 2-byte version field, always exactly `01 01` in elk-herd.
 - `index`: pattern/sound slot (0-based); 0 for project-level messages.
 - `checksum`: plain sum of the **encoded** payload bytes, mod 2^14, sent as
@@ -115,9 +117,13 @@ and sounds are wrapped in magic `0xBEEFBACE`. Field offsets vary per struct
 version and per device — elk-herd tabulates them in
 `Elektron/Digitakt/CppStructs.elm`, keyed off the OS build string.
 
-The Digitakt II pattern-kit payload is now decoded (Phase 2): see
+The Digitakt II pattern-kit payload is decoded (Phase 2): see
 **`dt2-pattern-format.md`** for the full field map with per-field provenance,
-and `js/elektron/dt2/pattern.js` for the decoder.
+and `js/elektron/dt2/pattern.js` for the decoder. The Digitone II payload is
+decoded too (Phase 3, digi-roll's own reverse engineering — elk-herd has no
+Digitone support): see **`dn2-pattern-format.md`** and
+`js/elektron/dn2/pattern.js`. Both decoders are specs over the shared
+`js/elektron/pattern-core.js`.
 
 ## Backup file format
 

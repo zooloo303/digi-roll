@@ -73,8 +73,9 @@ describe('identify', () => {
     dev.close();
   });
 
-  it('knows the Digitone II by product id but keeps it read-only (dump family unknown)', async () => {
-    // Product id 43 + OS strings captured from real hardware, 2026-08-01.
+  it('knows the Digitone II, dump family 0x15', async () => {
+    // Product id 43, OS strings and family byte all captured from real
+    // hardware, 2026-08-01 (the family via a 0x60 probe sweep — Phase 3).
     const { input, output } = fakePorts(msg => {
       if (msg.kind !== 'api') return;
       if (msg.apiId === API.DEVICE) {
@@ -84,7 +85,7 @@ describe('identify', () => {
     });
     const dev = new ElektronDevice(input, output);
     const id = await dev.identify();
-    expect(id).toMatchObject({ productId: 43, name: 'Digitone II', slug: 'digitone2', family: null, supported: false });
+    expect(id).toMatchObject({ productId: 43, name: 'Digitone II', slug: 'digitone2', family: 0x15, supported: true });
     dev.close();
   });
 });

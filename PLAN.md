@@ -61,10 +61,10 @@ implementation should cover both.
       ✓ Verified on real hardware 2026-08-01: DT2 OS 1.15B, 16.3 MB project
       dump in 17 s, all checksums good.
       *DN2: identity handshake works (productId 43, OS 1.10D — captured, in
-      `docs/elektron-sysex-protocol.md`), but dumps are blocked on discovering
-      its dump family byte (SysEx byte 4; DT2 = 0x14). Next experiment: with a
-      throwaway project loaded on the DN2, send 0x6F requests with candidate
-      family bytes and watch the console log.*
+      `docs/elektron-sysex-protocol.md`), and its dump family byte is
+      **0x15** — discovered 2026-08-01 by exactly the planned experiment
+      (0x60 probes across candidate bytes; only 0x15 answered). Whole-project
+      backup verified against the real DN2: 14.6 MB in 18 s.*
 - [x] **Ship: "Backup project" button** — download the dump as a file. Already
       a genuinely useful utility (browser-based project backup, no Transfer
       app), and it produces the raw material for Phase 3's diffing lab.
@@ -132,16 +132,26 @@ generation, so the *sequencer* block of a pattern (the only part we need)
 is plausibly near-identical to DT2's. First experiment is cheap: scan a DN2
 dump for DT2-shaped trig structures.
 
-- [ ] **Build the diffing lab into the app**: a page that automates the
-      methodology — fetch dump → "now add one trig on track 1, step 1" →
-      fetch again → show a structured hex diff, annotated and saved. Each
-      experiment maps a few bytes; the lab keeps the lab notebook.
-- [ ] Map the note-trig record: trig enable bits, note, velocity, length,
-      micro-timing (ignore synth/p-lock blocks — round-trip them untouched)
+- [x] **Build the diffing lab into the app**: `difflab.html` +
+      `js/labs/difflab.js` — capture baseline → one edit on the box →
+      capture + annotated diff (every byte named by struct region via the
+      device specs), lab notebook in localStorage, Markdown export.
+- [x] Map the note-trig record: trig enable bits, note, velocity, length,
+      micro-timing. *Turned out to be the DT2 sequencer block with a
+      1187-byte track struct (+3) and everything after the tracks shifted
+      +48; mapped by diffing a real DN2 dump against the DT2 layout, no
+      box-side edits needed. Controlled-experiment ([V]) pass still owed for
+      the length/micro scales and chord storage — listed at the end of the
+      format doc.*
 - [ ] Confirm stability across a firmware update cycle (pin versions)
-- [ ] Publish findings as `docs/dn2-pattern-format.md`
-- [ ] Then reuse Phase 2's machinery: **Import from box → Write to pattern
-      for DN2**
+- [x] Publish findings as `docs/dn2-pattern-format.md`
+- [x] **Import from box for DN2** — same console flow as the DT2, decoder
+      generalised into `js/elektron/pattern-core.js` + per-device specs.
+      ✓ Verified against the real DN2 2026-08-01 (live-fetched A01, exact
+      velocities/lengths in the roll).
+- [ ] **Write to pattern for DN2** — encoder exists and round-trips in
+      tests; stays disabled until the [V] experiments pass on a throwaway
+      project (then gate on an OS-build allowlist like the DT2)
 
 Risk & fallback: if the DN2 sequencer block turns out deeply different, the
 diffing lab still works — it just takes more evenings. Worst case, DN2 stays

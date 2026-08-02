@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>digi-roll — dump diffing lab</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="console.css">
+<style>
+  #labBar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    padding: 6px 14px; border-bottom: 1px solid #2a2e38; background: #171a20; font-size: 12px; }
+  #labBar .dim { color: #7d8590; }
+  #labBar button { padding: 2px 8px; font-size: 12px; }
+  #labBar input[type=text] { background: #14161a; color: #d8dae0; border: 1px solid #2a2e38;
+    border-radius: 4px; padding: 2px 6px; font-size: 12px; width: 26em; }
+  #captureInfo { color: #9aa0ab; }
+  #labWrap { flex: 1; display: flex; min-height: 0; }
+  #diffPane { flex: 3; overflow-y: auto; padding: 8px 14px;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: #14161a; }
+  #notebookPane { flex: 2; overflow-y: auto; padding: 8px 14px; border-left: 1px solid #2a2e38;
+    background: #171a20; font-size: 12px; }
+  .region { margin-bottom: 10px; }
+  .region .label { color: #f0913a; }
+  .region .bytes { color: #b7bdc8; white-space: pre-wrap; word-break: break-all; }
+  .region .bytes b { color: #6db2f0; font-weight: 400; }
+  .entry { border: 1px solid #2a2e38; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+  .entry h3 { margin: 0 0 4px; font-size: 12px; color: #d8dae0; }
+  .entry .meta { color: #7d8590; }
+  .entry ul { margin: 4px 0 0; padding-left: 18px; color: #9aa0ab; }
+  .entry button { padding: 1px 6px; font-size: 11px; float: right; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>digi-roll <span class="sub">dump diffing lab</span></h1>
+    <div class="toolbar">
+      <select id="port" title="Elektron device (needs both its input and output port)"></select>
+      <button id="connect" title="Ask the device to identify itself">Connect</button>
+      <span id="deviceInfo" class="field"></span>
+      <a href="console.html" class="backlink">← device console</a>
+    </div>
+    <div id="status"></div>
+  </header>
+
+  <div id="labBar">
+    <span class="dim">Experiment</span>
+    <select id="labPattern" title="Pattern slot on the box to watch"></select>
+    <button id="capA" title="Fetch the pattern as it is now — the baseline" disabled>Capture baseline</button>
+    <span class="dim">→ make ONE edit on the box →</span>
+    <button id="capB" title="Fetch the pattern again and diff it against the baseline" disabled>Capture + diff</button>
+    <input id="labNote" type="text" placeholder="what did you change? e.g. “added trig, track 1, step 1”">
+    <button id="labSave" title="Save this diff to the lab notebook" disabled>Save to notebook</button>
+    <button id="labChain" title="Use the latest capture as the next baseline" disabled>Chain: B → baseline</button>
+    <span id="captureInfo"></span>
+  </div>
+
+  <div id="labWrap">
+    <div id="diffPane"><span class="dim">Connect a box, capture a baseline, poke exactly one thing, capture again.
+Each diffed byte is annotated with the struct region it lives in — unknown regions are the interesting ones.</span></div>
+    <div id="notebookPane">
+      <div class="logbar" style="padding:0 0 6px">
+        <span class="dim">Lab notebook</span>
+        <button id="labExport" title="Download the notebook as Markdown">Export .md</button>
+      </div>
+      <div id="notebook"></div>
+    </div>
+  </div>
+
+<script type="module" src="js/labs/difflab.js"></script>
+</body>
+</html>

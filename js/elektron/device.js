@@ -14,7 +14,7 @@ import { buildApiMessage, buildDumpMessage, parseSysEx, API, DUMP } from './prot
 const PRODUCTS = {
   12: { name: 'Digitakt', slug: 'digitakt', family: 0x0a },
   42: { name: 'Digitakt II', slug: 'digitakt2', family: 0x14 },
-  43: { name: 'Digitone II', slug: 'digitone2', family: null }, // id captured from hardware 2026-08-01; dump family byte still unknown
+  43: { name: 'Digitone II', slug: 'digitone2', family: 0x15 }, // both values captured from real hardware 2026-08-01 (family byte via 0x60 probe sweep)
 };
 
 const REQUEST_TIMEOUT_MS = 5000; // elk-herd uses 5 s with 2 retries

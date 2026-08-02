@@ -46,11 +46,12 @@ export const DUMP = {
 };
 
 // Dump family codes (SysEx byte 4) — which device's structs a dump carries.
-// The Digitone II's code is unknown so far; discovering it is a Phase 3 job
-// for the console's hex log.
+// DIGITONE_2 is not in elk-herd: discovered 2026-08-01 by probing a real DN2
+// (OS 1.10D) with 0x60 requests across candidate bytes — only 0x15 answered.
 export const FAMILY = {
   DIGITAKT: 0x0a,
   DIGITAKT_2: 0x14,
+  DIGITONE_2: 0x15,
 };
 
 export function checksum14(bytes) {
