@@ -10,14 +10,14 @@ Provenance key — every field below is tagged:
 
 - **[E]** from elk-herd's `Elektron/Digitakt/{Dump,CppStructs}.elm`
   (BSD-2-Clause, © mzero), generated from Elektron's own headers — trustworthy.
-- **[F]** confirmed by direct analysis of our hardware fixture
-  (`dumps/digitakt2-project-2026-08-01T23-37-04.syx`, DT2 OS 1.15B,
-  pattern struct v4, kit v4).
+- **[F]** confirmed by direct analysis of hardware dumps
+  (`dumps/digitakt2-project-*.syx`, DT2 OS 1.15B, pattern struct v4, kit v4).
+- **[V]** confirmed by a **controlled hardware experiment** (2026-08-01):
+  on a throwaway project, four trigs on track 1 at steps 0/4/8/12 were given,
+  respectively, NOTE +3, VEL 37, LEN 1/4, and a left micro-nudge; the dump
+  diff (`dumps/digitakt2-verify-2026-08-01.syx`) pinned each field exactly.
 - **[AR]** inferred from the Analog Rytm's publicly documented layout
-  (libanalogrytm `pattern.h`, © bsp) — Elektron reuses these shapes across
-  device generations.
-- **PROVISIONAL** — plausible on [AR]+[F] grounds but not yet verified with a
-  controlled hardware capture. Do not write these fields until verified.
+  (libanalogrytm `pattern.h`, © bsp).
 
 Applies to **pattern struct versions 3 and 4** (they share all pattern-level
 offsets [E]; v4 is what OS 1.15B emits [F]). Struct version 0 (early DT2 OS)
@@ -36,7 +36,7 @@ has a completely different track size and is not decoded.
 |--------|------|-------|
 | 0 | 4 | struct version, uint32be (3 or 4) [E][F] |
 | 4 | 16 × 1184 | tracks 1–16 (track struct below) [E] |
-| 18948 | 49152 | unknown; NOT per-step trig data (trigs never touch it [F]); some parameter table, 6-byte records [F]. Round-trip untouched |
+| 18948 | 8192 × 6 | **trig-record pool** (below) — where per-trig note/velocity/length/micro actually live [V] |
 | 68100 | 80 × 258 | p-locks: paramId u8, track u8, 128 × uint16be per-step values, `FFFF`/paramId `FF` = unused [E][F] |
 | 88740 | 16 | pattern name, NUL-padded [E][F] |
 | 88756 | 4 | pattern tempo, uint32be, **BPM × 120** (14400 = 120 BPM default; 20040 = 167.0 [F]) |
@@ -50,29 +50,39 @@ has a completely different track size and is not decoded.
 | offset | size | field |
 |--------|------|-------|
 | 0 | 128 × 2 | step words, uint16be per step (bits below) [E][F] |
-| 256 | 128 | per-step **micro-timing** [F]: `FF` = on the grid, else signed 6-bit in the low bits, −23…+23 ticks of 1/24 step (live-recorded trigs showed +8, +9 [F]; format per [AR]) |
-| 384 | 128 | per-step **note** — PROVISIONAL: MIDI note, `FF` = track default [AR] |
-| 512 | 128 | per-step **velocity** — PROVISIONAL: 0–127, `FF` = track default [AR] |
-| 640 | 128 | per-step **length byte** — PROVISIONAL: scale below, `FF` = track default [AR] |
-| 768 | 128 | per-step unknown (retrig / trig condition candidates [AR]) |
-| 896 | 128 | per-step unknown (ditto) |
+| 256 | 6 × 128 | six per-step byte arrays of **unknown purpose** — verified NOT to hold note/velocity/length/micro [V]. Almost always `FF`; two fixture trigs show a single small value in the first array (offsets 256+step), cause unknown |
 | 1024 | 128 | per-step sound p-lock (sound-pool slot), `FF` = none [E] |
-| 1152 | 32 | track defaults + settings [F]: `+0` default note (0x3C), `+1` default velocity (0x64), `+2` default length byte (0x0E = one step) — order mirrors [AR]'s tail; `+12` uint16be **track length in steps** (0x0010) [F]; rest unmapped (`3c 64 0e 07 80 00 40 40 40 0e 0c 40 00 10 00 02 64 05 ff …`) |
+| 1152 | 32 | track defaults + settings [F][V]: `+0` default note (0x3C), `+1` default velocity (0x64), `+2` default length byte (0x0E = one step); `+12` uint16be **track length in steps** (0x0010) [F]; rest unmapped (`3c 64 0e 07 80 00 40 40 40 0e 0c 40 00 10 00 02 64 05 ff …`) |
 
-The note/velocity/length array *order* is the open question: the arrays exist
-(6 × 128 bytes of per-step `FF`-defaulted data, exactly the [AR] family shape),
-micro-timing is pinned to offset 256 by live-recorded trigs, and note/vel/len
-are assigned to 384/512/640 because that mirrors both the [AR] ordering and
-the track-defaults tail order. **Verification protocol** (2 minutes at the
-box, on a throwaway project):
+## Trig-record pool (pattern offset 18948) — hardware-verified [V]
 
-1. On a blank pattern, place trigs on steps 1–4 of track 1.
-2. Give step 1 NOTE +3 semitones, step 2 VEL 37, step 3 LEN 1/4,
-   step 4 micro-nudge left (negative micro).
-3. Console page → Backup project (or just note what Import shows).
-4. Each edited step lights up exactly one array byte: whichever array holds
-   `0x3F` (63 = 60+3) is notes, `0x25` (37) is velocities, `0x2E` (46 = 1/4)
-   is lengths, and step 4's byte pins the negative micro encoding.
+The per-trig data everyone actually wants lives here, not in the track
+struct. The pool is 8192 six-byte records = 16 tracks × 128 steps × 4 note
+slots, filling the space up to the p-locks exactly.
+
+Record layout:
+
+| byte | field |
+|------|-------|
+| +0 | track (0–15) |
+| +1 | step (0–127) |
+| +2 | note — absolute MIDI note; `FF` = track default / slot unused (NOTE +3 stored as 0x3F = 63 [V]) |
+| +3 | velocity — 0–127; `FF` = track default (VEL 37 → 0x25 [V]) |
+| +4 | length byte — scale below; `FF` = track default (LEN 1/4 → 0x2E = 46 [V]) |
+| +5 | micro-timing — **signed byte**, ticks of 1/24 step; resting value 0, not `FF` (left nudge → 0xFE = −2 [V]) |
+
+Behavior:
+
+- Each trig the box creates appends **four consecutive, quad-aligned
+  records** — one per note slot (chords on MIDI tracks). Velocity, length
+  and micro are mirrored into all four; the note fills only the slots in
+  use [V].
+- Free pool space is all-`FF`. Records of **deleted trigs linger** — only
+  steps whose trig bit is set in the track's step words are live [F].
+- Records are appended in creation order; a surviving trig's quad can sit
+  after another track's [F].
+- Trigs entered with real velocities (pads / live recording) carry them at
+  `+3` even when nothing was explicitly p-locked [F].
 
 ## Step word bits
 
@@ -104,8 +114,9 @@ landmarks each increment adds 1/16 of the current base. A step = one 16th.
 
 ## What digi-roll does with all this
 
-Import ("Import from box", console page): trig steps (bit 0) + micro +
-note/vel/length with `FF`→default fallback → piano-roll notes. Fields marked
-PROVISIONAL trigger a warning in the status line when they actually carry
-data. Everything unknown is never interpreted — and the future write path
-(read-modify-write) will only touch bytes documented here as confirmed.
+Import ("Import from box", console page): live trig steps (step-word bit 0)
+joined with their record-pool quads — note/velocity/length with `FF`→default
+fallback, micro as a signed fraction of a step, one piano-roll note per
+filled note slot. Everything unknown is never interpreted — and the future
+write path (read-modify-write) will only touch bytes documented here as
+[E]/[V]-confirmed.

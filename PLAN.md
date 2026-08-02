@@ -89,13 +89,13 @@ research.
 - [x] Decode DT2 project dump → locate patterns → parse note trigs
       (trig bits, note, velocity, length, micro-timing)
       → `js/elektron/dt2/pattern.js` + `docs/dt2-pattern-format.md`.
-      *One caveat discovered along the way: elk-herd never decodes note
-      trigs (it's a librarian, not an editor), so the per-step
-      note/velocity/length array order was mapped from our own dump
-      analysis + the Analog Rytm's documented layout. Trig bits, micro-
-      timing, defaults, track length, tempo, kit/sound names: confirmed
-      against real dumps. Note/vel/len order: PROVISIONAL — the doc has a
-      2-minute hardware protocol to pin it next time the DT2 is at hand.*
+      *Discovered along the way: elk-herd never decodes note trigs (it's a
+      librarian, not an editor), so this needed real reverse engineering.
+      Per-trig note/velocity/length/micro live in a pattern-level pool of
+      6-byte records (offset 18948), four note-slot records per trig —
+      **hardware-verified 2026-08-01** with a controlled experiment (known
+      NOTE/VEL/LEN/micro edits on a throwaway pattern, dump diffed). The
+      verification capture is a second test fixture.*
 - [x] **Ship: "Import from box"** — pick a DT2 pattern + track, its notes
       appear in the piano roll. Read-only, zero risk, proves the decode.
       → console page: fetch one pattern (0x60 request) or open a .syx

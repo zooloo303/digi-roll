@@ -216,8 +216,7 @@ $('impGo').onclick = () => {
   const slot = +$('impSlot').value;
   const track = imported.patternKit.tracks[t];
   const lengthSteps = Math.min(128, Math.max(16, Math.ceil(track.lengthSteps / 16) * 16));
-  const decoded = trackNotes(imported.patternKit, t);
-  const notes = decoded.filter(n => n.step < track.lengthSteps);
+  const notes = trackNotes(imported.patternKit, t).filter(n => n.step < track.lengthSteps);
 
   const st = loadState(); // fresh — the piano-roll tab may have written since we loaded
   const p = st.patterns[slot];
@@ -232,10 +231,7 @@ $('impGo').onclick = () => {
   ));
   saveState(st);
 
-  const caveat = decoded.provisional
-    ? ' — some trigs carry per-step pitch/velocity/length, whose decode is not hardware-verified yet (docs/dt2-pattern-format.md)'
-    : '';
-  setStatus(`Imported ${notes.length} trig${notes.length === 1 ? '' : 's'} from ${imported.label} T${t + 1} into Pattern ${slot + 1} — open the piano roll${caveat}`, !!caveat);
+  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${imported.label} T${t + 1} into Pattern ${slot + 1} — open the piano roll`);
   logNote(`Imported ${imported.label} T${t + 1} → piano-roll slot ${slot + 1} (${notes.length} notes)`);
 };
 
