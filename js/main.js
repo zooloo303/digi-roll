@@ -96,6 +96,9 @@ scaleSel.add(new Option('Scale: off', 'off'));
 for (const name of Object.keys(SCALES)) scaleSel.add(new Option(name, name));
 
 function syncToolbar() {
+  // Slot labels follow pattern names, so imports from the box ("A01 T11") are
+  // recognizable in the dropdown.
+  for (let i = 0; i < NUM_SLOTS; i++) slotSel.options[i].text = state.patterns[i].name;
   slotSel.value = state.current;
   chanSel.value = pattern().channel;
   lenSel.value = pattern().lengthSteps;
@@ -159,6 +162,7 @@ $('clear').onclick = () => {
     pushUndo();
     state.patterns[state.current] = { ...defaultPattern(state.current), channel: pattern().channel, lengthSteps: pattern().lengthSteps, swing: pattern().swing };
     roll.clearSelection();
+    syncToolbar();
     roll.resize();
     persist();
   }
@@ -268,6 +272,17 @@ window.addEventListener('keydown', e => {
     e.preventDefault();
     paste();
   }
+});
+
+// The device console page (console.html) writes imported patterns into the same
+// localStorage state. If this tab stays open across an import, pick the change
+// up instead of clobbering it with our stale in-memory copy on the next edit.
+window.addEventListener('storage', e => {
+  if (e.key !== 'digiroll-v1' || roll.drag) return;
+  Object.assign(state, loadState());
+  roll.clearSelection();
+  syncToolbar();
+  roll.resize();
 });
 
 // --- Transport ---------------------------------------------------------------

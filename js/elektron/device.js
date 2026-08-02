@@ -120,6 +120,31 @@ export class ElektronDevice {
     return this.identity;
   }
 
+  // Fetch a single pattern-kit dump (one 0x60 request → one 0x50 response).
+  // Resolves to the decoded payload bytes of that pattern-kit message.
+  fetchPatternKit(index) {
+    const family = this.identity?.family;
+    if (family == null) throw new Error(`no known dump protocol for ${this.identity?.name ?? 'this device'}`);
+    if (this._dumpSink) throw new Error('a dump fetch is already running');
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this._dumpSink = null;
+        reject(new Error(`no response to pattern request (slot ${index})`));
+      }, DUMP_STALL_MS);
+      this._dumpSink = (raw, msg) => {
+        if (msg.family !== family || msg.type !== DUMP.PATTERN_KIT || msg.index !== index) return;
+        clearTimeout(timer);
+        this._dumpSink = null;
+        if (!msg.checksumOk || !msg.countOk) {
+          return reject(new Error(`corrupt pattern-kit message (slot ${index})`));
+        }
+        resolve(msg.payload);
+      };
+      this._send(buildDumpMessage(family, DUMP.PATTERN_KIT_REQUEST, index));
+    });
+  }
+
   // Fetch a whole-project dump: one 0x6F request, then the box streams
   // pattern-kit (0x50) and sound (0x53) responses and finishes with a single
   // project-settings (0x54) response — the only end-of-stream marker there is.

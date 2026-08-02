@@ -108,13 +108,16 @@ request — you just send unsolicited dump *responses* (`0x50` per pattern,
 `0x53` per sound slot, then `0x54`), pacing sends so the box can keep up
 (elk-herd waits `size/bytesPerMs + 20` ms per message; 800 bytes/ms for DT2).
 
-## Payload structs (Phase 2 territory)
+## Payload structs
 
-Inside dump payloads: patterns start with a `uint32be` struct version; DT2-era
-structs are wrapped in magic `0xBEEFBACE` … `0xBACEF00C`. Field offsets vary
-per struct version and per device — elk-herd tabulates them in
-`Elektron/Digitakt/CppStructs.elm`, keyed off the OS build string. That's the
-map for DT2 pattern read/write; nothing decodes structs in Phase 1.
+Inside dump payloads: patterns start with a `uint32be` struct version; kits
+and sounds are wrapped in magic `0xBEEFBACE`. Field offsets vary per struct
+version and per device — elk-herd tabulates them in
+`Elektron/Digitakt/CppStructs.elm`, keyed off the OS build string.
+
+The Digitakt II pattern-kit payload is now decoded (Phase 2): see
+**`dt2-pattern-format.md`** for the full field map with per-field provenance,
+and `js/elektron/dt2/pattern.js` for the decoder.
 
 ## Backup file format
 

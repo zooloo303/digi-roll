@@ -13,6 +13,21 @@ h1 .sub {
 #deviceInfo { font-size: 12px; }
 #deviceInfo b { color: #d8dae0; }
 
+#importBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid #2a2e38;
+  background: #171a20;
+  font-size: 12px;
+}
+#importBar .dim { color: #7d8590; }
+#importBar button { padding: 2px 8px; font-size: 12px; }
+#impPatternInfo { color: #9aa0ab; }
+
 #consoleWrap {
   flex: 1;
   display: flex;

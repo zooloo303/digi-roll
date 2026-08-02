@@ -83,6 +83,22 @@ export function buildDumpMessage(family, type, index, payload = new Uint8Array(0
   ]);
 }
 
+// Split a byte stream of concatenated SysEx messages (a .syx backup file, or
+// a captured dump stream) into parsed messages. Anything outside F0…F7 frames
+// is ignored.
+export function splitSysExStream(bytes) {
+  const messages = [];
+  let start = -1;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 0xf0) start = i;
+    else if (bytes[i] === 0xf7 && start >= 0) {
+      messages.push(parseSysEx(bytes.subarray(start, i + 1)));
+      start = -1;
+    }
+  }
+  return messages;
+}
+
 // Parse one complete SysEx message (F0…F7 inclusive). Never throws on foreign
 // or malformed data — returns { kind: 'foreign' | 'unknown' | 'api' | 'dump' }
 // so the console can log anything a device sends us.

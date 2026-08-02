@@ -20,6 +20,19 @@
     <div id="status"></div>
   </header>
 
+  <div id="importBar">
+    <span class="dim">Import from box</span>
+    <select id="impPattern" title="Pattern slot on the box (current project)"></select>
+    <button id="impFetch" title="Fetch this pattern from the connected device" disabled>Fetch</button>
+    <button id="impFile" title="Or decode a saved .syx backup / pattern dump instead">Open .syx…</button>
+    <input id="impFileInput" type="file" accept=".syx" hidden>
+    <span id="impPatternInfo" class="field"></span>
+    <select id="impTrack" title="Which track's trigs to import" disabled></select>
+    <span class="dim">→</span>
+    <select id="impSlot" title="Piano-roll pattern slot to import into"></select>
+    <button id="impGo" title="Replace that piano-roll slot with this track's trigs" disabled>Import to piano roll</button>
+  </div>
+
   <div id="consoleWrap">
     <div class="logbar">
       <span class="dim">SysEx log — every byte in and out</span>

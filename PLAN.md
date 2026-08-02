@@ -86,10 +86,21 @@ The DT2 format is already reverse-engineered (elk-herd `CppStructs` /
 `Dump` / `HighLevel` for Digitakt II). This phase is translation, not
 research.
 
-- [ ] Decode DT2 project dump → locate patterns → parse note trigs
+- [x] Decode DT2 project dump → locate patterns → parse note trigs
       (trig bits, note, velocity, length, micro-timing)
-- [ ] **Ship: "Import from box"** — pick a DT2 pattern + track, its notes
+      → `js/elektron/dt2/pattern.js` + `docs/dt2-pattern-format.md`.
+      *One caveat discovered along the way: elk-herd never decodes note
+      trigs (it's a librarian, not an editor), so the per-step
+      note/velocity/length array order was mapped from our own dump
+      analysis + the Analog Rytm's documented layout. Trig bits, micro-
+      timing, defaults, track length, tempo, kit/sound names: confirmed
+      against real dumps. Note/vel/len order: PROVISIONAL — the doc has a
+      2-minute hardware protocol to pin it next time the DT2 is at hand.*
+- [x] **Ship: "Import from box"** — pick a DT2 pattern + track, its notes
       appear in the piano roll. Read-only, zero risk, proves the decode.
+      → console page: fetch one pattern (0x60 request) or open a .syx
+      backup, pick track + piano-roll slot. ✓ Verified against the real
+      DT2 (fetched A01 live, 8 trigs landed in the roll).
 - [ ] Encode: read-modify-write — replace the note trigs on one track inside
       a fetched pattern, leave every other byte untouched, fix checksums
 - [ ] Verify layer: re-read after write, byte-compare the untouched regions
