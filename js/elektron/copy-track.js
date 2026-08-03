@@ -7,8 +7,9 @@
 // converter, because the two pattern structs only look alike; the note model
 // is the thing both boxes genuinely agree on.
 //
-// Only note data crosses: trig bits, note, velocity, length, micro-timing, and
-// the three per-trig conditions (PROB/FILL/COND). Sounds, p-locks, kit and
+// Only note data crosses: trig bits, note, velocity, length, micro-timing, the
+// three per-trig conditions (PROB/FILL/COND) and the track's own PROB default,
+// which is what unlocked trigs run at. Sounds, p-locks, kit and other
 // pattern settings belong to the target and are left exactly as they were —
 // this is the same read-modify-write of one track as Phase 2/3, just with the
 // notes coming from somewhere else.
@@ -19,8 +20,10 @@
 // stops being true, the place to say so is `warnings`, alongside chord drops —
 // loudly, never silently.
 
-import { readTrackTrigSettings, applyTrackTrigSettings, attachTrigSettings, trigSettingsFromNotes }
-  from './trig-cond.js';
+import {
+  readTrackTrigSettings, applyTrackTrigSettings, attachTrigSettings, trigSettingsFromNotes,
+  readTrackProb, applyTrackProb,
+} from './trig-cond.js';
 
 // Decoded notes (trackNotes: lenSteps) → the encoder's shape (len), with none
 // of the piano roll's clamping: clamping a pitch into the roll's drawable rows
@@ -113,5 +116,11 @@ export function copyTrack({
   // Conditions ride on the payload encodeTrackNotes just returned — a fresh
   // copy, so this is the only mutation of an already-cloned buffer.
   applyTrackTrigSettings(targetMod.SPEC, payload, targetTrack, trigSettingsFromNotes(notes));
+  // The track's PROB default is part of how the copied trigs sound, so it
+  // travels with them — but only when we have the source bytes to read it from.
+  if (sourcePayload) {
+    applyTrackProb(targetMod.SPEC, payload, targetTrack,
+      readTrackProb(sourceMod.SPEC, sourcePayload, sourceTrack));
+  }
   return { payload, notes, dropped, drops, warnings: describeChordDrops(drops, targetName) };
 }

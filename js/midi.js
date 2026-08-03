@@ -23,8 +23,13 @@ const PUMP_MS = 25;
 //
 // Everything unsimulated plays, so the preview is never quieter than the box.
 // `rng` is injected so the tests are deterministic.
-export function shouldPlay(note, loop, rng = Math.random) {
-  if (note.prob != null && rng() * 100 >= note.prob) return false;
+//
+// `trackProb` is the track-level PROB default, which a trig without its own
+// PROB lock runs at — the hardware's two-level model, not a bulk stamp. 100
+// (the box default) is indistinguishable from no probability at all.
+export function shouldPlay(note, loop, rng = Math.random, trackProb = 100) {
+  const prob = note.prob ?? trackProb;
+  if (prob != null && rng() * 100 >= prob) return false;
   const cond = note.cond;
   if (!cond) return true;
 
@@ -272,11 +277,13 @@ export class MidiEngine {
       const swingMs = stepInPattern % 2 === 1 ? ((swing - 50) / 50) * (stepMs / 3) : 0;
       for (const n of pattern.notes) {
         if (n.step !== stepInPattern) continue;
-        if (!shouldPlay(n, loop, this.rng)) continue;
+        if (!shouldPlay(n, loop, this.rng, pattern.trackProb)) continue;
         const t = this._nextStepTime + swingMs + (n.micro ?? 0) * stepMs;
         this.noteOn(pattern.channel, n.pitch, n.velocity, t);
-        // End slightly early so back-to-back notes retrigger cleanly.
-        this._send([0x80 | pattern.channel, n.pitch, 0], t + n.len * stepMs - 8);
+        // End slightly early so back-to-back notes retrigger cleanly — but
+        // never before the note-on: a 0.125-step note at a fast tempo is
+        // shorter than the 8 ms gap.
+        this._send([0x80 | pattern.channel, n.pitch, 0], t + Math.max(1, n.len * stepMs - 8));
       }
       this._step++;
       this._nextStepTime += stepMs;

@@ -38,6 +38,34 @@ describe('probability', () => {
   });
 });
 
+describe('the track-level PROB default', () => {
+  it('is what a trig with no lock of its own runs at', () => {
+    expect(shouldPlay(note(), 0, () => 0.29, 30)).toBe(true);
+    expect(shouldPlay(note(), 0, () => 0.30, 30)).toBe(false);
+  });
+
+  it('is overridden by an explicit lock, in either direction', () => {
+    // The user's case: a 30% track with a few trigs pinned at 100.
+    expect(shouldPlay(note({ prob: 100 }), 0, never, 30)).toBe(true);
+    expect(shouldPlay(note({ prob: 0 }), 0, always, 100)).toBe(false);
+  });
+
+  it('defaults to always, so callers that don\'t model it behave as before', () => {
+    expect(shouldPlay(note(), 0, never)).toBe(true);
+    expect(shouldPlay(note(), 0, never, 100)).toBe(true);
+  });
+
+  it('silences an unlocked trig entirely at 0', () => {
+    expect(shouldPlay(note(), 0, () => 0, 0)).toBe(false);
+  });
+
+  it('still lets the condition have its say', () => {
+    // Track odds pass, but 2:4 is false on loop 0.
+    expect(shouldPlay(note({ cond: '2:4' }), 0, always, 50)).toBe(false);
+    expect(shouldPlay(note({ cond: '2:4' }), 1, always, 50)).toBe(true);
+  });
+});
+
 describe('ratio conditions', () => {
   const plays = (cond, loops) => loops.filter(l => shouldPlay(note({ cond }), l, always));
 

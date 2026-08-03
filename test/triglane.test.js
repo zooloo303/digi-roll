@@ -100,9 +100,11 @@ describe('dragging probability', () => {
     expect(probFromDrag(null, 40)).toBe(80);
   });
 
-  it('takes the lock off at the top of the range', () => {
-    expect(probFromDrag(90, -40)).toBeNull();
-    expect(probFromDrag(null, 0)).toBeNull();
+  it('locks an explicit 100 at the top of the range', () => {
+    // Not "no lock": with a track-level PROB default, pinning one trig at 100
+    // is how you say "this one always plays". Clearing is alt/right-click.
+    expect(probFromDrag(90, -40)).toBe(100);
+    expect(probFromDrag(null, 0)).toBe(100);
   });
 
   it('clamps at zero rather than going negative', () => {
@@ -130,11 +132,20 @@ describe('the note model carries the three fields', () => {
     expect(loaded.patterns[0].notes[0]).toMatchObject({ prob: null, fill: null, cond: null, micro: 0 });
     delete globalThis.localStorage;
   });
+
+  it('backfills a pattern saved before track PROB existed', () => {
+    const state = defaultState();
+    for (const p of state.patterns) delete p.trackProb;
+    const store = new Map([['digiroll-v1', JSON.stringify(state)]]);
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: () => {} };
+    expect(loadState().patterns.every(p => p.trackProb === 100)).toBe(true);
+    delete globalThis.localStorage;
+  });
 });
 
 describe('bank round-trip', () => {
   const pattern = () => ({
-    name: 'conditions', lengthSteps: 16, channel: 3, swing: 55, source: null,
+    name: 'conditions', lengthSteps: 16, channel: 3, swing: 55, trackProb: 30, source: null,
     notes: [
       makeNote(0, 60, 1, 100, 0, { prob: 0, fill: true, cond: 'PRE' }),
       makeNote(4, 64, 2, 90, 0.25, { prob: 100, fill: false, cond: '!8:8' }),
@@ -153,6 +164,16 @@ describe('bank round-trip', () => {
 
   it('does not bump the schema, so old digi-rolls still read the file', () => {
     expect(serializePattern(pattern()).schema).toBe(BANK_SCHEMA);
+  });
+
+  it('keeps the track-level PROB default', () => {
+    expect(deserializePattern(serializePattern(pattern()), makeNote).trackProb).toBe(30);
+  });
+
+  it('loads a save made before track PROB existed at the box default', () => {
+    const old = serializePattern(pattern());
+    delete old.pattern.trackProb;
+    expect(deserializePattern(old, makeNote).trackProb).toBe(100);
   });
 
   it('loads an entry saved before the feature existed, unlocked', () => {

@@ -27,6 +27,11 @@ export function defaultPattern(index) {
     lengthSteps: 16,   // 16th notes
     channel: index,    // 0-based MIDI channel; defaults line up with Elektron track channels 1-8
     swing: 50,         // 50 = straight, up to 80 like the Elektron range
+    // Track-level PROB: the odds every trig on the track runs at unless it
+    // carries its own PROB lock. 100 = the box default, i.e. always. This is a
+    // real byte on the hardware (SPEC.track.trackProb), not a bulk stamp over
+    // the per-trig lane.
+    trackProb: 100,
     notes: [],
     // Provenance: the box/pattern/track this slot was imported from — or was
     // last sent to. null on patterns that have never met a box; see
@@ -78,6 +83,7 @@ export function loadState() {
     // backfill fields added after a pattern was saved.
     for (const p of state.patterns) {
       if (typeof p.swing !== 'number') p.swing = 50;
+      if (typeof p.trackProb !== 'number') p.trackProb = 100;
       if (p.source === undefined) p.source = null;
       if (p.dest === undefined) p.dest = null;
       for (const n of p.notes) {

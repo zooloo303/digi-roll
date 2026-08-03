@@ -11,8 +11,9 @@
 // means nothing (the box scrubs those bytes when it creates a trig anyway).
 //
 // Interactions:
-//   drag a PROB cell up/dn-> sets 0-100 (100 clears the lock); drag sideways to
-//                            paint the same value across steps
+//   drag a PROB cell up/dn-> sets an explicit 0-100 lock; drag sideways to
+//                            paint the same value across steps. Unlocked steps
+//                            show the track's own PROB default, dimmed.
 //   click a COND cell     -> grouped picker popover
 //   click a FILL cell     -> cycles  none -> ON -> OFF -> none
 //   drag sideways on COND/FILL -> paints the anchor cell's value across steps
@@ -77,12 +78,13 @@ export function setTrigField(notes, steps, field, value) {
 // FILL is a tri-state, so clicking walks all three: none -> ON -> OFF -> none.
 export const cycleFill = current => (current == null ? true : current === true ? false : null);
 
-// Vertical drag to probability. Up raises the odds; the top of the range means
-// "no lock", so dragging all the way up takes the lock off rather than storing
-// a 100% that behaves identically.
+// Vertical drag to probability. Up raises the odds, and the top of the range
+// is an explicit 100% lock rather than "no lock": once a track carries its own
+// PROB default, locking a trig back up to 100 is the only way to say "this one
+// always plays". Clearing a lock is the alt/right-click gesture.
 export function probFromDrag(startValue, dy) {
   const raw = Math.round((startValue ?? 100) - dy / 2);
-  return raw >= 100 ? null : Math.max(0, Math.min(100, raw));
+  return Math.max(0, Math.min(100, raw));
 }
 
 export class TrigLane {
@@ -297,6 +299,9 @@ export class TrigLane {
     const p = this.getPattern();
     const w = KEY_W + p.lengthSteps * CELL_W;
     const live = this._stepsWithNotes();
+    // What an unlocked trig actually runs at. Only worth drawing when the track
+    // isn't at the box default — a lane full of dimmed "100"s says nothing.
+    const trackProb = p.trackProb ?? 100;
     const selected = this.getSelectedIds?.() ?? new Set();
     const selectedSteps = new Set(p.notes.filter(n => selected.has(n.id)).map(n => n.step));
 
@@ -323,6 +328,13 @@ export class TrigLane {
           ctx.fillRect(x, y, CELL_W, 2);
           ctx.fillStyle = '#e4e7ec';
           const text = cellText(field, value);
+          const tw = ctx.measureText(text).width;
+          ctx.fillText(text, x + Math.max(2, (CELL_W - tw) / 2), y + ROW_H / 2 + 1);
+        } else if (isLive && field === 'prob' && trackProb !== 100) {
+          // Inherited, not stored: this trig has no lock of its own and runs at
+          // the track's odds. Dimmed so it never reads as a lock.
+          ctx.fillStyle = '#59606d';
+          const text = String(trackProb);
           const tw = ctx.measureText(text).width;
           ctx.fillText(text, x + Math.max(2, (CELL_W - tw) / 2), y + ROW_H / 2 + 1);
         } else if (isLive) {
@@ -363,7 +375,7 @@ export class TrigLane {
       const y = ROWS.indexOf('prob') * ROW_H + ROW_H / 2 + 1;
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 10px system-ui';
-      ctx.fillText(this.drag.value == null ? 'no lock' : `${this.drag.value}%`, x + 2, y);
+      ctx.fillText(`${this.drag.value}%`, x + 2, y);
     }
   }
 }

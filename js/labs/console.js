@@ -22,7 +22,7 @@ const DECODER_BY_FAMILY = {
 };
 import { loadState, saveState, NUM_SLOTS } from '../state.js';
 import { deviceNotesToRoll, rollLengthForTrack, makeSource, attachTrigSettings } from '../roll-bridge.js';
-import { readTrackTrigSettings } from '../elektron/trig-cond.js';
+import { readTrackTrigSettings, readTrackProb } from '../elektron/trig-cond.js';
 import { PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage } from '../elektron/safe-write.js';
 import { trackNotesForTarget, describeChordDrops } from '../elektron/copy-track.js';
 import { downloadBytes } from '../download.js';
@@ -289,6 +289,7 @@ $('impGo').onclick = () => {
   const p = st.patterns[slot];
   p.name = `${imported.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
+  p.trackProb = readTrackProb(imported.spec, imported.payload, t);
   p.notes = deviceNotesToRoll(notes, lengthSteps);
   // Provenance: the roll's "Send to box" button starts aimed at exactly this
   // pattern and track, and refuses if a different box is plugged in.
@@ -537,6 +538,9 @@ $('copyGo').onclick = async () => {
 
     const result = await safeWriteTrack(device, {
       index, trackIndex: dstTrack, notes,
+      // The source track's PROB default is what its unlocked trigs run at, so
+      // it travels with them rather than leaving them at the target's odds.
+      trackProb: readTrackProb(copySource.mod.SPEC, copySource.payload, srcTrack),
       onStatus: setStatus,
       onLog: logNote,
       onBackup: b => downloadBytes(b.name, b.bytes),

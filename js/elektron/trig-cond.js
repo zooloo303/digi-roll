@@ -1,4 +1,6 @@
-// Per-trig PROB / FILL / COND: reading and writing the three per-step lanes.
+// Per-trig PROB / FILL / COND: reading and writing the three per-step lanes —
+// plus the track's own PROB default, which is the other half of the same
+// probability model and lives one byte away in the same track struct.
 //
 // These are pure functions over a pattern-kit payload plus a device spec. They
 // compose with the hardware-verified decode/encode in pattern-core.js rather
@@ -17,7 +19,8 @@
 // trigProb`, so this module never hard-codes a number.
 
 import {
-  NONE, condFromByte, condToByte, fillFromByte, fillToByte, probFromByte, probToByte,
+  NONE, PROB_MIN, PROB_MAX,
+  condFromByte, condToByte, fillFromByte, fillToByte, probFromByte, probToByte,
   isDefaultTrigSetting,
 } from './conditions.js';
 
@@ -102,6 +105,47 @@ export function applyTrackTrigSettings(spec, payload, trackIndex, byStep) {
     payload[laneOffset(spec, trigFill, trackIndex, step)] = fillToByte(setting.fill);
     payload[laneOffset(spec, trigProb, trackIndex, step)] = probToByte(setting.prob);
   }
+  return payload;
+}
+
+// --- Track-level PROB ----------------------------------------------------------
+//
+// A single byte in the track's defaults tail (`spec.track.trackProb`), and the
+// other half of the hardware's probability model: a trig with no PROB lock of
+// its own runs at the track's odds. Unlike the three per-step lanes there is no
+// `FF` "nothing stored" case — the byte is always a real percentage, 0x64 (100)
+// by default.
+
+const trackProbOffset = (spec, trackIndex) => {
+  if (spec.track.trackProb == null) {
+    throw new Error(`${spec.device} spec has no track PROB offset`);
+  }
+  return spec.pattern.tracksOffset + trackIndex * spec.track.size + spec.track.trackProb;
+};
+
+// One track's default probability, 0–100.
+//
+// An out-of-range byte reads as 100 with a warning rather than throwing: it
+// would mean the field has moved, and a pattern we can't fully read must still
+// open — the same rule condFromByte follows.
+export function readTrackProb(spec, payload, trackIndex) {
+  assertTrack(spec, trackIndex);
+  const byte = payload[trackProbOffset(spec, trackIndex)];
+  if (byte > PROB_MAX) {
+    console.warn(`digi-roll: out-of-range track probability ${byte} — treating as ${PROB_MAX}%`);
+    return PROB_MAX;
+  }
+  return byte;
+}
+
+// Write one track's default probability into a payload, in place, and return
+// it. Exactly one byte moves. `null`/undefined means "the box default", 100 —
+// there is no way to store "unset", so a pattern that never met a box writes
+// the same value the box would already be holding, and the diff stays empty.
+export function applyTrackProb(spec, payload, trackIndex, prob) {
+  assertTrack(spec, trackIndex);
+  const v = prob == null ? PROB_MAX : Math.max(PROB_MIN, Math.min(PROB_MAX, Math.round(prob)));
+  payload[trackProbOffset(spec, trackIndex)] = v;
   return payload;
 }
 

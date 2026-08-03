@@ -4,11 +4,14 @@
 //   click/drag on empty cell  -> create note, drag right to set length
 //   drag note body            -> move (pitch + step)
 //   drag note's right edge    -> resize
+//   shift + drag note's edge  -> fine resize, snapped to what the box can store
 //   shift+drag on note        -> velocity (up = harder), applied to the whole selection
 //   shift+click on note       -> toggle it in/out of the selection
 //   cmd/ctrl+drag on note     -> micro-timing offset
 //   cmd/ctrl+drag on empty    -> marquee select
-//   right-click (or alt+click) on note -> delete
+//   alt+drag on note          -> duplicate the note (or the selection) and move the copy
+//   alt+click on note         -> delete (on release, so a drag can mean copy instead)
+//   right-click on note       -> delete, immediately
 //   Delete/Backspace          -> delete selected notes
 
 import { makeNote } from './state.js';
@@ -74,10 +77,17 @@ export class PianoRoll {
     // it follows every resize and redraw without the call sites knowing.
     this.onResize = opts.onResize;
     this.onAfterDraw = opts.onAfterDraw;
+    // Snap a fractional note length to something the device can actually
+    // store. Injected, because the roll knows nothing about devices; absent,
+    // shift-resize falls back to whole steps like a plain drag.
+    this.snapLen = opts.snapLen ?? null;
     this.selected = new Set();                 // note ids
     this.lastTouched = null;                   // id the velocity slider mirrors
     this.drag = null;
     this.hover = null;                         // {step, pitch} the chord ghost follows
+    // Last grid cell pressed. Paste lines the clipboard up with it, so "click
+    // where you want it, then paste" works the way it does in a DAW.
+    this.caret = null;                         // {step, pitch} | null
     this.playhead = null;
 
     canvas.addEventListener('mousedown', e => this._down(e));
@@ -184,8 +194,9 @@ export class PianoRoll {
       return;
     }
     const p = this.getPattern();
+    this.caret = { step: pos.step, pitch: pos.pitch };
 
-    if (pos.note && (e.button === 2 || e.altKey)) {
+    if (pos.note && e.button === 2) {
       this.onBeforeEdit?.();
       p.notes = p.notes.filter(n => n.id !== pos.note.id);
       this.selected.delete(pos.note.id);
@@ -195,6 +206,13 @@ export class PianoRoll {
     }
     if (e.button !== 0) return;
     const mod = e.metaKey || e.ctrlKey;
+
+    if (pos.note && e.altKey) {
+      // Undecided until it moves, the same bargain shift already strikes on a
+      // note: a click deletes (on release), a drag duplicates and moves the copy.
+      this.drag = { mode: 'alt', note: pos.note, grabStep: pos.step, startX: e.clientX, startY: e.clientY };
+      return;
+    }
 
     if (pos.note && e.shiftKey) {
       // Undecided until it moves: a click toggles selection, a drag sets velocity.
@@ -243,10 +261,28 @@ export class PianoRoll {
     if (!this.drag) { this._trackHover(e); return; }
     const pos = this._pos(e);
     const p = this.getPattern();
-    const n = this.drag.note;
+    let n = this.drag.note;
+    const past = () => Math.abs(e.clientX - this.drag.startX) > DRAG_PX
+                    || Math.abs(e.clientY - this.drag.startY) > DRAG_PX;
+
+    if (this.drag.mode === 'alt') {
+      if (!past()) return;
+      // Clone the same group a plain move would carry: the selection when the
+      // pressed note is part of it, otherwise just that note. The copies become
+      // the selection and the drag continues on them, so the originals stay put.
+      const src = this.selected.has(n.id) ? this.selectedNotes() : [n];
+      this.onBeforeEdit?.();
+      const clones = src.map(x => makeNote(x.step, x.pitch, x.len, x.velocity, x.micro, x));
+      p.notes.push(...clones);
+      this.setSelection(clones.map(c => c.id));
+      const clone = clones[src.indexOf(n)];
+      this.drag = { mode: 'move', note: clone, dStep: this.drag.grabStep - clone.step,
+                    baseStep: clone.step, basePitch: clone.pitch, group: this._groupStart() };
+      n = clone;
+    }
 
     if (this.drag.mode === 'shift') {
-      if (Math.abs(e.clientX - this.drag.startX) <= DRAG_PX && Math.abs(e.clientY - this.drag.startY) <= DRAG_PX) return;
+      if (!past()) return;
       if (!this.selected.has(n.id)) this.select(n);
       else { this.lastTouched = n.id; this.onSelect?.(n); }
       this.onBeforeEdit?.();
@@ -274,10 +310,21 @@ export class PianoRoll {
       const micro = Math.max(-0.49, Math.min(0.49, this.drag.startMicro + (e.clientX - this.drag.startX) * 0.01));
       if (micro !== n.micro) { n.micro = micro; this.draw(); }
     } else if (this.drag.mode === 'resize') {
-      const len = Math.max(1, Math.min(pos.step - n.step + 1, p.lengthSteps - n.step));
+      // Shift switches to fine mode: the raw fractional length under the
+      // pointer, snapped to whatever the device can store. Shift is free here —
+      // its velocity meaning binds on the note body, not the edge.
+      const room = p.lengthSteps - n.step;
+      const fine = e.shiftKey && !!this.snapLen;
+      const len = fine
+        ? this.snapLen(pos.x / CELL_W - n.step, room)
+        : Math.max(1, Math.min(pos.step - n.step + 1, room));
+      const wasFine = this.drag.fine;
+      this.drag.fine = fine;
       if (len !== n.len) {
         for (const cn of this.drag.chord ?? [n]) cn.len = len; // chord notes share a step, so one clamp fits all
         this.draw();
+      } else if (fine !== wasFine) {
+        this.draw(); // the readout appears (or goes) the moment shift is pressed
       }
     } else if (this.drag.mode === 'move') {
       // One delta for the whole selection, clamped so no member leaves the grid.
@@ -313,7 +360,13 @@ export class PianoRoll {
     if (!this.drag) return;
     const d = this.drag;
     this.drag = null;
-    if (d.mode === 'shift') {          // never passed the threshold: toggle membership
+    if (d.mode === 'alt') {            // never passed the threshold: it was a delete after all
+      const p = this.getPattern();
+      this.onBeforeEdit?.();
+      p.notes = p.notes.filter(n => n.id !== d.note.id);
+      this.selected.delete(d.note.id);
+      this.onChange();
+    } else if (d.mode === 'shift') {   // never passed the threshold: toggle membership
       if (this.selected.has(d.note.id)) {
         this.selected.delete(d.note.id);
         if (this.lastTouched === d.note.id) this.lastTouched = null;
@@ -389,7 +442,9 @@ export class PianoRoll {
     for (const n of p.notes) {
       const x = KEY_W + (n.step + (n.micro ?? 0)) * CELL_W;
       const y = (PITCH_MAX - n.pitch) * CELL_H;
-      const w = n.len * CELL_W - 3;
+      // A 0.125-step note is barely over a pixel wide; keep a sliver drawn so
+      // the shortest lengths the box can store are still visible.
+      const w = Math.max(2, n.len * CELL_W - 3);
       const bright = 45 + Math.round((n.velocity / 127) * 45);
       ctx.fillStyle = `hsl(28, 90%, ${bright}%)`;
       ctx.beginPath();
@@ -471,6 +526,17 @@ export class PianoRoll {
       ctx.font = 'bold 11px system-ui';
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(micro ? `micro ${n.micro >= 0 ? '+' : ''}${n.micro.toFixed(2)}` : `vel ${n.velocity}`, tx, ty);
+    }
+
+    // Fine resize is guesswork without a number, so the length follows the edge.
+    if (this.drag?.mode === 'resize' && this.drag.fine) {
+      const n = this.drag.note;
+      const tx = KEY_W + (n.step + (n.micro ?? 0) + n.len) * CELL_W + 3;
+      const ty = Math.max(11, (PITCH_MAX - n.pitch) * CELL_H - 4);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 11px system-ui';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`${+n.len.toFixed(3)}`, tx, ty);
     }
 
     // Playhead
