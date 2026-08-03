@@ -189,7 +189,12 @@ describe.skipIf(!have)('roll-bridge note conversion', () => {
     // The roll can't draw a pitch-12 note, but a box can hold one; copying
     // between boxes must not transpose it into range.
     expect(deviceNotesToEncoder([{ step: 0, pitch: 12, velocity: 90, lenSteps: 0.25, micro: 1 / 24 }]))
-      .toEqual([{ step: 0, pitch: 12, velocity: 90, len: 0.25, micro: 1 / 24 }]);
+      .toEqual([{
+        step: 0, pitch: 12, velocity: 90, len: 0.25, micro: 1 / 24,
+        // Trig conditions come from the per-step lanes, not from a decoded
+        // note, so they start unlocked and attachTrigSettings fills them in.
+        prob: null, fill: null, cond: null,
+      }]);
   });
 
   it('rounds a track length up to whole bars for the roll', () => {

@@ -7,10 +7,20 @@
 // converter, because the two pattern structs only look alike; the note model
 // is the thing both boxes genuinely agree on.
 //
-// Only note data crosses: trig bits, note, velocity, length, micro-timing.
-// Sounds, p-locks, kit and pattern settings belong to the target and are left
-// exactly as they were — this is the same read-modify-write of one track as
-// Phase 2/3, just with the notes coming from somewhere else.
+// Only note data crosses: trig bits, note, velocity, length, micro-timing, and
+// the three per-trig conditions (PROB/FILL/COND). Sounds, p-locks, kit and
+// pattern settings belong to the target and are left exactly as they were —
+// this is the same read-modify-write of one track as Phase 2/3, just with the
+// notes coming from somewhere else.
+//
+// Conditions need no cross-device policy: the DT2 and DN2 store them
+// identically and share one 76-value COND list (hardware-verified 2026-08-02),
+// so nothing can be dropped for want of a target-side equivalent. If that ever
+// stops being true, the place to say so is `warnings`, alongside chord drops —
+// loudly, never silently.
+
+import { readTrackTrigSettings, applyTrackTrigSettings, attachTrigSettings, trigSettingsFromNotes }
+  from './trig-cond.js';
 
 // Decoded notes (trackNotes: lenSteps) → the encoder's shape (len), with none
 // of the piano roll's clamping: clamping a pitch into the roll's drawable rows
@@ -23,6 +33,9 @@ export function deviceNotesToEncoder(notes) {
     velocity: n.velocity,
     len: n.lenSteps,
     micro: n.micro,
+    prob: n.prob ?? null,
+    fill: n.fill ?? null,
+    cond: n.cond ?? null,
   }));
 }
 
@@ -65,8 +78,18 @@ export function describeChordDrops(drops, targetName = 'the target') {
 // Read one track's notes out of an already-decoded source pattern, in the
 // shape encodeTrackNotes wants, truncated to what the target device can hold.
 // `sourceMod` / `targetMod` are the per-device modules (dt2/pattern.js etc.).
-export function trackNotesForTarget(sourceMod, sourcePatternKit, sourceTrack, targetMod) {
-  const notes = deviceNotesToEncoder(sourceMod.trackNotes(sourcePatternKit, sourceTrack));
+//
+// `sourcePayload` is optional and only needed to carry trig conditions: they
+// live in per-step lanes that decodePatternKit doesn't surface, so they are
+// read from the raw bytes and stamped onto the notes. Every note on a step
+// gets the same values, which is what makes chord truncation safe — whichever
+// notes survive, the step's settings survive with them.
+export function trackNotesForTarget(sourceMod, sourcePatternKit, sourceTrack, targetMod, sourcePayload = null) {
+  const decoded = sourceMod.trackNotes(sourcePatternKit, sourceTrack);
+  const notes = deviceNotesToEncoder(decoded);
+  if (sourcePayload) {
+    attachTrigSettings(notes, readTrackTrigSettings(sourceMod.SPEC, sourcePayload, sourceTrack));
+  }
   return truncateChords(notes, targetMod.SPEC.trig.maxNotes);
 }
 
@@ -81,11 +104,14 @@ export function trackNotesForTarget(sourceMod, sourcePatternKit, sourceTrack, ta
 // encodeTrackNotes itself couldn't place (it should be 0 — chord truncation
 // happens here first, where the policy is explicit).
 export function copyTrack({
-  sourceMod, sourcePatternKit, sourceTrack,
+  sourceMod, sourcePatternKit, sourcePayload = null, sourceTrack,
   targetMod, targetPayload, targetTrack,
   targetName = targetMod?.SPEC?.device ?? 'the target',
 }) {
-  const { notes, drops } = trackNotesForTarget(sourceMod, sourcePatternKit, sourceTrack, targetMod);
+  const { notes, drops } = trackNotesForTarget(sourceMod, sourcePatternKit, sourceTrack, targetMod, sourcePayload);
   const { payload, dropped } = targetMod.encodeTrackNotes(targetPayload, targetTrack, notes);
+  // Conditions ride on the payload encodeTrackNotes just returned — a fresh
+  // copy, so this is the only mutation of an already-cloned buffer.
+  applyTrackTrigSettings(targetMod.SPEC, payload, targetTrack, trigSettingsFromNotes(notes));
   return { payload, notes, dropped, drops, warnings: describeChordDrops(drops, targetName) };
 }

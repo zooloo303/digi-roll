@@ -56,25 +56,11 @@ export function rollNotesToDevice(notes) {
   }));
 }
 
-// Stamp per-step trig settings onto decoded notes, in place, returning them.
-//
-// `byStep` is what readTrackTrigSettings produced. Because the three fields
-// belong to the trig rather than the note, every note on a step gets the same
-// values — the step-uniformity rule digi-roll holds everywhere. Notes on steps
-// with nothing stored are left at the defaults.
-//
-// This runs between trackNotes and deviceNotesToRoll at each import site.
-export function attachTrigSettings(notes, byStep) {
-  if (!byStep?.size) return notes;
-  for (const n of notes) {
-    const t = byStep.get(n.step);
-    if (!t) continue;
-    n.prob = t.prob ?? null;
-    n.fill = t.fill ?? null;
-    n.cond = t.cond ?? null;
-  }
-  return notes;
-}
+// Stamping per-step settings onto notes lives with the settings themselves
+// (device layer) and is re-exported here, like deviceNotesToEncoder below, so
+// app-layer callers have one place to look. It runs between trackNotes and
+// deviceNotesToRoll at each import site.
+export { attachTrigSettings } from './elektron/trig-cond.js';
 
 // Decoded device notes → the encoder's note shape, with none of the roll's
 // clamping: the interchange format for cross-device copy. It lives with the

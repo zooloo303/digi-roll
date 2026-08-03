@@ -105,6 +105,28 @@ export function applyTrackTrigSettings(spec, payload, trackIndex, byStep) {
   return payload;
 }
 
+// Stamp per-step trig settings onto notes, in place, returning them.
+//
+// `byStep` is what readTrackTrigSettings produced. Because the three fields
+// belong to the trig rather than the note, every note on a step gets the same
+// values — the step-uniformity rule digi-roll holds everywhere. Notes on steps
+// with nothing stored keep their defaults.
+//
+// This is the join between `trackNotes` (per note) and the lanes (per step),
+// used by both the import path and cross-device copy. js/roll-bridge.js
+// re-exports it for app-layer callers.
+export function attachTrigSettings(notes, byStep) {
+  if (!byStep?.size) return notes;
+  for (const n of notes) {
+    const t = byStep.get(n.step);
+    if (!t) continue;
+    n.prob = t.prob ?? null;
+    n.fill = t.fill ?? null;
+    n.cond = t.cond ?? null;
+  }
+  return notes;
+}
+
 // Notes → the per-step settings the write path stores.
 //
 // All three fields are per trig, so a step's value comes from its first note in

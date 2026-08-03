@@ -443,7 +443,7 @@ $('wrRestore').onclick = async () => {
 // the connected box, and the write runs the same safe flow as everything else:
 // re-fetch, backup, minimal-diff encode, read back, verify.
 
-let copySource = null; // { patternKit, mod, label, deviceName }
+let copySource = null; // { patternKit, payload, mod, label, deviceName }
 
 for (let i = 0; i < 128; i++) $('copySrcPattern').add(new Option(bankName(i), i));
 for (let i = 0; i < 128; i++) $('copyDstPattern').add(new Option(bankName(i), i));
@@ -463,8 +463,10 @@ function syncCopyButtons() {
   }
 }
 
-function setCopySource(patternKit, mod, label, deviceName) {
-  copySource = { patternKit, mod, label, deviceName };
+// `payload` comes along because the per-trig conditions live in per-step lanes
+// that decodePatternKit doesn't surface — they are read from the raw bytes.
+function setCopySource(patternKit, payload, mod, label, deviceName) {
+  copySource = { patternKit, payload, mod, label, deviceName };
   $('copyInfo').textContent = '';
   $('copyInfo').classList.remove('warn');
   $('copySrcInfo').textContent = `${deviceName} · ${patternSummary(patternKit, label)}`;
@@ -484,7 +486,7 @@ $('copySrcLoad').onclick = async () => {
   try {
     logNote(`Copy source: requesting pattern-kit ${bankName(index)}…`);
     const payload = await device.fetchPatternKit(index);
-    setCopySource(decoder.decodePatternKit(payload), decoder, bankName(index), device.identity.name);
+    setCopySource(decoder.decodePatternKit(payload), payload, decoder, bankName(index), device.identity.name);
   } catch (err) {
     setStatus(`Couldn't load copy source: ${err.message}`, true);
     logError(`Copy source fetch failed: ${err.message}`);
@@ -505,7 +507,7 @@ $('copySrcFileInput').onchange = async () => {
     if (!msg.checksumOk || !msg.countOk) throw new Error(`pattern ${bankName(msg.index)} is corrupt in this file`);
     const { mod, label } = DECODER_BY_FAMILY[msg.family];
     $('copySrcPattern').value = msg.index;
-    setCopySource(mod.decodePatternKit(msg.payload), mod, bankName(msg.index), label);
+    setCopySource(mod.decodePatternKit(msg.payload), msg.payload, mod, bankName(msg.index), label);
   } catch (err) {
     setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
     logError(`Copy source decode failed: ${err.message}`);
@@ -525,7 +527,7 @@ $('copyGo').onclick = async () => {
   $('copyGo').disabled = true;
   try {
     // Chord policy first, so the user is told what won't fit *before* deciding.
-    const { notes, drops } = trackNotesForTarget(copySource.mod, copySource.patternKit, srcTrack, gate.mod);
+    const { notes, drops } = trackNotesForTarget(copySource.mod, copySource.patternKit, srcTrack, gate.mod, copySource.payload);
     const warnings = describeChordDrops(drops, device.identity.name);
     for (const w of warnings) logError(`Chord truncated — ${w}`);
     if (warnings.length) {

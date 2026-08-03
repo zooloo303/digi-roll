@@ -9,9 +9,10 @@
 //                     UI downloads as .syx) before a single byte is sent, and
 //                     the write aborts if that hook throws. The hook is
 //                     mandatory: no backup, no write.
-//   2. minimal diff   only encodeTrackNotes touches the payload, so every byte
-//                     outside the track's step words and the trig-record pool
-//                     round-trips identically.
+//   2. minimal diff   only encodeTrackNotes and applyTrackTrigSettings touch
+//                     the payload, so every byte outside the track's step
+//                     words, the trig-record pool and that track's three
+//                     trig-condition lanes round-trips identically.
 //   3. allowlist      writeGate() refuses any OS build the format hasn't been
 //                     verified against.
 //   4. verify         the pattern is read back and byte-compared; the caller
@@ -29,6 +30,7 @@
 
 import { buildDumpMessage, DUMP, FAMILY } from './protocol.js';
 import { bankName, diffPayloads, trackTrigCount } from './pattern-core.js';
+import { applyTrackTrigSettings, trigSettingsFromNotes } from './trig-cond.js';
 import * as dt2 from './dt2/pattern.js';
 import * as dn2 from './dn2/pattern.js';
 
@@ -126,6 +128,13 @@ export async function safeWriteTrack(device, {
   onLog(`Pre-write backup saved: ${backup.name}`);
 
   const { payload, dropped } = mod.encodeTrackNotes(original, trackIndex, notes);
+  // Per-trig conditions live in three per-step lanes the encoder doesn't know
+  // about, so they go on afterwards, into the fresh copy it just returned.
+  // applyTrackTrigSettings scrubs all 128 steps of this track's lanes first —
+  // the box does that when it creates a trig, and a write that skips it would
+  // leave a new trig inheriting a deleted one's probability.
+  applyTrackTrigSettings(mod.SPEC, payload, trackIndex, trigSettingsFromNotes(notes));
+
   onStatus(`Writing ${label} T${trackIndex + 1}…`);
   await device.sendPatternKit(index, payload);
 
