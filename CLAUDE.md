@@ -68,5 +68,5 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 - Protocol work is ported from [elk-herd](https://github.com/mzero/elk-herd)
   (BSD-2-Clause, by mzero) — keep the attribution.
 
-`PLAN.md` is Neil's local roadmap scratchpad and is deliberately untracked —
-don't expect it in a fresh clone.
+`PLAN.md` is the roadmap — what's shipped and what's next. Next feature up is
+per-trig conditions (probability / fill / `COND`), then p-lock lanes.

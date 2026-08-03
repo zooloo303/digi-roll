@@ -145,10 +145,9 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 
 ## Ideas / later
 
-- **p-lock lanes** in the roll (filter, pitch, … as automation lanes) — needs
-  more struct mapping with `difflab.html`
-- **Pattern chaining preview** — audition slots A→B→C as a sequence
-- **Wider firmware support** — the write allowlist pins one verified OS build per
-  box, so an OS update drops writes to read-only until the format is re-checked
+Next up: **probability / fill / trig conditions** — drawing `50%`, `FILL`, `1ST`
+and the `A:B` ratios in the roll — then **p-lock lanes** (filter, pitch, … as
+automation lanes). After that, pattern chaining preview and widening the write
+allowlist beyond one verified OS build per box. See `PLAN.md` for the detail.
 
 The Octatrack stays on the live-record path; it has no pattern SysEx.
