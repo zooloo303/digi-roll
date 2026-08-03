@@ -6,15 +6,15 @@
 // they get their own surface locked to the step grid rather than living in the
 // selection panel, where they would read as "a property of the notes I picked".
 //
-// Rows, top to bottom: COND, FILL, PROB. A cell is live only where the step has
+// Rows, top to bottom: PROB, COND, FILL. A cell is live only where the step has
 // notes; everything else is inert, because a condition on a step with no trig
 // means nothing (the box scrubs those bytes when it creates a trig anyway).
 //
 // Interactions:
-//   click a COND cell     -> grouped picker popover
-//   click a FILL cell     -> cycles  none -> ON -> OFF -> none
 //   drag a PROB cell up/dn-> sets 0-100 (100 clears the lock); drag sideways to
 //                            paint the same value across steps
+//   click a COND cell     -> grouped picker popover
+//   click a FILL cell     -> cycles  none -> ON -> OFF -> none
 //   drag sideways on COND/FILL -> paints the anchor cell's value across steps
 //   right-click / alt-click any cell -> clears that field on the step
 //
@@ -29,7 +29,9 @@ import { CELL_W, KEY_W } from './pianoroll.js';
 import { COND_BY_DENOMINATOR, CONDITIONS, condDescription } from './elektron/conditions.js';
 
 const ROW_H = 18;
-const ROWS = ['cond', 'fill', 'prob'];
+// Row order, top to bottom. Everything else derives from this — drawing, hit
+// testing and the drag readout all index through it.
+const ROWS = ['prob', 'cond', 'fill'];
 export const LANE_H = ROWS.length * ROW_H;
 
 const ROW_LABEL = { cond: 'COND', fill: 'FILL', prob: 'PROB' };
@@ -355,12 +357,13 @@ export class TrigLane {
     ctx.lineTo(KEY_W + 0.5, LANE_H);
     ctx.stroke();
 
-    // Live readout while dragging probability.
+    // Live readout while dragging probability, in whichever row PROB occupies.
     if (this.drag?.moved && this.drag.field === 'prob') {
       const x = KEY_W + this.drag.step * CELL_W;
+      const y = ROWS.indexOf('prob') * ROW_H + ROW_H / 2 + 1;
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 10px system-ui';
-      ctx.fillText(this.drag.value == null ? 'no lock' : `${this.drag.value}%`, x + 2, ROW_H * 2 + ROW_H / 2 + 1);
+      ctx.fillText(this.drag.value == null ? 'no lock' : `${this.drag.value}%`, x + 2, y);
     }
   }
 }

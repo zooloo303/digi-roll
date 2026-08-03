@@ -86,9 +86,9 @@ notes arriving.
 - Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z undo and redo (100 steps); Cmd/Ctrl+C/X/V
   copy, cut and paste — the clipboard survives switching pattern slots
 - **Trig lane** under the grid — the box's TRIG page 1, one column per step:
-  **COND** (click for a picker: `PRE`/`NEI`/`1ST`/`LST`, their `!` negations,
-  and every ratio from `1:2` to `!8:8`), **FILL** (click to cycle none / ON /
-  OFF) and **PROB** (drag up or down; the top means no lock). Drag sideways to
+  **PROB** (drag up or down; the top means no lock), **COND** (click for a
+  picker: `PRE`/`NEI`/`1ST`/`LST`, their `!` negations, and every ratio from
+  `1:2` to `!8:8`) and **FILL** (click to cycle none / ON / OFF). Drag sideways to
   paint across steps, right-click to clear, and edits reach every selected step
   at once. These belong to the trig, so every note on a step shares them —
   exactly as the hardware works
@@ -142,7 +142,7 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 - `js/midi.js` — Web MIDI engine: output handling, lookahead scheduler
   (timestamped `MIDIOutput.send`, 24 ppqn clock, start/stop transport)
 - `js/pianoroll.js` — canvas editor
-- `js/triglane.js` — the step-aligned COND/FILL/PROB strip under the roll
+- `js/triglane.js` — the step-aligned PROB/COND/FILL strip under the roll
 - `js/main.js` — UI wiring
 - `js/elektron/` — SysEx protocol: `sevenbit.js` (7↔8-bit packing),
   `protocol.js` (framing/checksums), `device.js` (handshake, dumps),

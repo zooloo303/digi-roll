@@ -80,12 +80,12 @@
       <div class="grp">
         <div class="cap">File</div>
         <div class="btns">
-          <button id="export" title="Download this pattern as a Standard MIDI File. Trig conditions (COND/FILL/PROB) are not exported — a MIDI file has no such concept">Export .mid</button>
+          <button id="export" title="Download this pattern as a Standard MIDI File. Trig conditions (PROB/COND/FILL) are not exported — a MIDI file has no such concept">Export .mid</button>
           <button id="import" title="Replace this pattern with the notes from a MIDI file">Import .mid</button>
         </div>
         <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       </div>
-      <p class="hint">Drag a note's right edge to resize · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · right-click to delete. Trig conditions live in the <b>COND/FILL/PROB</b> lane under the grid.</p>
+      <p class="hint">Drag a note's right edge to resize · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · right-click to delete. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid.</p>
     </aside>
 
     <!-- ===== Harmony ===== -->
@@ -204,12 +204,12 @@
       <p>Click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
       <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Velocity slider all apply to the whole selection.</p>
       <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
-      <h3>Trig conditions (COND / FILL / PROB)</h3>
+      <h3>Trig conditions (PROB / COND / FILL)</h3>
       <p>The strip under the grid is the box's TRIG page 1, one column per step. These belong to the <b>trig</b>, not to a note, so every note on a step shares them — exactly as the hardware works. A cell is only live where the step has notes.</p>
       <ul>
+        <li><b>PROB</b> — drag up or down to set 0–100%, re-rolled every pass. Dragging to the top takes the lock off.</li>
         <li><b>COND</b> — click for the picker: the eight logic conditions (<b>PRE</b>, <b>NEI</b>, <b>1ST</b>, <b>LST</b> and their <b>!</b> negations) plus every ratio from <b>1:2</b> to <b>!8:8</b>, tabbed by denominator. <code>2:4</code> plays on loop 2 of every 4; <code>!2:4</code> plays on all the others.</li>
         <li><b>FILL</b> — click to cycle none → <b>ON</b> → <b>OFF</b>. ON plays only while FILL is held on the box; OFF plays only while it isn't. Unlocked ignores fill mode entirely — that's a real third state, not a synonym for OFF.</li>
-        <li><b>PROB</b> — drag up or down to set 0–100%, re-rolled every pass. Dragging to the top takes the lock off.</li>
       </ul>
       <p>Drag sideways to paint a value across steps · right-click (or alt-click) clears a cell · and if the step you click holds selected notes, the edit reaches <b>every selected step at once</b>. Conditions survive write-back, cross-device copy and Library saves; they are not in exported .mid files, which have no such concept.</p>
       <p><b>Playing them here is a partial preview.</b> Probability and the loop-counting conditions (<code>1ST</code> and every <code>A:B</code> ratio) are evaluated for real, so a <code>2:4</code> trig really does play every fourth loop. <code>PRE</code>, <code>NEI</code>, <code>LST</code> and <code>FILL</code> always play, because the browser has no neighbour track, no idea a pattern change is coming and no FILL button — the preview is never quieter than the box. Send it to the hardware to hear those properly.</p>
@@ -242,7 +242,7 @@
       <!-- Per-trig conditions, locked to the step grid above. Scrolls
            horizontally with the roll but never vertically out of reach. -->
       <div id="trigLaneWrap" title="Per-trig conditions — these belong to the step, so every note on a step shares them.
-COND: click for the picker · FILL: click cycles none/ON/OFF · PROB: drag up or down (top = no lock)
+PROB: drag up or down (top = no lock) · COND: click for the picker · FILL: click cycles none/ON/OFF
 Drag sideways to paint across steps · right-click clears · edits reach every selected step">
         <canvas id="trigLane"></canvas>
       </div>
