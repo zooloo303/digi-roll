@@ -30,6 +30,10 @@ Provenance key:
   each diff read with the diffing lab — the experiment log is at the end.
   The pass finished with a write smoke test (encode → send → re-read →
   byte-identical), so the write path is enabled for build 0049.
+- **[V2]** confirmed by the **trig-conditions experiment** (2026-08-02, same
+  OS build): the DT2's PROB/FILL/COND mapping checked against a DN2 on a
+  blank A01 — log at the end of this file, fixture
+  `dumps/fixtures/digitone2-A01-conditions-2026-08-02.syx`.
 
 Applies to **pattern struct version 3** (what OS 1.10D emits [F]). Any other
 version is refused rather than guessed at.
@@ -77,9 +81,16 @@ Every field sits at its DT2 offset + 48.
 | offset | size | field |
 |--------|------|-------|
 | 0 | 128 × 2 | step words, uint16be per step (bits below) [F] |
-| 256 | 6 × 128 | six per-step byte arrays of unknown purpose, `FF`-filled — never interpreted (on the DT2 these are hardware-verified NOT to hold note data) [S] |
+| 256 | 128 | **per-step COND** (trig condition), `FF` = none [V2] |
+| 384 | 128 | **per-step FILL**, `FF` = no lock, `00` = OFF, `01` = ON [V2] |
+| 512 | 128 | **per-step PROB** (probability %), `FF` = no lock [V2] |
+| 640 | 3 × 128 | three further per-step byte arrays, still unknown — `FF` in every capture [V2] |
 | 1024 | 128 | per-step byte array, `FF`-filled (the DT2 has its sound-pool p-locks here; the DN2 has no sound pool — unmapped) [S] |
-| 1152 | 35 | track defaults + settings [F]: `+0` default note, `+1` default velocity (0x64), `+2` default length byte (0x0E = one step); `+12` uint16be **track length in steps** (0x0010); bytes `+1152..+1169` match the DT2 tail byte-for-byte, then the DN2 inserts **3 extra bytes** (`40 00 00` in blanks) around `+1173` before rejoining the DT2 tail pattern (`… 7f 00 7f 00 7f`) |
+| 1152 | 35 | track defaults + settings [F]: `+0` default note, `+1` default velocity (0x64), `+2` default length byte (0x0E = one step); `+12` uint16be **track length in steps** (0x0010); `+16` **track-level PROB** as a percentage, default `0x64` = 100 [V2]; bytes `+1152..+1169` match the DT2 tail byte-for-byte, then the DN2 inserts **3 extra bytes** (`40 00 00` in blanks) around `+1173` before rejoining the DT2 tail pattern (`… 7f 00 7f 00 7f`) |
+
+The trig-condition lanes sit at the **same track-relative offsets as the
+DT2's** — the +48 pattern-level shift does not affect them, since it comes
+from the track struct's tail, not its head.
 
 ## Trig-record pool (pattern offset 18996 = 4 + 16 × 1187)
 
@@ -109,6 +120,29 @@ Differences from the DT2, all hardware-verified [V]:
   and "record is free" must be judged by the track byte alone, not
   all-six-bytes-`FF`.
 - Free pool space is all-`FF`, records append in creation order, same as DT2.
+
+## Trig conditions: PROB / FILL / COND [V2]
+
+**Identical to the DT2 in every respect** — same three per-step lanes at the
+same track-relative offsets (256 COND, 384 FILL, 512 PROB), same encodings,
+same tri-state FILL, same track-level PROB at `defaults +16`, and the **same
+76-value COND menu in the same order** (confirmed on the box, including that
+the `:2` group carries no negations). The full value table lives in
+`dt2-pattern-format.md` and is not duplicated here. The p-lock pool stayed
+empty throughout, as on the DT2.
+
+Because both boxes share one list, cross-device track copy needs no COND
+translation — nothing can be dropped for lack of a target-side value.
+
+Verified on the DN2 by predicting the bytes before capturing, then checking:
+8 trigs on track 1 of a blank A01 with COND `PRE`/`!8:8`/`2:4`/`!2:4` on
+trigs 1–4, PROB 45 on trig 5, FILL ON on trig 6, FILL OFF on trig 7, trig 8
+left plain. Predicted `00 4b 12 13` / `2d` / `01 00` and got exactly that,
+with the plain control trig all-`FF` [V2].
+
+Lifecycle (creation scrubs the lanes, deletion clears COND but leaves FILL
+and PROB) was mapped in detail on the DT2; the DN2's clear-a-lock behaviour
+matches (all three go to `FF`).
 
 ## Step word bits
 
@@ -178,3 +212,24 @@ the predicted bytes changed):
 
 Still open: re-verify on any new OS build before extending the write
 allowlist (the fixture suite + this experiment list is the checklist).
+
+## The [V2] trig-conditions log (2026-08-02, blank throwaway A01, OS 1.10D)
+
+Abbreviated pass — the DT2 was walked exhaustively first, so this one was run
+as a falsification test of "the DN2 is identical", with byte predictions
+written down before each capture.
+
+1. **Blank A01 probe**: no trigs on any track, all six per-step arrays `FF`,
+   no p-lock lane allocated, and `defaults +16` already reading `64` (100).
+2. **8 trigs + one setting each** (COND `PRE`, `!8:8`, `2:4`, `!2:4` on trigs
+   1–4; PROB 45 on trig 5; FILL ON on 6; FILL OFF on 7; trig 8 plain) →
+   predicted lane bytes `00 4b 12 13` / `01 00` / `2d` and got them exactly.
+   Lanes 3–5 stayed `FF`; the pool took the DN2's usual one-record-per-note
+   form; the p-lock pool stayed empty.
+3. **Menu order** confirmed on the box as identical to the DT2's, including
+   the `:2` group having no negations — and `!8:8` still index 75, so both
+   boxes have the same 76 values in the same order.
+4. **Clear probes**: removing trig 1's COND, trig 5's PROB and trig 6's FILL
+   wrote `FF` in all three lanes — exactly 3 bytes changed.
+
+End state saved as `dumps/fixtures/digitone2-A01-conditions-2026-08-02.syx`.

@@ -16,6 +16,11 @@ Provenance key — every field below is tagged:
   on a throwaway project, four trigs on track 1 at steps 0/4/8/12 were given,
   respectively, NOTE +3, VEL 37, LEN 1/4, and a left micro-nudge; the dump
   diff (`dumps/digitakt2-verify-2026-08-01.syx`) pinned each field exactly.
+- **[V2]** confirmed by the **trig-conditions experiment** (2026-08-02, OS
+  1.15B build 0070): 16 trigs on track 1 of a blank A01, walked through PROB,
+  FILL and COND with one variable per capture — the log is at the end of this
+  file and the end state is the fixture
+  `dumps/fixtures/digitakt2-A01-conditions-2026-08-02.syx`.
 - **[AR]** inferred from the Analog Rytm's publicly documented layout
   (libanalogrytm `pattern.h`, © bsp).
 
@@ -50,9 +55,15 @@ has a completely different track size and is not decoded.
 | offset | size | field |
 |--------|------|-------|
 | 0 | 128 × 2 | step words, uint16be per step (bits below) [E][F] |
-| 256 | 6 × 128 | six per-step byte arrays of **unknown purpose** — verified NOT to hold note/velocity/length/micro [V]. Almost always `FF`; two fixture trigs show a single small value in the first array (offsets 256+step), cause unknown |
+| 256 | 128 | **per-step COND** (trig condition), `FF` = none [V2] |
+| 384 | 128 | **per-step FILL**, `FF` = no lock, `00` = OFF, `01` = ON [V2] |
+| 512 | 128 | **per-step PROB** (probability %), `FF` = no lock [V2] |
+| 640 | 3 × 128 | three further per-step byte arrays, still **unknown** — `FF` throughout every capture taken so far [V2] |
 | 1024 | 128 | per-step sound p-lock (sound-pool slot), `FF` = none [E] |
-| 1152 | 32 | track defaults + settings [F][V]: `+0` default note (0x3C), `+1` default velocity (0x64), `+2` default length byte (0x0E = one step); `+12` uint16be **track length in steps** (0x0010) [F]; rest unmapped (`3c 64 0e 07 80 00 40 40 40 0e 0c 40 00 10 00 02 64 05 ff …`) |
+| 1152 | 32 | track defaults + settings [F][V]: `+0` default note (0x3C), `+1` default velocity (0x64), `+2` default length byte (0x0E = one step); `+12` uint16be **track length in steps** (0x0010) [F]; `+16` **track-level PROB** as a percentage, default `0x64` = 100 [V2]; rest unmapped (`3c 64 0e 07 80 00 40 40 40 0e 0c 40 00 10 00 02 64 05 ff …`) |
+
+The first three of the six arrays at 256 are the trig-condition lanes — see
+below. This supersedes the earlier note that all six were unknown.
 
 ## Trig-record pool (pattern offset 18948) — hardware-verified [V]
 
@@ -95,6 +106,78 @@ Behavior:
 Deleting a trig clears bit 0 but leaves the other flag bits behind [F], so
 only bit 0 may be used to detect notes.
 
+## Trig conditions: PROB / FILL / COND (track offsets 256, 384, 512) [V2]
+
+The three "conditional locks" on TRIG page 1 are **three independent
+per-step byte lanes** in the track struct — not entries in the p-lock pool,
+which stayed completely empty (`paramId FF`, no lane allocated) through every
+capture of this experiment. One byte per step, 128 steps, `FF` = nothing
+stored.
+
+| lane | track offset | field | encoding |
+|------|--------------|-------|----------|
+| 0 | 256 | **COND** | index into the menu list below (0–75); `FF` = none |
+| 1 | 384 | **FILL** | `01` = ON, `00` = OFF, `FF` = no lock — a **tri-state** |
+| 2 | 512 | **PROB** | the percentage itself, `00`–`64` (0–100); `FF` = no lock |
+
+Verified independent: setting COND on 16 trigs that already carried PROB and
+FILL locks changed exactly 16 bytes, all in lane 0 [V2].
+
+**PROB** is the only one of the three with a track-level default, at track
+offset **1168** (`defaults +16`), also stored as a plain percentage (`0x64` =
+100). FILL and COND have **no track-level value at all** — the box shows them
+padlocked when no trig is held, meaning "per trig only".
+
+**PROB `0x64` is a real stored value**, distinct from `FF`: dialling a trig's
+PROB to 100 stores `64` rather than clearing the lock. Both behave the same
+musically (always plays), but they are different bytes and digi-roll
+round-trips them faithfully.
+
+### The COND menu (76 values, in the box's own order)
+
+The stored byte is the zero-based index. The order is: the four logic pairs
+with each negation immediately after its positive, then the ratios grouped by
+denominator, again with each negation interleaved. The `:2` group has **no
+negations** — `!1:2` would just be `2:2`.
+
+| | | | | | | | |
+|---|---|---|---|---|---|---|---|
+| 0=`PRE` | 1=`!PRE` | 2=`NEI` | 3=`!NEI` | 4=`1ST` | 5=`!1ST` | 6=`LST` | 7=`!LST` |
+| 8=`1:2` | 9=`2:2` | 10=`1:3` | 11=`!1:3` | 12=`2:3` | 13=`!2:3` | 14=`3:3` | 15=`!3:3` |
+| 16=`1:4` | 17=`!1:4` | 18=`2:4` | 19=`!2:4` | 20=`3:4` | 21=`!3:4` | 22=`4:4` | 23=`!4:4` |
+| 24=`1:5` | 25=`!1:5` | 26=`2:5` | 27=`!2:5` | 28=`3:5` | 29=`!3:5` | 30=`4:5` | 31=`!4:5` |
+| 32=`5:5` | 33=`!5:5` | 34=`1:6` | 35=`!1:6` | 36=`2:6` | 37=`!2:6` | 38=`3:6` | 39=`!3:6` |
+| 40=`4:6` | 41=`!4:6` | 42=`5:6` | 43=`!5:6` | 44=`6:6` | 45=`!6:6` | 46=`1:7` | 47=`!1:7` |
+| 48=`2:7` | 49=`!2:7` | 50=`3:7` | 51=`!3:7` | 52=`4:7` | 53=`!4:7` | 54=`5:7` | 55=`!5:7` |
+| 56=`6:7` | 57=`!6:7` | 58=`7:7` | 59=`!7:7` | 60=`1:8` | 61=`!1:8` | 62=`2:8` | 63=`!2:8` |
+| 64=`3:8` | 65=`!3:8` | 66=`4:8` | 67=`!4:8` | 68=`5:8` | 69=`!5:8` | 70=`6:8` | 71=`!6:8` |
+| 72=`7:8` | 73=`!7:8` | 74=`8:8` | 75=`!8:8` | | | | |
+
+Indices 0–15 were walked one value at a time on 16 trigs; the rest is
+extrapolated from that ordering rule and **spot-checked at five anchors** —
+`1:4`=16, `!2:5`=27, `6:6`=44, `4:7`=52, `!8:8`=75 — all of which matched, with
+`!8:8` confirmed on the box as the final menu entry [V2]. The box prints
+negations with an overline; digi-roll writes them `!X` everywhere.
+
+The DN2 uses this same list, same order, same indices [V2] — see
+`dn2-pattern-format.md`.
+
+### Lifecycle (matters for any write path) [V2]
+
+- **Creating a trig scrubs all three lanes for that step** to `FF`. This is
+  why the box never surfaces a stale value.
+- **Deleting a trig clears the trig bit and the COND byte, but leaves FILL
+  and PROB behind.** Observed twice, on two different steps. So a step whose
+  trig bit is clear can still carry `00`/`64`-style leftovers, and those
+  bytes must not be read as live settings.
+- Nothing else moves: no trig-record pool changes, and the step word only
+  ever changes by its documented trig bit.
+
+Because a write path replaces trigs without going through the box's own
+trig-creation, **it has to do that scrub itself** — clear all three lanes
+across all 128 steps of the track before writing the new values, or a fresh
+trig inherits a dead one's probability.
+
 ## Length byte scale
 
 Piecewise-linear, doubling every 16 values ([AR], default value confirmed [F]):
@@ -134,3 +217,41 @@ lengths and ± micro-timing written to A16 track 1 came back byte-identical
 on re-read, and importing it reproduced every field exactly.
 
 Everything documented as unknown is never interpreted or modified.
+
+## The [V2] trig-conditions experiment log (2026-08-02, OS 1.15B build 0070)
+
+Blank throwaway project, pattern A01, all read-only captures via the diffing
+lab's fetch path. Every diff was surgical — only the predicted region moved.
+
+1. **Baseline**: 16 plain trigs on track 1 steps 1–16 → 16 step words
+   `0000`/`0010` → `0381`/`0391`, 16 quads in the record pool, **all six
+   per-step arrays still `FF`** and **no p-lock lane allocated**.
+2. **PROB p-locks** on all 16 trigs (0, 5, 10 … 75) → exactly 16 bytes, all
+   in the lane at track offset **512**, each byte equal to the percentage
+   (`0`→`00`, `75`→`4b`). Nothing else in the 111616-byte payload changed.
+   (First attempt set only 15 — the missing trig read `FF`, which is how we
+   learned `FF` and `00` are distinct.)
+3. **Track-level PROB** 100 → 80, no trig held → one byte: track defaults
+   `+16`, `64`→`50`. Restoring it to 100 put `64` back, as predicted.
+4. **FILL ON** p-locked on trigs 1–8 → 8 bytes in the lane at offset **384**,
+   all `01`. **FILL OFF** on trigs 9–16 → 8 bytes, all `00`. So FILL is a
+   tri-state, not a boolean: `FF` unlocked / `00` OFF / `01` ON.
+5. **COND** on trigs 1–16, the first 16 menu values in order → 16 bytes in
+   the lane at offset **256**, values `00`–`0f`: the byte is the menu index.
+   The PROB and FILL bytes on those same trigs did not move — the three
+   fields are independent.
+6. **COND anchors**: trigs 1–5 set to `1:4`, `!2:5`, `6:6`, `4:7`, `!8:8` →
+   `10 1b 2c 34 4b` = 16, 27, 44, 52, 75, matching the extrapolated ordering
+   exactly; `!8:8` confirmed as the last menu entry.
+7. **Negative probes**, one capture: clearing a COND, a PROB and a FILL lock
+   each wrote `FF`; PROB dialled to 100 wrote `64`, **not** `FF`; deleting
+   trig 16 cleared its trig bit (`391`→`390`) and its COND byte but **left
+   FILL `00` and PROB `4b` in place**.
+8. **Re-adding a trig on step 16** scrubbed FILL and PROB back to `FF` — the
+   box cleans on creation, not deletion (the box UI shows `---` accordingly).
+9. **Delete re-test** on trig 15 reproduced step 7 exactly: COND cleared,
+   FILL `00` and PROB `46` left behind.
+
+End state saved as `dumps/fixtures/digitakt2-A01-conditions-2026-08-02.syx` —
+15 live trigs, all three fields in varied combinations, all three "none"
+cases, an explicit `0x64`, and a dead step 16 still holding leftovers.
