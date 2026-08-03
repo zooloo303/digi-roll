@@ -34,12 +34,16 @@ export const SPEC = {
     size: 1184,             // trackStorage_sizeof (track struct v2)
     numSteps: 128,
     steps: 0,               // uint16be per step; bit 0 = trig enabled
-    // 256..1023: six 128-byte per-step arrays of unknown purpose (0xFF-filled;
-    // hardware-verified NOT to hold note/velocity/length/micro — those live in
-    // the pattern-level trig-record pool)
+    // 256..1023: six 128-byte per-step arrays. The first three are the trig
+    // conditions, hardware-mapped 2026-08-02 (see docs); 640..1023 is still
+    // unknown and 0xFF in every capture.
+    trigCond: 256,          // per-step COND, menu index 0-75, 0xFF = none
+    trigFill: 384,          // per-step FILL, 0x01 ON / 0x00 OFF, 0xFF = no lock
+    trigProb: 512,          // per-step PROB, the percentage itself, 0xFF = no lock
     soundPLocks: 1024,      // trackStorage_soundSlotLocks, 0xFF = none
     defaults: 1152,         // tail record: default note, velocity, length, …
     lengthSteps: 1164,      // uint16be inside the tail: track length in steps
+    trackProb: 1168,        // track-level PROB default, a percentage (0x64 = 100)
   },
   // Each trig the box creates allocates four consecutive 6-byte records — one
   // per note slot (chords on MIDI tracks); velocity, length and micro are

@@ -39,9 +39,16 @@ export const SPEC = {
     size: 1187,             // DT2's 1184 + 3 extra bytes near the end of the defaults tail
     numSteps: 128,
     steps: 0,               // uint16be per step; bit 0 = trig enabled (0x0381 on live trigs)
+    // The trig-condition lanes sit at the DT2's track-relative offsets — the
+    // +48 pattern shift comes from the track tail, not its head (verified
+    // 2026-08-02 on OS 1.10D: identical lanes, encodings and COND menu).
+    trigCond: 256,
+    trigFill: 384,
+    trigProb: 512,
     soundPLocks: 1024,      // same relative offsets as DT2 through the defaults block
     defaults: 1152,
     lengthSteps: 1164,
+    trackProb: 1168,        // track-level PROB default, a percentage (0x64 = 100)
   },
   // One 6-byte record per sounding note (not DT2's quad of four): a chord is
   // several consecutive records sharing (track, step) — hardware-verified

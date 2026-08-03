@@ -21,7 +21,8 @@ const DECODER_BY_FAMILY = {
   [FAMILY.DIGITONE_2]: { mod: dn2, label: 'Digitone II' },
 };
 import { loadState, saveState, NUM_SLOTS } from '../state.js';
-import { deviceNotesToRoll, rollLengthForTrack, makeSource } from '../roll-bridge.js';
+import { deviceNotesToRoll, rollLengthForTrack, makeSource, attachTrigSettings } from '../roll-bridge.js';
+import { readTrackTrigSettings } from '../elektron/trig-cond.js';
 import { PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage } from '../elektron/safe-write.js';
 import { trackNotesForTarget, describeChordDrops } from '../elektron/copy-track.js';
 import { downloadBytes } from '../download.js';
@@ -195,8 +196,10 @@ function patternSummary(patternKit, label) {
   return `${label}${named} · kit ${patternKit.kit.name || '—'} · ${patternKit.tempoBpm} BPM`;
 }
 
-function showPatternKit(patternKit, label, kindFallback = 'sample', origin = null) {
-  imported = { patternKit, label, origin };
+// `payload` and `spec` are kept alongside the decoded kit because the per-trig
+// condition lanes are read straight off the raw bytes at import time.
+function showPatternKit({ patternKit, payload, spec, label, kindFallback = 'sample', origin = null }) {
+  imported = { patternKit, payload, spec, label, origin };
   $('impPatternInfo').textContent = patternSummary(patternKit, label);
   const any = fillTrackOptions($('impTrack'), patternKit, kindFallback);
   $('impGo').disabled = !any;
@@ -212,12 +215,19 @@ $('impFetch').onclick = async () => {
   try {
     logNote(`Requesting pattern-kit ${bankName(index)}…`);
     const payload = await device.fetchPatternKit(index);
-    showPatternKit(decoder.decodePatternKit(payload), bankName(index), decoder.SPEC.trackKindFallback, {
-      slug: device.identity.slug,
-      productId: device.identity.productId,
-      deviceName: device.identity.name,
-      patternIndex: index,
-      origin: 'box',
+    showPatternKit({
+      patternKit: decoder.decodePatternKit(payload),
+      payload,
+      spec: decoder.SPEC,
+      label: bankName(index),
+      kindFallback: decoder.SPEC.trackKindFallback,
+      origin: {
+        slug: device.identity.slug,
+        productId: device.identity.productId,
+        deviceName: device.identity.name,
+        patternIndex: index,
+        origin: 'box',
+      },
     });
     setStatus(`Fetched ${bankName(index)} — pick a track to import`);
   } catch (err) {
@@ -242,12 +252,19 @@ $('impFileInput').onchange = async () => {
     const { mod, label } = DECODER_BY_FAMILY[msg.family];
     const product = PRODUCT_BY_FAMILY[msg.family];
     $('impPattern').value = msg.index;
-    showPatternKit(mod.decodePatternKit(msg.payload), bankName(msg.index), mod.SPEC.trackKindFallback, {
-      slug: product.slug,
-      productId: product.productId,
-      deviceName: product.name,
-      patternIndex: msg.index,
-      origin: 'file',
+    showPatternKit({
+      patternKit: mod.decodePatternKit(msg.payload),
+      payload: msg.payload,
+      spec: mod.SPEC,
+      label: bankName(msg.index),
+      kindFallback: mod.SPEC.trackKindFallback,
+      origin: {
+        slug: product.slug,
+        productId: product.productId,
+        deviceName: product.name,
+        patternIndex: msg.index,
+        origin: 'file',
+      },
     });
     setStatus(`Decoded ${label} ${bankName(msg.index)} from ${file.name} (${kits.length} pattern${kits.length > 1 ? 's' : ''} in file) — pick a track`);
   } catch (err) {
@@ -263,7 +280,10 @@ $('impGo').onclick = () => {
   const slot = +$('impSlot').value;
   const track = imported.patternKit.tracks[t];
   const lengthSteps = rollLengthForTrack(track);
-  const notes = trackNotes(imported.patternKit, t).filter(n => n.step < track.lengthSteps);
+  const notes = attachTrigSettings(
+    trackNotes(imported.patternKit, t).filter(n => n.step < track.lengthSteps),
+    readTrackTrigSettings(imported.spec, imported.payload, t),
+  );
 
   const st = loadState(); // fresh — the piano-roll tab may have written since we loaded
   const p = st.patterns[slot];

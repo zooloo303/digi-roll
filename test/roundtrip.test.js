@@ -168,7 +168,10 @@ describe.skipIf(!have)('roll-bridge note conversion', () => {
     const roll = deviceNotesToRoll(
       [{ step: 3, pitch: 40, velocity: 90, lenSteps: 2, micro: -5 / 24 }], 16);
     expect(roll[0].micro).toBe(-5 / 24);
-    expect(rollNotesToDevice(roll)).toEqual([{ step: 3, pitch: 40, velocity: 90, len: 2, micro: -5 / 24 }]);
+    expect(rollNotesToDevice(roll)).toEqual([{
+      step: 3, pitch: 40, velocity: 90, len: 2, micro: -5 / 24,
+      prob: null, fill: null, cond: null, // unlocked, as an untouched note is
+    }]);
   });
 
   it('clamps pitch and length to what the roll can draw', () => {

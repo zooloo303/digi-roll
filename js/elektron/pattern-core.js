@@ -329,11 +329,21 @@ export function describeOffset(spec, offset) {
     if (rel < T.numSteps * 2) {
       return `track ${t + 1} step word, step ${Math.floor(rel / 2) + 1} (${rel % 2 ? 'lo' : 'hi'} byte)`;
     }
-    if (rel < T.soundPLocks) return `track ${t + 1} unknown per-step array ${Math.floor((rel - 256) / 128) + 1}, step ${(rel - 256) % 128 + 1}`;
+    if (rel < T.soundPLocks) {
+      // The first three per-step arrays are the trig-condition lanes; the rest
+      // are still unmapped.
+      const lane = { [T.trigCond]: 'COND', [T.trigFill]: 'FILL', [T.trigProb]: 'PROB' };
+      const start = 256 + Math.floor((rel - 256) / 128) * 128;
+      const step = (rel - 256) % 128 + 1;
+      return lane[start]
+        ? `track ${t + 1} trig ${lane[start]}, step ${step}`
+        : `track ${t + 1} unknown per-step array ${Math.floor((rel - 256) / 128) + 1}, step ${step}`;
+    }
     if (rel < T.defaults) return `track ${t + 1} sound p-lock, step ${rel - T.soundPLocks + 1}`;
     const d = rel - T.defaults;
     const named = { 0: 'default note', 1: 'default velocity', 2: 'default length' }[d]
-      ?? (d === T.lengthSteps - T.defaults || d === T.lengthSteps - T.defaults + 1 ? 'track length (u16)' : `+${d}`);
+      ?? (d === T.lengthSteps - T.defaults || d === T.lengthSteps - T.defaults + 1 ? 'track length (u16)' : null)
+      ?? (T.trackProb != null && rel === T.trackProb ? 'track PROB default' : `+${d}`);
     return `track ${t + 1} defaults, ${named}`;
   }
   if (offset < P.pLocksIndex) {

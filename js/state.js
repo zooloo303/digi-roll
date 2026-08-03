@@ -5,8 +5,20 @@ export const NUM_SLOTS = 8;
 
 let nextNoteId = 1;
 
-export function makeNote(step, pitch, len = 1, velocity = 100, micro = 0) {
-  return { id: nextNoteId++, step, pitch, len, velocity, micro };
+// A note. `trig` carries the three per-trig condition fields, which belong to
+// the *step* rather than the note: every note on a step is kept in agreement
+// (see js/elektron/conditions.js). Defaults mean "nothing locked".
+//
+//   prob  0-100, or null for no lock (the track default, effectively 100%)
+//   fill  true = ON, false = OFF, null = no lock — a tri-state, as on the box
+//   cond  a canonical condition label ('PRE', '!1ST', '2:4'), or null for none
+export function makeNote(step, pitch, len = 1, velocity = 100, micro = 0, trig = null) {
+  return {
+    id: nextNoteId++, step, pitch, len, velocity, micro,
+    prob: trig?.prob ?? null,
+    fill: trig?.fill ?? null,
+    cond: trig?.cond ?? null,
+  };
 }
 
 export function defaultPattern(index) {
@@ -70,6 +82,10 @@ export function loadState() {
       if (p.dest === undefined) p.dest = null;
       for (const n of p.notes) {
         if (typeof n.micro !== 'number') n.micro = 0;
+        // Trig conditions arrived after these three; older saves have no locks.
+        if (n.prob === undefined) n.prob = null;
+        if (n.fill === undefined) n.fill = null;
+        if (n.cond === undefined) n.cond = null;
         nextNoteId = Math.max(nextNoteId, n.id + 1);
       }
     }

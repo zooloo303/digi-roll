@@ -162,6 +162,14 @@ negations with an overline; digi-roll writes them `!X` everywhere.
 The DN2 uses this same list, same order, same indices [V2] — see
 `dn2-pattern-format.md`.
 
+An independent check on all of the above: the whole-project dump captured a day
+*before* this experiment (`dumps/digitakt2-project-2026-08-01T23-37-04.syx`)
+contains two trigs carrying "a single small value in the first per-step array",
+which this doc previously recorded as unexplained. They decode as COND `2:2` on
+A01 track 3 step 7 and COND `1:2` on A01 track 11 step 8 — both on live trigs,
+both plausible musical settings, and neither was known about when the dump was
+taken. `test/conditions.test.js` asserts exactly this.
+
 ### Lifecycle (matters for any write path) [V2]
 
 - **Creating a trig scrubs all three lanes for that step** to `FF`. This is

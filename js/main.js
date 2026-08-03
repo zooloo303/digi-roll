@@ -9,8 +9,9 @@ import * as dt2 from './elektron/dt2/pattern.js';
 import * as dn2 from './elektron/dn2/pattern.js';
 import {
   rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack,
-  makeSource, sourceLabel, sourceMatchesIdentity,
+  makeSource, sourceLabel, sourceMatchesIdentity, attachTrigSettings,
 } from './roll-bridge.js';
+import { readTrackTrigSettings } from './elektron/trig-cond.js';
 import { downloadBytes, downloadText } from './download.js';
 import {
   BANK_PREFIX, listBank, bankEntry, saveToBank, loadFromBank, deleteFromBank,
@@ -728,7 +729,7 @@ $('sendToBox').onclick = async () => {
 // at where it came from. The console page keeps the long-form version (import
 // into any slot, .syx files, cross-device copy); this is the everyday path.
 
-let fetched = null; // { patternKit, label, kindFallback, origin } once decoded
+let fetched = null; // { patternKit, payload, spec, label, kindFallback, origin } once decoded
 
 for (let i = 0; i < 128; i++) $('impPattern').add(new Option(bankName(i), i));
 
@@ -741,9 +742,14 @@ $('impFetch').onclick = async () => {
     const decoder = DECODERS[id.slug];
     if (!decoder) throw new Error(`${id.name} isn't a box digi-roll can decode patterns from yet`);
     setStatus(`Fetching ${bankName(index)} from the ${id.name}…`);
-    const patternKit = decoder.decodePatternKit(await box.fetchPatternKit(index));
+    // Keep the raw payload: the per-trig condition lanes are read straight off
+    // it at import time (decodePatternKit doesn't carry them).
+    const payload = await box.fetchPatternKit(index);
+    const patternKit = decoder.decodePatternKit(payload);
     fetched = {
       patternKit,
+      payload,
+      spec: decoder.SPEC,
       label: bankName(index),
       kindFallback: decoder.SPEC.trackKindFallback,
       origin: { slug: id.slug, productId: id.productId, deviceName: id.name, patternIndex: index, origin: 'box' },
@@ -783,7 +789,10 @@ $('impGo').onclick = () => {
   const t = +$('impTrack').value;
   const track = fetched.patternKit.tracks[t];
   const lengthSteps = rollLengthForTrack(track);
-  const notes = trackNotes(fetched.patternKit, t).filter(n => n.step < track.lengthSteps);
+  const notes = attachTrigSettings(
+    trackNotes(fetched.patternKit, t).filter(n => n.step < track.lengthSteps),
+    readTrackTrigSettings(fetched.spec, fetched.payload, t),
+  );
 
   pushUndo();
   const p = pattern();

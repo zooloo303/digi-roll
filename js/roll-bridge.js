@@ -4,13 +4,17 @@
 //
 // Two note shapes meet here and they are deliberately close but not identical:
 //
-//   roll note    { id, step, pitch, len, velocity, micro }   — what you draw
-//   device note  { step, pitch, velocity, len, micro }       — encodeTrackNotes input
+//   roll note    { id, step, pitch, len, velocity, micro, prob, fill, cond }
+//   device note  { step, pitch, velocity, len, micro, prob, fill, cond }
 //   decoded note { step, pitch, velocity, lenSteps, micro }  — trackNotes output
 //
 // `micro` is a fraction of a step in all three. The conversions below are the
 // only place that knows about the lenSteps/len rename and the roll's clamps,
 // so the import path, the write-back path and cross-device copy can't drift.
+//
+// prob/fill/cond are per *trig*, so `trackNotes` (which is per note) doesn't
+// produce them — attachTrigSettings stamps them on afterwards, from the pattern
+// payload's per-step lanes.
 
 import { makeNote } from './state.js';
 import { PITCH_MIN, PITCH_MAX } from './pianoroll.js';
@@ -33,6 +37,7 @@ export function deviceNotesToRoll(notes, lengthSteps) {
     clamp(Math.round(n.lenSteps), 1, lengthSteps - n.step),
     n.velocity,
     n.micro,
+    { prob: n.prob ?? null, fill: n.fill ?? null, cond: n.cond ?? null },
   ));
 }
 
@@ -45,7 +50,30 @@ export function rollNotesToDevice(notes) {
     velocity: n.velocity,
     len: n.len,
     micro: n.micro ?? 0,
+    prob: n.prob ?? null,
+    fill: n.fill ?? null,
+    cond: n.cond ?? null,
   }));
+}
+
+// Stamp per-step trig settings onto decoded notes, in place, returning them.
+//
+// `byStep` is what readTrackTrigSettings produced. Because the three fields
+// belong to the trig rather than the note, every note on a step gets the same
+// values — the step-uniformity rule digi-roll holds everywhere. Notes on steps
+// with nothing stored are left at the defaults.
+//
+// This runs between trackNotes and deviceNotesToRoll at each import site.
+export function attachTrigSettings(notes, byStep) {
+  if (!byStep?.size) return notes;
+  for (const n of notes) {
+    const t = byStep.get(n.step);
+    if (!t) continue;
+    n.prob = t.prob ?? null;
+    n.fill = t.fill ?? null;
+    n.cond = t.cond ?? null;
+  }
+  return notes;
 }
 
 // Decoded device notes → the encoder's note shape, with none of the roll's
