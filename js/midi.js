@@ -8,6 +8,39 @@
 const LOOKAHEAD_MS = 120;
 const PUMP_MS = 25;
 
+// Trig conditions in the browser preview.
+//
+// A deliberately partial simulation, and it says so in the UI. `prob` and the
+// loop-counting conditions can be evaluated here honestly; the rest cannot,
+// and guessing would be worse than not trying:
+//
+//   PRE / NEI  need the last evaluated condition on this or the neighbour
+//              track — digi-roll plays one track at a time and keeps no such
+//              history, so there is nothing to consult
+//   LST        needs to know a pattern change is coming, which the browser
+//              never knows
+//   fill       there is no FILL button here
+//
+// Everything unsimulated plays, so the preview is never quieter than the box.
+// `rng` is injected so the tests are deterministic.
+export function shouldPlay(note, loop, rng = Math.random) {
+  if (note.prob != null && rng() * 100 >= note.prob) return false;
+  const cond = note.cond;
+  if (!cond) return true;
+
+  const negated = cond.startsWith('!');
+  const key = negated ? cond.slice(1) : cond;
+
+  let result;
+  if (key === '1ST') result = loop === 0;
+  else if (/^\d+:\d+$/.test(key)) {
+    const [a, b] = key.split(':').map(Number);
+    result = loop % b === a - 1;
+  } else return true; // PRE, NEI, LST — not simulable, so never silenced
+
+  return negated ? !result : result;
+}
+
 // Standard MIDI File export: type 0, 96 ticks per quarter (a 16th step = 24 ticks).
 const TPQN = 96;
 const TICKS_PER_STEP = TPQN / 4;
@@ -127,8 +160,9 @@ export function midiFileToNotes(bytes, maxSteps = 128) {
 }
 
 export class MidiEngine {
-  constructor(getState) {
+  constructor(getState, { rng = Math.random } = {}) {
     this.getState = getState; // () => { pattern, bpm, sendClock }
+    this.rng = rng;           // injectable so trig probability is testable
     this.access = null;
     this.output = null;
     this.playing = false;
@@ -234,9 +268,11 @@ export class MidiEngine {
 
     while (this._nextStepTime < horizon) {
       const stepInPattern = this._step >= 0 ? this._step % pattern.lengthSteps : -1;
+      const loop = this._step >= 0 ? Math.floor(this._step / pattern.lengthSteps) : 0;
       const swingMs = stepInPattern % 2 === 1 ? ((swing - 50) / 50) * (stepMs / 3) : 0;
       for (const n of pattern.notes) {
         if (n.step !== stepInPattern) continue;
+        if (!shouldPlay(n, loop, this.rng)) continue;
         const t = this._nextStepTime + swingMs + (n.micro ?? 0) * stepMs;
         this.noteOn(pattern.channel, n.pitch, n.velocity, t);
         // End slightly early so back-to-back notes retrigger cleanly.

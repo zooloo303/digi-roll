@@ -188,6 +188,16 @@ mirrored across a chord's records exactly as the box stores them), touch
 nothing else. Enabled for OS build 0049 via the console's per-device
 allowlist.
 
+**Trig conditions**: handled by exactly the same code as the DT2 — the specs
+differ only in the track size, and the lanes sit at the same track-relative
+offsets. Read on import, edited in the roll's trig lane, written into the
+payload `encodeTrackNotes` returns after scrubbing the track's three lanes.
+Because both boxes share one COND list, a DT2 → DN2 copy (or the reverse)
+carries every condition intact and never has to degrade one.
+
+**Not yet hardware-verified** as of 2026-08-02: conditions have only been
+*read* from a DN2. No pattern carrying them has been written to one.
+
 ## The [V] experiment log (2026-08-01, fresh throwaway project, OS 1.10D)
 
 One edit per capture, diffed with the lab; every diff was surgical (only

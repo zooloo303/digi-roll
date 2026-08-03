@@ -17,7 +17,7 @@
     <select id="channel" title="MIDI channel (match the track on your box)"></select>
     <select id="length" title="Pattern length"></select>
     <label class="field">BPM <input id="bpm" type="number" min="30" max="300" step="1"></label>
-    <button id="play">▶ Play</button>
+    <button id="play" title="Play the pattern (space). Trig conditions are previewed in part: PROB and the loop-counting conditions (1ST, the A:B ratios) are evaluated for real; PRE, NEI, LST and FILL always play, because the browser has no neighbour track, no pattern change and no FILL button">▶ Play</button>
     <span class="syncwrap">
       <button id="sync" title="Clock and count-in — how your box follows this app">Sync ▾</button>
       <div id="syncPop" class="hidden">
@@ -212,6 +212,7 @@
         <li><b>PROB</b> — drag up or down to set 0–100%, re-rolled every pass. Dragging to the top takes the lock off.</li>
       </ul>
       <p>Drag sideways to paint a value across steps · right-click (or alt-click) clears a cell · and if the step you click holds selected notes, the edit reaches <b>every selected step at once</b>. Conditions survive write-back, cross-device copy and Library saves; they are not in exported .mid files, which have no such concept.</p>
+      <p><b>Playing them here is a partial preview.</b> Probability and the loop-counting conditions (<code>1ST</code> and every <code>A:B</code> ratio) are evaluated for real, so a <code>2:4</code> trig really does play every fourth loop. <code>PRE</code>, <code>NEI</code>, <code>LST</code> and <code>FILL</code> always play, because the browser has no neighbour track, no idea a pattern change is coming and no FILL button — the preview is never quieter than the box. Send it to the hardware to hear those properly.</p>
       <h3>Chords</h3>
       <p>In the <b>Harmony</b> panel, turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes — that's one trig's worth on the Digitone II.</p>
       <h3>Fallback: capture by live recording</h3>

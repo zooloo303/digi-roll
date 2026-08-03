@@ -69,4 +69,11 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
   (BSD-2-Clause, by mzero) — keep the attribution.
 
 `PLAN.md` is the roadmap — what's shipped and what's next. Next feature up is
-per-trig conditions (probability / fill / `COND`), then p-lock lanes.
+p-lock lanes.
+
+Per-trig conditions shipped 2026-08-02: `js/elektron/conditions.js` is the
+canonical PROB/FILL/COND table, `js/elektron/trig-cond.js` reads and writes the
+three per-step lanes, and `js/triglane.js` is the step-aligned editing strip
+under the roll. They are **not** p-lock pool entries — the pool is still
+untouched by anything, which is the p-lock feature's actual work. The byte
+mapping is hardware-verified; the write path is not yet.

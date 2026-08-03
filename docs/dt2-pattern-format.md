@@ -224,6 +224,21 @@ Hardware-verified 2026-08-01 [V]: a 7-note bassline with mixed velocities,
 lengths and ± micro-timing written to A16 track 1 came back byte-identical
 on re-read, and importing it reproduced every field exactly.
 
+**Trig conditions**: read on import straight from the three lanes and stamped
+onto every note of their step (`js/elektron/trig-cond.js`); edited in the roll's
+trig lane; written by the same `safeWriteTrack` flow, applied to the payload
+`encodeTrackNotes` returns. The write **scrubs all 128 steps of the track's
+three lanes first**, mirroring what the box does when it creates a trig — the
+one place digi-roll deliberately differs from the hardware is that this also
+clears leftovers on dead steps of the track being written, which the box would
+have kept. An explicit `0x64` PROB lock round-trips as itself; only dragging the
+lane's PROB control to the top converts it to "no lock". Nothing outside those
+three lanes, the track's step words and the trig-record pool is touched — the
+property test in `test/trig-write.test.js` asserts exactly that.
+
+**Not yet hardware-verified** as of 2026-08-02: conditions have only been
+*read* from hardware. No pattern carrying them has been written to a box.
+
 Everything documented as unknown is never interpreted or modified.
 
 ## The [V2] trig-conditions experiment log (2026-08-02, OS 1.15B build 0070)

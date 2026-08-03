@@ -21,56 +21,60 @@ Phases 1–4, hardware-verified on a Digitakt II (OS 1.15B) and a Digitone II
   micro-timing, MIDI file import/export
 - The diffing lab (`difflab.html`) that reverse-engineered the DN2 format
 
+**Per-trig conditions — PROB / FILL / COND** (2026-08-02). The byte mapping is
+hardware-verified on both boxes; **the write path is not yet hardware-verified**
+(see the smoke-test checklist below). All three turned out to be plain per-step
+byte lanes in the track struct — track offsets 256 (COND), 384 (FILL) and 512
+(PROB) — *not* p-lock pool entries, which stayed empty throughout the
+experiment. Identical on the DT2 and DN2, including one shared 76-value COND
+list, so cross-device copy needs no translation. Format docs have the full
+tables and experiment logs.
+
+What shipped: the whole COND menu in the box's own order, tri-state FILL
+(unlocked / ON / OFF — there is no track-level FILL or COND at all), 0–100%
+probability, a step-aligned **trig lane** under the roll to edit them, and
+carriage through import, write-back, cross-device copy and Library saves. The
+browser preview evaluates probability and the loop-counting conditions; PRE,
+NEI, LST and FILL always play, and the UI says so.
+
+Smoke test to run on hardware before calling this done:
+
+1. Throwaway project. Draw a pattern with a PROB lock, a FILL trig, a ratio and
+   a negated ratio, and one locked chord. Send to box.
+2. Box UI shows the right PROB/FILL/COND on each trig; playback behaves.
+3. Re-read — the verify step should report byte-identical.
+4. Import the same track back; all three fields round-trip exactly.
+5. Cross-device copy DT2 ↔ DN2 with locks, then repeat checks 2–4.
+
 Chord policy, DN2 → DT2: a DT2 trig holds 4 note slots, the DN2 is unlimited.
 Fat chords keep the 4 highest-velocity notes (ties → lower pitches) and warn,
 listing what was dropped. Decided and implemented.
 
-## Next — probability / fill / trig conditions
-
-Per-trig conditions (`COND`) are the missing half of what makes an Elektron
-pattern feel alive: `50%`, `FILL`, `1ST`, `PRE`, `NEI`, the `A:B` ratios. Being
-able to draw those in the browser is a bigger musical win than any p-lock.
-
-Why this is the right next step: it's **read-modify-write on a region we already
-own**, not a new subsystem. The trigs, the pool, the write flow and the verify
-step all exist — this adds fields to a decode we've already proven.
-
-Prime suspect, already documented: the six per-step byte arrays at **track
-struct offset 256** (`docs/dt2-pattern-format.md`), 128 bytes each, `FF`-filled,
-and hardware-verified **not** to hold note/velocity/length/micro. One byte per
-step with `FF` = none is precisely the shape of the sound p-lock lane at offset
-1024, so a per-step condition byte very plausibly lives in one of those six
-lanes. The DN2 has the same six arrays at the same place — so one experiment
-likely answers it for both boxes.
-
-The method that cracked the DN2 sequencer block, applied here:
-
-1. Throwaway project, `difflab.html` baseline capture
-2. Set **one** trig to `50%` on the box → capture + annotated diff
-3. Walk the condition list one value at a time (`FILL`, `1ST`, `PRE`, each
-   `A:B`) logging every byte into the lab notebook
-4. Confirm the same offsets on the DN2 before touching its encoder
-
-Then: extend the note model in `js/state.js` with a per-note condition, show it
-in the roll, and carry it through `roll-bridge.js` → `encodeTrackNotes`. Cross-
-device copy needs a policy for conditions the target box doesn't have, in the
-same spirit as the chord rule — degrade loudly, never silently.
-
-Ships in stages, as ever: decode + display first (read-only, zero risk), write
-only once the diff is verified field-by-field.
-
-## After — other p-locks
+## Next — other p-locks
 
 p-lock lanes in the roll (filter, pitch, amp, …) as automation lanes. Bigger and
 messier than conditions: it's a per-step **parameter pool** rather than a handful
 of per-step bytes, the parameter numbering differs between the DT2 and the DN2,
-and the roll needs a real automation-lane UI rather than one badge per trig.
+and the roll needs a real automation-lane UI.
 
-Conditions first is deliberate — that work maps the per-step lane region and
-sharpens the difflab workflow, both of which this then builds on. The DT2's
-sound-pool p-lock at track offset 1024 is already decoded and is the worked
-example of a per-step lane; the DN2 has no sound pool and leaves that region
-unmapped.
+Conditions first was deliberate, and it paid off in two ways the p-lock work now
+inherits:
+
+- **The trig lane is the UI skeleton.** `js/triglane.js` is already a
+  step-aligned editing surface with hit-testing, drag-painting across steps and
+  a popover picker; automation lanes are more rows in that idiom rather than a
+  new interaction model.
+- **The write discipline is established.** `js/elektron/trig-cond.js` shows the
+  shape: pure read/apply functions over a payload, composed *after*
+  `encodeTrackNotes` instead of inside it, with a minimal-diff property test
+  proving nothing else moved.
+
+What conditions did **not** teach us is the pool itself — they turned out not to
+live there, so the 80 × 258 p-lock lane region is still unexercised. Expect that
+to be the real work: finding or freeing a `(paramId, track)` lane, and matching
+whatever the box does when a lane empties out. The DT2's sound-pool p-lock at
+track offset 1024 remains the worked example of a per-step lane; the DN2 has no
+sound pool and leaves that region unmapped.
 
 ## Also open
 

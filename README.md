@@ -85,14 +85,21 @@ notes arriving.
   slider all apply to the whole selection
 - Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z undo and redo (100 steps); Cmd/Ctrl+C/X/V
   copy, cut and paste — the clipboard survives switching pattern slots
+- **Trig lane** under the grid — the box's TRIG page 1, one column per step:
+  **COND** (click for a picker: `PRE`/`NEI`/`1ST`/`LST`, their `!` negations,
+  and every ratio from `1:2` to `!8:8`), **FILL** (click to cycle none / ON /
+  OFF) and **PROB** (drag up or down; the top means no lock). Drag sideways to
+  paint across steps, right-click to clear, and edits reach every selected step
+  at once. These belong to the trig, so every note on a step shares them —
+  exactly as the hardware works
 - **Dup bar** adds a bar and copies the last one into it (up to 8 bars)
 - Scale menu (root + scale) tints the in-scale rows; purely visual
 - Octave numbering follows the boxes: the key column calls MIDI 60 **C5**, the
   same as the DT2/DN2 display, one higher than the middle-C = C4 convention
 - **Export .mid** writes a type 0 Standard MIDI File of the current pattern
-  (tempo, velocities, swing and micro-timing baked in); **Import .mid** reads
-  a type 0/1 file back in, quantized to 16ths with the remainder as
-  micro-timing
+  (tempo, velocities, swing and micro-timing baked in — but not trig
+  conditions, which MIDI has no concept of); **Import .mid** reads a type 0/1
+  file back in, quantized to 16ths with the remainder as micro-timing
 - 8 pattern slots, 1–8 bars each (128 steps, matching the Digi II boxes),
   auto-saved to localStorage
 - Space bar = play/stop
@@ -135,19 +142,25 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 - `js/midi.js` — Web MIDI engine: output handling, lookahead scheduler
   (timestamped `MIDIOutput.send`, 24 ppqn clock, start/stop transport)
 - `js/pianoroll.js` — canvas editor
+- `js/triglane.js` — the step-aligned COND/FILL/PROB strip under the roll
 - `js/main.js` — UI wiring
 - `js/elektron/` — SysEx protocol: `sevenbit.js` (7↔8-bit packing),
   `protocol.js` (framing/checksums), `device.js` (handshake, dumps),
-  `pattern-core.js` + `dt2/` + `dn2/` (pattern struct decode/encode)
+  `pattern-core.js` + `dt2/` + `dn2/` (pattern struct decode/encode),
+  `conditions.js` + `trig-cond.js` (the PROB/FILL/COND tables and lanes)
 - `js/labs/` — the device console and diffing-lab pages
 - `test/` — Vitest unit tests for the protocol code (dev-only; the app itself
   stays dependency-free): `npm install && npm test`
 
 ## Ideas / later
 
-Next up: **probability / fill / trig conditions** — drawing `50%`, `FILL`, `1ST`
-and the `A:B` ratios in the roll — then **p-lock lanes** (filter, pitch, … as
-automation lanes). After that, pattern chaining preview and widening the write
-allowlist beyond one verified OS build per box. See `PLAN.md` for the detail.
+Next up: **p-lock lanes** (filter, pitch, … as automation lanes), then pattern
+chaining preview and widening the write allowlist beyond one verified OS build
+per box. See `PLAN.md` for the detail.
+
+Per-trig conditions — `50%`, `FILL`, `1ST`, `PRE`, the `A:B` ratios — landed in
+the **trig lane** under the roll. The byte format is hardware-verified on both
+boxes and documented in `docs/`; writing them to a box is implemented but has
+not been smoke-tested on hardware yet.
 
 The Octatrack stays on the live-record path; it has no pattern SysEx.
