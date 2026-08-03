@@ -56,9 +56,10 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 
 ## Orientation
 
-- `js/state.js` pattern model (notes + micro-timing + swing + provenance) ·
-  `js/pianoroll.js` canvas editor, knows nothing about devices · `js/main.js` UI
-  wiring · `js/midi.js` realtime engine
+- `js/state.js` pattern model (notes + micro-timing + swing + track PROB +
+  provenance) · `js/pianoroll.js` canvas editor, knows nothing about devices ·
+  `js/edit-ops.js` paste placement, canvas-free · `js/main.js` UI wiring ·
+  `js/midi.js` realtime engine
 - `js/elektron/` protocol + pattern structs · `safe-write.js` the write flow ·
   `copy-track.js` cross-device copy · `js/roll-bridge.js` roll ↔ device notes
 - `js/bank.js` named saves · `js/labs/` device console + diffing lab pages
@@ -68,8 +69,8 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 - Protocol work is ported from [elk-herd](https://github.com/mzero/elk-herd)
   (BSD-2-Clause, by mzero) — keep the attribution.
 
-`PLAN.md` is the roadmap — what's shipped and what's next. Next feature up is
-p-lock lanes.
+`PLAN.md` is the roadmap — what's shipped and what's next. Next up is p-lock
+lanes, planned there in detail.
 
 Per-trig conditions shipped 2026-08-02: `js/elektron/conditions.js` is the
 canonical PROB/FILL/COND table, `js/elektron/trig-cond.js` reads and writes the
@@ -77,3 +78,16 @@ three per-step lanes, and `js/triglane.js` is the step-aligned editing strip
 under the roll. They are **not** p-lock pool entries — the pool is still
 untouched by anything, which is the p-lock feature's actual work. The byte
 mapping is hardware-verified; the write path is not yet.
+
+The user-feedback round landed 2026-08-03 (paste at the caret + alt-drag-copy,
+track-level PROB, fine note lengths). Two things to know before touching them:
+
+- **Track-level PROB is a second write surface, hardware-verified 2026-08-03.**
+  `readTrackProb`/`applyTrackProb` live in `trig-cond.js` alongside the lane
+  functions; the byte is `SPEC.track.trackProb`. It's the *default* an unlocked
+  trig runs at, not a bulk stamp — a per-trig PROB lock overrides it, including
+  an explicit 100.
+- **Note lengths are fractional now.** The roll no longer rounds to whole
+  steps: `snapLenFine` in `roll-bridge.js` snaps to the boxes' own LEN scale
+  and is injected into the roll as `snapLen`, so `pianoroll.js` stays
+  device-agnostic. Anything new that touches `n.len` has to tolerate 0.125.

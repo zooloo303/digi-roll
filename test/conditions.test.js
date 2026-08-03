@@ -10,6 +10,7 @@ import {
 } from '../js/elektron/conditions.js';
 import {
   readTrackTrigSettings, readStepTrigSetting, applyTrackTrigSettings, trigSettingsFromNotes,
+  readTrackProb, applyTrackProb,
 } from '../js/elektron/trig-cond.js';
 import * as dt2 from '../js/elektron/dt2/pattern.js';
 import * as dn2 from '../js/elektron/dn2/pattern.js';
@@ -186,6 +187,68 @@ describe.skipIf(!haveDt2)('reading the DT2 hardware fixture', () => {
     const at = dt2.SPEC.pattern.tracksOffset + dt2.SPEC.track.trackProb;
     expect(payload[at]).toBe(100);
   });
+
+  it('reads that byte back as a percentage', () => {
+    for (let t = 0; t < dt2.SPEC.pattern.numTracks; t++) {
+      expect(readTrackProb(dt2.SPEC, payload, t), `track ${t + 1}`).toBe(100);
+    }
+  });
+});
+
+describe('track-level PROB', () => {
+  // A payload big enough to hold both boxes' track structs, filled with a value
+  // no field would legitimately hold, so a stray write shows up.
+  const blank = () => new Uint8Array(90000).fill(0xaa);
+
+  for (const [name, spec] of [['DT2', dt2.SPEC], ['DN2', dn2.SPEC]]) {
+    describe(name, () => {
+      it('round-trips every percentage in the range', () => {
+        const buf = blank();
+        for (const v of [0, 1, 30, 50, 99, 100]) {
+          applyTrackProb(spec, buf, 3, v);
+          expect(readTrackProb(spec, buf, 3)).toBe(v);
+        }
+      });
+
+      it('writes exactly one byte, and only on the track it was asked about', () => {
+        const before = blank();
+        const after = Uint8Array.from(before);
+        applyTrackProb(spec, after, 7, 30);
+        const moved = [...after].flatMap((b, i) => b === before[i] ? [] : [i]);
+        expect(moved).toEqual([spec.pattern.tracksOffset + 7 * spec.track.size + spec.track.trackProb]);
+      });
+
+      it('stores the box default for a pattern that has none', () => {
+        const buf = blank();
+        applyTrackProb(spec, buf, 0, null);
+        expect(readTrackProb(spec, buf, 0)).toBe(100);
+      });
+
+      it('clamps and rounds rather than storing a byte the box can\'t mean', () => {
+        const buf = blank();
+        applyTrackProb(spec, buf, 0, 250);
+        expect(readTrackProb(spec, buf, 0)).toBe(100);
+        applyTrackProb(spec, buf, 0, -5);
+        expect(readTrackProb(spec, buf, 0)).toBe(0);
+        applyTrackProb(spec, buf, 0, 42.6);
+        expect(readTrackProb(spec, buf, 0)).toBe(43);
+      });
+
+      it('refuses a track that doesn\'t exist', () => {
+        expect(() => readTrackProb(spec, blank(), 16)).toThrow(/no track/);
+        expect(() => applyTrackProb(spec, blank(), -1, 50)).toThrow(/no track/);
+      });
+
+      it('reads an out-of-range byte as 100 rather than throwing', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        // 0xAA is what the blank buffer is full of — a field that moved would
+        // look exactly like this, and the pattern still has to open.
+        expect(readTrackProb(spec, blank(), 0)).toBe(100);
+        expect(warn).toHaveBeenCalled();
+        warn.mockRestore();
+      });
+    });
+  }
 });
 
 describe.skipIf(!haveDn2)('reading the DN2 hardware fixture', () => {

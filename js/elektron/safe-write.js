@@ -9,10 +9,11 @@
 //                     UI downloads as .syx) before a single byte is sent, and
 //                     the write aborts if that hook throws. The hook is
 //                     mandatory: no backup, no write.
-//   2. minimal diff   only encodeTrackNotes and applyTrackTrigSettings touch
-//                     the payload, so every byte outside the track's step
-//                     words, the trig-record pool and that track's three
-//                     trig-condition lanes round-trips identically.
+//   2. minimal diff   only encodeTrackNotes, applyTrackTrigSettings and
+//                     applyTrackProb touch the payload, so every byte outside
+//                     the track's step words, the trig-record pool, that
+//                     track's three trig-condition lanes and its one
+//                     track-PROB byte round-trips identically.
 //   3. allowlist      writeGate() refuses any OS build the format hasn't been
 //                     verified against.
 //   4. verify         the pattern is read back and byte-compared; the caller
@@ -30,7 +31,7 @@
 
 import { buildDumpMessage, DUMP, FAMILY } from './protocol.js';
 import { bankName, diffPayloads, trackTrigCount } from './pattern-core.js';
-import { applyTrackTrigSettings, trigSettingsFromNotes } from './trig-cond.js';
+import { applyTrackTrigSettings, applyTrackProb, trigSettingsFromNotes } from './trig-cond.js';
 import * as dt2 from './dt2/pattern.js';
 import * as dn2 from './dn2/pattern.js';
 
@@ -90,6 +91,8 @@ export function patternKitBackup(identity, index, payload, now = new Date()) {
 //   index       target pattern slot, 0–127
 //   trackIndex  target track, 0–15
 //   notes       encoder-shaped notes: { step, pitch, velocity, len, micro }
+//   trackProb   optional 0–100 track-level PROB default; null leaves the byte
+//               alone, which is what a caller with nothing to say should do
 //   onBackup    required; receives { index, payload, name, bytes } before the
 //               write. Throw from it to abort.
 //   confirm     optional; receives a summary of what is about to be
@@ -100,7 +103,7 @@ export function patternKitBackup(identity, index, payload, now = new Date()) {
 // `ok` false with an empty `diffs` never happens: a false `ok` always carries
 // the offsets that mismatched, for a loud report.
 export async function safeWriteTrack(device, {
-  index, trackIndex, notes,
+  index, trackIndex, notes, trackProb = null,
   onBackup, confirm = null, onStatus = () => {}, onLog = () => {},
 }) {
   const gate = writeGate(device?.identity);
@@ -134,6 +137,10 @@ export async function safeWriteTrack(device, {
   // the box does that when it creates a trig, and a write that skips it would
   // leave a new trig inheriting a deleted one's probability.
   applyTrackTrigSettings(mod.SPEC, payload, trackIndex, trigSettingsFromNotes(notes));
+  // The track's own PROB default is one byte in the defaults tail. Only touched
+  // when the caller has a value; a caller that doesn't model it leaves whatever
+  // the box was already holding.
+  if (trackProb != null) applyTrackProb(mod.SPEC, payload, trackIndex, trackProb);
 
   onStatus(`Writing ${label} T${trackIndex + 1}…`);
   await device.sendPatternKit(index, payload);

@@ -26,6 +26,9 @@ export function serializePattern(pattern, savedAt = new Date().toISOString()) {
       lengthSteps: pattern.lengthSteps,
       channel: pattern.channel,
       swing: pattern.swing ?? 50,
+      // Track-level PROB rides along the same way prob/fill/cond did: older
+      // saves simply lack it and load at 100, older digi-rolls ignore it.
+      trackProb: pattern.trackProb ?? 100,
       source: pattern.source ?? null,
       // prob/fill/cond ride along without a schema bump: older saves simply
       // lack them and load unlocked, and older digi-rolls ignore the extra
@@ -59,6 +62,7 @@ export function deserializePattern(entry, makeNote) {
     lengthSteps: Number(p.lengthSteps) || 16,
     channel: Number(p.channel) || 0,
     swing: typeof p.swing === 'number' ? p.swing : 50,
+    trackProb: typeof p.trackProb === 'number' ? p.trackProb : 100,
     source: p.source ?? null,
     notes: p.notes.map(n => makeNote(n.step, n.pitch, n.len, n.velocity, n.micro ?? 0, n)),
   };

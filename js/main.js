@@ -3,16 +3,17 @@ import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
 import { TrigLane } from './triglane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
+import { placeClipboard } from './edit-ops.js';
 import { ElektronDevice } from './elektron/device.js';
 import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
 import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
 import * as dt2 from './elektron/dt2/pattern.js';
 import * as dn2 from './elektron/dn2/pattern.js';
 import {
-  rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack,
+  rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack, snapLenFine,
   makeSource, sourceLabel, sourceMatchesIdentity, attachTrigSettings,
 } from './roll-bridge.js';
-import { readTrackTrigSettings } from './elektron/trig-cond.js';
+import { readTrackTrigSettings, readTrackProb } from './elektron/trig-cond.js';
 import { downloadBytes, downloadText } from './download.js';
 import {
   BANK_PREFIX, listBank, bankEntry, saveToBank, loadFromBank, deleteFromBank,
@@ -105,6 +106,9 @@ let trigLane = null;
 const roll = new PianoRoll($('roll'), {
   getPattern: pattern,
   getDefaultVelocity: () => state.defaultVelocity,
+  // Shift+resize snaps to what the boxes can actually store; the roll itself
+  // knows nothing about devices, so the scale is handed to it.
+  snapLen: snapLenFine,
   onChange: () => { dropUnchangedUndo(); persist(); },
   onBeforeEdit: pushUndo,
   getScale: () => state.scale === 'off' ? null : { root: state.scaleRoot, set: new Set(SCALES[state.scale]) },
@@ -243,6 +247,9 @@ function syncToolbar() {
   $('chordStrum').value = state.chord.strum;
   $('velocity').value = state.defaultVelocity;
   $('velLabel').textContent = state.defaultVelocity;
+  // Per pattern, unlike Velocity, so it has to be re-read on every slot switch.
+  $('trackProb').value = pattern().trackProb ?? 100;
+  $('trackProbLabel').textContent = `${pattern().trackProb ?? 100}%`;
   railFlag('harmonyPanel', state.chord.on);
   syncSend();
 }
@@ -335,6 +342,17 @@ $('velocity').oninput = () => {
   persist();
 };
 $('velocity').onchange = () => { velGesture = false; };
+// Track-level PROB: the odds an unlocked trig runs at. One undo entry per drag,
+// like the velocity slider — but this one lives on the pattern, not on the app.
+let trackProbGesture = false;
+$('trackProb').oninput = () => {
+  if (!trackProbGesture) { trackProbGesture = true; pushUndo(); }
+  pattern().trackProb = +$('trackProb').value;
+  $('trackProbLabel').textContent = `${pattern().trackProb}%`;
+  trigLane.draw(); // the PROB row shows the inherited default on unlocked steps
+  persist();
+};
+$('trackProb').onchange = () => { trackProbGesture = false; dropUnchangedUndo(); };
 $('clear').onclick = () => {
   if (!pattern().notes.length || confirm(`Clear all notes in ${pattern().name}?`)) {
     pushUndo();
@@ -343,7 +361,7 @@ $('clear').onclick = () => {
     state.patterns[state.current] = {
       ...defaultPattern(state.current),
       channel: pattern().channel, lengthSteps: pattern().lengthSteps,
-      swing: pattern().swing, source: pattern().source,
+      swing: pattern().swing, trackProb: pattern().trackProb, source: pattern().source,
     };
     roll.clearSelection();
     syncToolbar();
@@ -375,19 +393,27 @@ function copySelection(cut = false) {
   setStatus(`${cut ? 'Cut' : 'Copied'} ${clipboard.length} note${clipboard.length > 1 ? 's' : ''}`);
 }
 
+// Paste lands on the caret — the last grid cell you pressed — with the block's
+// relative timing and pitch intact. Before anything has been clicked there is
+// no caret, and paste falls back to the source steps it was copied from.
 function paste() {
   if (!clipboard.length) return;
   const p = pattern();
-  pushUndo();
-  const added = clipboard.map(c => {
-    const s = Math.min(c.step, p.lengthSteps - 1);
-    return makeNote(s, c.pitch, Math.min(c.len, p.lengthSteps - s), c.velocity, c.micro, c);
+  const { notes, dropped } = placeClipboard(clipboard, roll.caret, {
+    lengthSteps: p.lengthSteps, pitchMin: PITCH_MIN, pitchMax: PITCH_MAX,
   });
+  if (!notes.length) {
+    setStatus('Nothing pasted — the whole clipboard would land off the grid there', true);
+    return;
+  }
+  pushUndo();
+  const added = notes.map(c => makeNote(c.step, c.pitch, c.len, c.velocity, c.micro, c));
   p.notes.push(...added);
   roll.setSelection(added.map(n => n.id));
   roll.draw();
   persist();
-  setStatus(`Pasted ${added.length} note${added.length > 1 ? 's' : ''}`);
+  setStatus(`Pasted ${added.length} note${added.length > 1 ? 's' : ''}`
+    + (dropped ? ` (${dropped} landed off the grid and ${dropped === 1 ? 'was' : 'were'} dropped)` : ''));
 }
 
 $('export').onclick = () => {
@@ -700,6 +726,7 @@ $('sendToBox').onclick = async () => {
       index: dest.patternIndex,
       trackIndex: dest.trackIndex,
       notes: rollNotesToDevice(p.notes),
+      trackProb: p.trackProb ?? 100,
       onStatus: setStatus,
       onBackup: b => downloadBytes(b.name, b.bytes),
       confirm: ({ label, existingTrigs, patternKit }) => {
@@ -720,6 +747,10 @@ $('sendToBox').onclick = async () => {
         if (track.lengthSteps < p.lengthSteps) {
           lines.push(`That track is ${track.lengthSteps} steps long and this pattern is ${p.lengthSteps} — `
             + `the rest is stored but won't play until you raise the track's LEN on the box.`);
+        }
+        // A second write surface, so it gets named rather than slipped in.
+        if ((p.trackProb ?? 100) !== 100) {
+          lines.push(`That track's PROB default is also set to ${p.trackProb}% — trigs without their own PROB lock will play at those odds.`);
         }
         if (src && !sourceMatchesIdentity(src, id)) {
           lines.push(`Note: this pattern came from a ${src.deviceName || src.slug}.`);
@@ -824,6 +855,7 @@ $('impGo').onclick = () => {
   const p = pattern();
   p.name = `${fetched.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
+  p.trackProb = readTrackProb(fetched.spec, fetched.payload, t);
   p.notes = deviceNotesToRoll(notes, lengthSteps);
   p.source = makeSource({ ...fetched.origin, trackIndex: t, patternName: fetched.patternKit.name });
   // Aim Send at where these notes came from, overriding any target this slot

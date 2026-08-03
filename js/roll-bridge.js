@@ -18,9 +18,30 @@
 
 import { makeNote } from './state.js';
 import { PITCH_MIN, PITCH_MAX } from './pianoroll.js';
-import { bankName } from './elektron/pattern-core.js';
+import { bankName, lengthByteToSteps, stepsToLengthByte } from './elektron/pattern-core.js';
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// The shortest note the boxes can store: length byte 0. Everything below two
+// steps is stored in 1/16-step increments, so this is a real musical value
+// rather than a rounding artefact.
+export const LEN_MIN = 0.125;
+
+// Snap a length in steps to the nearest value a box can actually hold, so a
+// fine resize in the roll shows exactly what will land on the hardware rather
+// than a number that quietly rounds on write. This is the whole of what the
+// piano roll knows about devices, and it arrives injected (`snapLen`) rather
+// than imported — the roll itself stays device-agnostic.
+//
+// `maxSteps` is the room left in the pattern. Snapping picks the *nearest*
+// representable length, which can round up past that room, so the result is
+// walked back down the length scale until it fits.
+export function snapLenFine(steps, maxSteps = Infinity) {
+  const want = clamp(steps, LEN_MIN, Math.max(LEN_MIN, maxSteps));
+  let byte = stepsToLengthByte(want);
+  while (byte > 0 && lengthByteToSteps(byte) > maxSteps) byte--;
+  return lengthByteToSteps(byte);
+}
 
 // Roll slot length for a device track: whole bars, at least one, at most eight.
 export function rollLengthForTrack(track) {
@@ -28,13 +49,15 @@ export function rollLengthForTrack(track) {
 }
 
 // Decoded device notes → piano-roll notes. Pitches are clamped to the rows the
-// roll can draw and lengths rounded to whole steps, because that is what the
-// editor can represent; everything else survives untouched.
+// roll can draw and lengths to the room left in the slot; everything else
+// survives untouched. Lengths are *not* rounded to whole steps — the roll draws
+// and edits fractions now, and a value off the wire is representable by
+// construction, so a 4.75-step trig comes home as 4.75.
 export function deviceNotesToRoll(notes, lengthSteps) {
   return notes.map(n => makeNote(
     n.step,
     clamp(n.pitch, PITCH_MIN, PITCH_MAX),
-    clamp(Math.round(n.lenSteps), 1, lengthSteps - n.step),
+    clamp(n.lenSteps, LEN_MIN, lengthSteps - n.step),
     n.velocity,
     n.micro,
     { prob: n.prob ?? null, fill: n.fill ?? null, cond: n.cond ?? null },

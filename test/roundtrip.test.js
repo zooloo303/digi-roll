@@ -6,6 +6,7 @@ import * as dt2 from '../js/elektron/dt2/pattern.js';
 import * as dn2 from '../js/elektron/dn2/pattern.js';
 import {
   deviceNotesToRoll, rollNotesToDevice, deviceNotesToEncoder, rollLengthForTrack,
+  snapLenFine, LEN_MIN,
   makeSource, sourceLabel, sourceSlotLabel, sourceMatchesIdentity,
 } from '../js/roll-bridge.js';
 
@@ -74,19 +75,15 @@ describe.skipIf(!have)('round-trip editing: import → piano roll → write back
         );
       });
 
-      it('brings every note home unchanged, bar the roll\'s whole-step grid', () => {
-        // The only thing an unedited round trip may alter is note length, and
-        // only because the roll draws in whole steps: the DN2 fixture has a
-        // 4.75-step trig that comes back as 5. Pitch, velocity and
-        // micro-timing are exact — including micro, which is the field most
-        // likely to be quietly lost.
+      it('brings every note home byte-for-byte unchanged', () => {
+        // Nothing about an unedited round trip may alter a note any more. Note
+        // length used to be the exception, because the roll drew in whole
+        // steps and the DN2 fixture's 4.75-step trig came back as 5; the roll
+        // now carries fractional lengths, so even that survives. Pitch,
+        // velocity and micro-timing were always exact — micro being the field
+        // most likely to be quietly lost.
         const { payload } = roundTrip(box, box.payload, t);
-        const after = box.mod.trackNotes(box.mod.decodePatternKit(payload), t);
-        expect(after.map(n => ({ ...n, lenSteps: 0 })))
-          .toEqual(original().map(n => ({ ...n, lenSteps: 0 })));
-        for (const [i, n] of after.entries()) {
-          expect(n.lenSteps).toBe(Math.max(1, Math.round(original()[i].lenSteps)));
-        }
+        expect(box.mod.trackNotes(box.mod.decodePatternKit(payload), t)).toEqual(original());
       });
 
       it('writes back a payload that differs from the box only in that track', () => {
@@ -179,10 +176,21 @@ describe.skipIf(!have)('roll-bridge note conversion', () => {
       { step: 0, pitch: 12, velocity: 90, lenSteps: 1, micro: 0 },   // below the roll's lowest row
       { step: 0, pitch: 120, velocity: 90, lenSteps: 1, micro: 0 },  // above the roll's highest row
       { step: 14, pitch: 60, velocity: 90, lenSteps: 32, micro: 0 }, // runs past the end
-      { step: 0, pitch: 60, velocity: 90, lenSteps: 0.25, micro: 0 }, // shorter than a step
+      // Shorter than a step: kept, not rounded up. The roll draws fractions now,
+      // and 0.25 is a length the box genuinely stores.
+      { step: 0, pitch: 60, velocity: 90, lenSteps: 0.25, micro: 0 },
+      { step: 0, pitch: 60, velocity: 90, lenSteps: 0.01, micro: 0 }, // below the shortest byte
     ], 16);
-    expect(roll.map(n => n.pitch)).toEqual([24, 96, 60, 60]);
-    expect(roll.map(n => n.len)).toEqual([1, 1, 2, 1]);
+    expect(roll.map(n => n.pitch)).toEqual([24, 96, 60, 60, 60]);
+    expect(roll.map(n => n.len)).toEqual([1, 1, 2, 0.25, 0.125]);
+  });
+
+  it('brings a fractional length home exactly', () => {
+    // The DN2 fixture's 4.75-step trig is the reason this feature exists: it
+    // used to arrive as 5 and go back to the box a quarter-step too long.
+    const roll = deviceNotesToRoll([{ step: 0, pitch: 60, velocity: 90, lenSteps: 4.75, micro: 0 }], 16);
+    expect(roll[0].len).toBe(4.75);
+    expect(rollNotesToDevice(roll)[0].len).toBe(4.75);
   });
 
   it('passes device notes straight through for cross-device copy, unclamped', () => {
@@ -202,6 +210,56 @@ describe.skipIf(!have)('roll-bridge note conversion', () => {
     expect(rollLengthForTrack({ lengthSteps: 17 })).toBe(32);
     expect(rollLengthForTrack({ lengthSteps: 4 })).toBe(16);
     expect(rollLengthForTrack({ lengthSteps: 999 })).toBe(128);
+  });
+});
+
+describe('fine note lengths', () => {
+  // The roll's shift-resize snapper. The scale it snaps to is the boxes' own
+  // LEN byte table (pattern-core's lengthByteToSteps): 1/16-step resolution
+  // below two steps, doubling every octave above.
+  const roundTripsExactly = len =>
+    dt2.lengthByteToSteps(dt2.stepsToLengthByte(len)) === len;
+
+  it('snaps to values the box can actually store', () => {
+    for (const len of [0.3, 1.1, 2.4, 4.8, 9.7, 33]) {
+      expect(roundTripsExactly(snapLenFine(len)), `${len} → ${snapLenFine(len)}`).toBe(true);
+    }
+  });
+
+  it('leaves a length that is already representable alone', () => {
+    for (const len of [LEN_MIN, 0.25, 1, 2, 4.75, 8, 16]) {
+      expect(snapLenFine(len), `${len}`).toBe(len);
+    }
+  });
+
+  it('resolves to a sixteenth of a step below two steps', () => {
+    expect(snapLenFine(1.03)).toBe(1);
+    expect(snapLenFine(1.05)).toBe(1.0625);
+    expect(snapLenFine(1.92)).toBe(1.9375);
+    // ...and to an eighth between two steps and four, where the scale doubles.
+    expect(snapLenFine(3.9)).toBe(3.875);
+  });
+
+  it('never goes below the shortest note the box has', () => {
+    expect(snapLenFine(0)).toBe(LEN_MIN);
+    expect(snapLenFine(-4)).toBe(LEN_MIN);
+    expect(snapLenFine(0.01)).toBe(LEN_MIN);
+  });
+
+  it('stays inside the room left in the pattern, even when snapping rounds up', () => {
+    // 3.95 is nearest to 4, so a note with only 3.95 steps of room has to come
+    // back down the scale to the next representable value that fits.
+    expect(snapLenFine(3.95)).toBe(4);
+    const fitted = snapLenFine(3.95, 3.95);
+    expect(fitted).toBeLessThanOrEqual(3.95);
+    expect(roundTripsExactly(fitted)).toBe(true);
+    for (const room of [1, 2, 4.75, 16]) {
+      expect(snapLenFine(999, room), `room ${room}`).toBeLessThanOrEqual(room);
+    }
+  });
+
+  it('gives a note with no room at all the shortest length there is', () => {
+    expect(snapLenFine(4, 0)).toBe(LEN_MIN);
   });
 });
 

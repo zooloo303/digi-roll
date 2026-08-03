@@ -6,6 +6,7 @@ import * as dt2 from '../js/elektron/dt2/pattern.js';
 import * as dn2 from '../js/elektron/dn2/pattern.js';
 import {
   readTrackTrigSettings, applyTrackTrigSettings, trigSettingsFromNotes, attachTrigSettings,
+  readTrackProb, applyTrackProb,
 } from '../js/elektron/trig-cond.js';
 import { NONE } from '../js/elektron/conditions.js';
 import { copyTrack, truncateChords, deviceNotesToEncoder } from '../js/elektron/copy-track.js';
@@ -40,6 +41,7 @@ function expectOnlyTrackBytesChanged(box, before, after, t) {
     [base + S.trigCond, base + S.trigCond + 128],
     [base + S.trigFill, base + S.trigFill + 128],
     [base + S.trigProb, base + S.trigProb + 128],
+    [base + S.trackProb, base + S.trackProb + 1],         // the track's PROB default
   ];
   for (const d of box.mod.diffPayloads(before, after, 100000)) {
     const ok = regions.some(([lo, hi]) => d.offset >= lo && d.offset < hi);
@@ -48,9 +50,10 @@ function expectOnlyTrackBytesChanged(box, before, after, t) {
 }
 
 // Encode notes and apply their conditions — exactly what safeWriteTrack does.
-const encodeWithConditions = (mod, payload, t, notes) => {
+const encodeWithConditions = (mod, payload, t, notes, trackProb = null) => {
   const { payload: out, dropped } = mod.encodeTrackNotes(payload, t, notes);
   applyTrackTrigSettings(mod.SPEC, out, t, trigSettingsFromNotes(notes));
+  if (trackProb != null) applyTrackProb(mod.SPEC, out, t, trackProb);
   return { payload: out, dropped };
 };
 
@@ -102,6 +105,32 @@ describe.skipIf(!have)('encode + apply keeps the diff minimal', () => {
         const first = encodeWithConditions(box.mod, box.payload, t, notes).payload;
         const second = encodeWithConditions(box.mod, first, t, notes).payload;
         expect(box.mod.diffPayloads(first, second, 100000)).toEqual([]);
+      });
+
+      it('writes the track PROB default without disturbing anything else', () => {
+        const notes = notesWithConditions();
+        const { payload } = encodeWithConditions(box.mod, box.payload, t, notes, 30);
+        expectOnlyTrackBytesChanged(box, box.payload, payload, t);
+        expect(readTrackProb(box.mod.SPEC, payload, t)).toBe(30);
+      });
+
+      it('leaves every other track\'s PROB default alone', () => {
+        const { payload } = encodeWithConditions(box.mod, box.payload, t, notesWithConditions(), 30);
+        for (let other = 0; other < 16; other++) {
+          if (other === t) continue;
+          expect(readTrackProb(box.mod.SPEC, payload, other), `track ${other + 1}`)
+            .toBe(readTrackProb(box.mod.SPEC, box.payload, other));
+        }
+      });
+
+      it('keeps an explicit 100% trig lock distinct from the track default', () => {
+        // The user's case, end to end: a 30% track with one trig pinned at 100.
+        const notes = notesWithConditions();
+        const step = notes[0].step;
+        for (const n of notes) if (n.step === step) n.prob = 100;
+        const { payload } = encodeWithConditions(box.mod, box.payload, t, notes, 30);
+        expect(readTrackProb(box.mod.SPEC, payload, t)).toBe(30);
+        expect(readTrackTrigSettings(box.mod.SPEC, payload, t).get(step).prob).toBe(100);
       });
 
       it('survives the piano roll: draw conditions, write, read back', () => {
@@ -197,6 +226,22 @@ describe.skipIf(!have || !haveCond)('cross-device copy carries conditions', () =
     for (let other = 0; other < 16; other++) {
       if (other === 5) continue;
       expect(readTrackTrigSettings(dn2.SPEC, payload, other).size, `track ${other + 1}`).toBe(0);
+    }
+  });
+
+  it('carries the source track\'s PROB default onto the target', () => {
+    const sourcePayload = Uint8Array.from(payloadOf(DT2_COND));
+    applyTrackProb(dt2.SPEC, sourcePayload, 0, 30);
+    const targetPayload = payloadOf(DN2_FIXTURE);
+    const { payload } = copyTrack({
+      sourceMod: dt2, sourcePatternKit: dt2.decodePatternKit(sourcePayload), sourcePayload, sourceTrack: 0,
+      targetMod: dn2, targetPayload, targetTrack: 5,
+    });
+    expect(readTrackProb(dn2.SPEC, payload, 5)).toBe(30);
+    for (let other = 0; other < 16; other++) {
+      if (other === 5) continue;
+      expect(readTrackProb(dn2.SPEC, payload, other), `track ${other + 1}`)
+        .toBe(readTrackProb(dn2.SPEC, targetPayload, other));
     }
   });
 

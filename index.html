@@ -72,7 +72,11 @@
         <div class="row" title="Swing amount for this pattern — 50 is straight, 66 is classic triplet feel">
           <span class="lab">Swing</span><input id="swing" type="number" min="50" max="80" step="1">
         </div>
-        <div class="btns">
+        <div class="row" title="The odds every trig plays at unless it has its own PROB lock in the lane below the grid. 100% = always, the box default.">
+          <span class="lab">Track PROB</span><b id="trackProbLabel"></b>
+        </div>
+        <input id="trackProb" type="range" min="0" max="100">
+        <div class="btns" style="margin-top:10px">
           <button id="dup" title="Add a bar and copy the last bar's notes into it">Dup bar</button>
           <button id="clear" title="Clear all notes in this pattern">Clear</button>
         </div>
@@ -85,7 +89,7 @@
         </div>
         <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       </div>
-      <p class="hint">Drag a note's right edge to resize · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · right-click to delete. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid.</p>
+      <p class="hint">Drag a note's right edge to resize (hold shift for fine lengths) · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · alt+drag a note to duplicate it · right-click to delete. Paste lands where you last clicked. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid.</p>
     </aside>
 
     <!-- ===== Harmony ===== -->
@@ -201,17 +205,22 @@
       </ol>
       <p>After a successful send the pattern remembers where it lives, so the next send is a write-back to the same place. <b>Library</b> keeps named saves in this browser — with swing, micro-timing and provenance — and exports them as .json.</p>
       <h3>Drawing</h3>
-      <p>Click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
+      <p>Click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · <b>alt+drag a note to duplicate it</b> (the copy comes with you; drag the selection and the whole thing is copied) · right-click to delete, or alt-click and release without moving.</p>
       <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Velocity slider all apply to the whole selection.</p>
-      <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
+      <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Paste lands on the last cell you clicked</b>, keeping the copied block's shape — click where you want it, then paste; anything that would fall off the end of the pattern or off the top or bottom of the grid is dropped rather than shoved into place, and you're told how many. <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
+      <h4>Note length, finer than a step</h4>
+      <p>A plain edge-drag snaps to whole steps. <b>Hold shift while dragging the edge</b> for fine lengths, snapped to what the box can actually store and shown as a number next to the edge as you drag: sixteenths of a step up to two steps (0.125, 0.1875, … 1.9375), then eighths up to four, quarters up to eight, and so on — the hardware's own LEN scale, so what you see is what lands. Imported tracks keep their fractional lengths too; a 4.75-step trig comes in as 4.75 and goes home as 4.75.</p>
+      <p>Two things stay coarse on purpose: a chord stores one length for the whole trig (that's the format, not a limitation here), and <b>exported .mid</b> files quantize length to 1/24 of a step.</p>
       <p>In the <b>Edit</b> panel: <b>Dup bar</b> adds a bar and copies the last one into it (up to 8), <b>Clear</b> empties the pattern, and <b>Export .mid</b> / <b>Import .mid</b> move patterns in and out as Standard MIDI Files — tempo, velocities, swing and micro-timing survive the trip, trig conditions don't, since MIDI has no concept of them.</p>
       <h3>Trig conditions (PROB / COND / FILL)</h3>
       <p>The strip under the grid is the box's TRIG page 1, one column per step. These belong to the <b>trig</b>, not to a note, so every note on a step shares them — exactly as the hardware works. A cell is only live where the step has notes.</p>
       <ul>
-        <li><b>PROB</b> — drag up or down to set 0–100%, re-rolled every pass. Dragging to the top takes the lock off.</li>
+        <li><b>PROB</b> — drag up or down to set 0–100%, re-rolled every pass. This is a lock on that one trig, including at 100%; alt-click or right-click takes it off again.</li>
         <li><b>COND</b> — click for the picker: the eight logic conditions (<b>PRE</b>, <b>NEI</b>, <b>1ST</b>, <b>LST</b> and their <b>!</b> negations) plus every ratio from <b>1:2</b> to <b>!8:8</b>, tabbed by denominator. <code>2:4</code> plays on loop 2 of every 4; <code>!2:4</code> plays on all the others.</li>
         <li><b>FILL</b> — click to cycle none → <b>ON</b> → <b>OFF</b>. ON plays only while FILL is held on the box; OFF plays only while it isn't. Unlocked ignores fill mode entirely — that's a real third state, not a synonym for OFF.</li>
       </ul>
+      <h4>Track PROB — odds for the whole pattern</h4>
+      <p>The <b>Track PROB</b> slider in the <b>Edit</b> panel is the track's own probability default, the same byte the box holds: every trig runs at those odds <i>unless</i> it carries a PROB lock of its own, which wins. So "30% across the track, but these three trigs always" is a 30% slider plus three trigs locked at 100 — not a value stamped onto every step. Unlocked steps show the inherited number dimmed in the PROB row so you can see what they'll actually do. It's per pattern, it travels with write-back, cross-device copy and Library saves, and it's honoured in the browser preview.</p>
       <p>Drag sideways to paint a value across steps · right-click (or alt-click) clears a cell · and if the step you click holds selected notes, the edit reaches <b>every selected step at once</b>. A conditioned trig is marked in the grid too: a dark corner flag on the note, plus the values written inside it once the note is two steps or wider. Conditions survive write-back, cross-device copy and Library saves; they are not in exported .mid files, which have no such concept.</p>
       <p><b>Playing them here is a partial preview.</b> Probability and the loop-counting conditions (<code>1ST</code> and every <code>A:B</code> ratio) are evaluated for real, so a <code>2:4</code> trig really does play every fourth loop. <code>PRE</code>, <code>NEI</code>, <code>LST</code> and <code>FILL</code> always play, because the browser has no neighbour track, no idea a pattern change is coming and no FILL button — the preview is never quieter than the box. Send it to the hardware to hear those properly.</p>
       <h3>Chords</h3>
