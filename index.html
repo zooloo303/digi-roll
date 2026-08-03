@@ -80,12 +80,12 @@
       <div class="grp">
         <div class="cap">File</div>
         <div class="btns">
-          <button id="export" title="Download this pattern as a Standard MIDI File">Export .mid</button>
+          <button id="export" title="Download this pattern as a Standard MIDI File. Trig conditions (COND/FILL/PROB) are not exported — a MIDI file has no such concept">Export .mid</button>
           <button id="import" title="Replace this pattern with the notes from a MIDI file">Import .mid</button>
         </div>
         <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       </div>
-      <p class="hint">Drag a note's right edge to resize · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · right-click to delete.</p>
+      <p class="hint">Drag a note's right edge to resize · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · right-click to delete. Trig conditions live in the <b>COND/FILL/PROB</b> lane under the grid.</p>
     </aside>
 
     <!-- ===== Harmony ===== -->
@@ -204,6 +204,14 @@
       <p>Click to draw a note and drag right to lengthen it · drag notes to move · drag a note's right edge to resize · <b>shift+drag up/down to set velocity</b> (brighter = harder) · <b>cmd/ctrl+drag a note sideways for micro-timing</b> (fractions of a step, shown as you drag) · right-click (or alt-click) to delete.</p>
       <p>Selecting: <b>cmd/ctrl+drag on empty grid</b> draws a marquee · <b>shift+click</b> a note to add/remove it from the selection · moving, deleting, shift+drag velocity and the Velocity slider all apply to the whole selection.</p>
       <p>Keys: space = play/stop · Delete/Backspace = remove selected · <b>cmd/ctrl+Z</b> undo, <b>shift+cmd/ctrl+Z</b> redo · <b>cmd/ctrl+C / X / V</b> copy, cut, paste (the clipboard follows you between pattern slots). <b>Swing</b> is per pattern (50 = straight); the scale menu only tints rows, it never restricts what you can draw. Patterns auto-save in your browser.</p>
+      <h3>Trig conditions (COND / FILL / PROB)</h3>
+      <p>The strip under the grid is the box's TRIG page 1, one column per step. These belong to the <b>trig</b>, not to a note, so every note on a step shares them — exactly as the hardware works. A cell is only live where the step has notes.</p>
+      <ul>
+        <li><b>COND</b> — click for the picker: the eight logic conditions (<b>PRE</b>, <b>NEI</b>, <b>1ST</b>, <b>LST</b> and their <b>!</b> negations) plus every ratio from <b>1:2</b> to <b>!8:8</b>, tabbed by denominator. <code>2:4</code> plays on loop 2 of every 4; <code>!2:4</code> plays on all the others.</li>
+        <li><b>FILL</b> — click to cycle none → <b>ON</b> → <b>OFF</b>. ON plays only while FILL is held on the box; OFF plays only while it isn't. Unlocked ignores fill mode entirely — that's a real third state, not a synonym for OFF.</li>
+        <li><b>PROB</b> — drag up or down to set 0–100%, re-rolled every pass. Dragging to the top takes the lock off.</li>
+      </ul>
+      <p>Drag sideways to paint a value across steps · right-click (or alt-click) clears a cell · and if the step you click holds selected notes, the edit reaches <b>every selected step at once</b>. Conditions survive write-back, cross-device copy and Library saves; they are not in exported .mid files, which have no such concept.</p>
       <h3>Chords</h3>
       <p>In the <b>Harmony</b> panel, turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes — that's one trig's worth on the Digitone II.</p>
       <h3>Fallback: capture by live recording</h3>
@@ -226,8 +234,17 @@
       <p>The <a href="console.html">device console</a> is for the jobs the Box panel deliberately doesn't carry: whole-project backup and restore, importing from a saved .syx file, <b>copying a track between patterns — or between the two boxes</b>, and a raw SysEx log for when something needs proving. You never need it for the two routes above.</p>
     </aside>
 
-    <div id="rollWrap">
-      <canvas id="roll"></canvas>
+    <div id="rollArea">
+      <div id="rollWrap">
+        <canvas id="roll"></canvas>
+      </div>
+      <!-- Per-trig conditions, locked to the step grid above. Scrolls
+           horizontally with the roll but never vertically out of reach. -->
+      <div id="trigLaneWrap" title="Per-trig conditions — these belong to the step, so every note on a step shares them.
+COND: click for the picker · FILL: click cycles none/ON/OFF · PROB: drag up or down (top = no lock)
+Drag sideways to paint across steps · right-click clears · edits reach every selected step">
+        <canvas id="trigLane"></canvas>
+      </div>
     </div>
   </div>
 

@@ -1,6 +1,7 @@
 import { loadState, saveState, defaultPattern, makeNote, NUM_SLOTS } from './state.js';
 import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
+import { TrigLane } from './triglane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
 import { ElektronDevice } from './elektron/device.js';
 import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
@@ -97,6 +98,10 @@ function chordSpecs(rootPitch, velocity, taper = true) {
   return voiceChord(pitches, { velocity, strum: c.strum / 100 * STRUM_STEP, taper });
 }
 
+// Declared up front: PianoRoll's constructor resizes, and that reaches for the
+// lane through the hooks below before the assignment further down has run.
+let trigLane = null;
+
 const roll = new PianoRoll($('roll'), {
   getPattern: pattern,
   getDefaultVelocity: () => state.defaultVelocity,
@@ -119,6 +124,24 @@ const roll = new PianoRoll($('roll'), {
     $('velocity').value = note.velocity;
     $('velLabel').textContent = note.velocity;
   },
+  // The trig lane draws in step with the grid, so it rides the roll's own
+  // resize and redraw rather than being chased from every call site.
+  onResize: () => trigLane?.resize(),
+  onAfterDraw: () => trigLane?.draw(),
+});
+
+trigLane = new TrigLane($('trigLane'), {
+  pickerHost: $('rollArea'),
+  getPattern: pattern,
+  getSelectedIds: () => roll.selected,
+  onBeforeEdit: pushUndo,
+  onChange: () => { dropUnchangedUndo(); persist(); roll.draw(); },
+});
+
+// The lane has no scrollbar of its own — it tracks the roll's horizontal
+// position so the two grids stay aligned.
+$('rollWrap').addEventListener('scroll', () => {
+  $('trigLaneWrap').scrollLeft = $('rollWrap').scrollLeft;
 });
 
 // --- Toolbar wiring ---------------------------------------------------------
@@ -287,7 +310,9 @@ $('harmonize').onclick = () => {
       if (s.pitch === note.pitch) continue;
       if (p.notes.some(x => x.step === note.step && x.pitch === s.pitch)) continue;
       const micro = Math.max(-0.49, Math.min(0.49, (note.micro ?? 0) + s.micro));
-      added.push(makeNote(note.step, s.pitch, note.len, Math.max(1, Math.round(note.velocity * 0.85)), micro));
+      // Chord-mates join an existing trig, so they take its conditions — the
+      // step-uniformity rule, which the encoder relies on.
+      added.push(makeNote(note.step, s.pitch, note.len, Math.max(1, Math.round(note.velocity * 0.85)), micro, note));
     }
   }
   p.notes.push(...added);
@@ -337,7 +362,8 @@ let clipboard = [];
 function copySelection(cut = false) {
   const sel = roll.selectedNotes();
   if (!sel.length) return;
-  clipboard = sel.map(({ step, pitch, len, velocity, micro }) => ({ step, pitch, len, velocity, micro }));
+  clipboard = sel.map(({ step, pitch, len, velocity, micro, prob, fill, cond }) =>
+    ({ step, pitch, len, velocity, micro, prob, fill, cond }));
   if (cut) {
     pushUndo();
     const p = pattern();
@@ -355,7 +381,7 @@ function paste() {
   pushUndo();
   const added = clipboard.map(c => {
     const s = Math.min(c.step, p.lengthSteps - 1);
-    return makeNote(s, c.pitch, Math.min(c.len, p.lengthSteps - s), c.velocity, c.micro);
+    return makeNote(s, c.pitch, Math.min(c.len, p.lengthSteps - s), c.velocity, c.micro, c);
   });
   p.notes.push(...added);
   roll.setSelection(added.map(n => n.id));
@@ -406,7 +432,7 @@ $('dup').onclick = () => {
   const copies = p.notes.filter(n => n.step >= from);
   p.lengthSteps += 16;
   for (const n of copies) {
-    p.notes.push(makeNote(n.step + 16, n.pitch, Math.min(n.len, p.lengthSteps - n.step - 16), n.velocity, n.micro));
+    p.notes.push(makeNote(n.step + 16, n.pitch, Math.min(n.len, p.lengthSteps - n.step - 16), n.velocity, n.micro, n));
   }
   syncToolbar();
   roll.resize();

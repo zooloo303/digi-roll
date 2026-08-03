@@ -27,12 +27,18 @@ export function serializePattern(pattern, savedAt = new Date().toISOString()) {
       channel: pattern.channel,
       swing: pattern.swing ?? 50,
       source: pattern.source ?? null,
+      // prob/fill/cond ride along without a schema bump: older saves simply
+      // lack them and load unlocked, and older digi-rolls ignore the extra
+      // keys. All three are null when nothing is locked.
       notes: pattern.notes.map(n => ({
         step: n.step,
         pitch: n.pitch,
         len: n.len,
         velocity: n.velocity,
         micro: n.micro ?? 0,
+        prob: n.prob ?? null,
+        fill: n.fill ?? null,
+        cond: n.cond ?? null,
       })),
     },
   };
@@ -54,7 +60,7 @@ export function deserializePattern(entry, makeNote) {
     channel: Number(p.channel) || 0,
     swing: typeof p.swing === 'number' ? p.swing : 50,
     source: p.source ?? null,
-    notes: p.notes.map(n => makeNote(n.step, n.pitch, n.len, n.velocity, n.micro ?? 0)),
+    notes: p.notes.map(n => makeNote(n.step, n.pitch, n.len, n.velocity, n.micro ?? 0, n)),
   };
 }
 

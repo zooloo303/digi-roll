@@ -17,8 +17,10 @@ export const PITCH_MAX = 96; // C8 as the box labels it
 export const PITCH_MIN = 24; // C2 as the box labels it
 const ROWS = PITCH_MAX - PITCH_MIN + 1;
 const CELL_H = 16;
-const CELL_W = 34;
-const KEY_W = 52;
+// Exported so anything drawn in step with the grid — the trig lane — shares the
+// geometry instead of keeping its own copy that could drift.
+export const CELL_W = 34;
+export const KEY_W = 52;
 const EDGE_PX = 7;
 const DRAG_PX = 3; // movement before a shift-click becomes a velocity drag
 const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -44,6 +46,17 @@ export function noteName(pitch) {
   return NAMES[pitch % 12] + Math.floor(pitch / 12); // MIDI 60 = C5, as the box shows it
 }
 
+// The badge drawn inside a note that carries trig conditions. Deliberately
+// dumb: it renders whatever labels the note holds and has no idea they came
+// from an Elektron. Empty string means "nothing set, draw no marker".
+function noteTrigTag(n) {
+  const parts = [];
+  if (n.cond) parts.push(n.cond);
+  if (n.prob != null) parts.push(`${n.prob}%`);
+  if (n.fill != null) parts.push(n.fill ? 'F' : 'f');
+  return parts.join(' ');
+}
+
 export class PianoRoll {
   constructor(canvas, opts) {
     this.canvas = canvas;
@@ -57,6 +70,10 @@ export class PianoRoll {
     this.getScale = opts.getScale;             // () => { root, set } | null — row tinting only
     this.getChord = opts.getChord;             // (pitch) => [{pitch, velocity, micro}] | null — chord mode off ⇒ null
     this.onChordWheel = opts.onChordWheel;     // (dir) => handled? — alt+wheel cycles inversion in chord mode
+    // Anything drawn in step with the grid (the trig lane) hangs off these, so
+    // it follows every resize and redraw without the call sites knowing.
+    this.onResize = opts.onResize;
+    this.onAfterDraw = opts.onAfterDraw;
     this.selected = new Set();                 // note ids
     this.lastTouched = null;                   // id the velocity slider mirrors
     this.drag = null;
@@ -119,6 +136,7 @@ export class PianoRoll {
     this.canvas.style.width = w + 'px';
     this.canvas.style.height = h + 'px';
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.onResize?.();
     this.draw();
   }
 
@@ -371,14 +389,43 @@ export class PianoRoll {
     for (const n of p.notes) {
       const x = KEY_W + (n.step + (n.micro ?? 0)) * CELL_W;
       const y = (PITCH_MAX - n.pitch) * CELL_H;
+      const w = n.len * CELL_W - 3;
       const bright = 45 + Math.round((n.velocity / 127) * 45);
       ctx.fillStyle = `hsl(28, 90%, ${bright}%)`;
       ctx.beginPath();
-      ctx.roundRect(x + 1, y + 1.5, n.len * CELL_W - 3, CELL_H - 3, 3);
+      ctx.roundRect(x + 1, y + 1.5, w, CELL_H - 3, 3);
       ctx.fill();
+
+      // A trig with any condition set gets a corner flag, and a compact tag
+      // once there is room for it. The roll knows nothing about what these
+      // mean — they arrive as a number, a tri-state and a label string.
+      const tag = noteTrigTag(n);
+      if (tag) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(x + 1, y + 1.5, w, CELL_H - 3, 3);
+        ctx.clip();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.beginPath();
+        ctx.moveTo(x + w + 1, y + 1.5);
+        ctx.lineTo(x + w + 1, y + 6.5);
+        ctx.lineTo(x + w - 4, y + 1.5);
+        ctx.closePath();
+        ctx.fill();
+        if (n.len >= 2) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+          ctx.font = '9px ui-monospace, Menlo, monospace';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(tag, x + 4, y + CELL_H / 2);
+        }
+        ctx.restore();
+      }
+
       if (this.selected.has(n.id)) {
         ctx.strokeStyle = '#fff';
         ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(x + 1, y + 1.5, w, CELL_H - 3, 3);
         ctx.stroke();
       }
     }
@@ -448,5 +495,7 @@ export class PianoRoll {
         ctx.fillText(noteName(pitch), 6, r * CELL_H + CELL_H / 2 + 1);
       }
     }
+
+    this.onAfterDraw?.();
   }
 }
