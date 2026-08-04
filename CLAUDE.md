@@ -78,9 +78,11 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 **P-lock lanes: a parameter has two independent mappings, and the split is the
 whole design** (built 2026-08-04; Phase 0 measured the same day; **write path
 hardware-verified the same day on both boxes** — lanes drawn in digi-roll,
-sent, byte-identical verify, right values on the box UI. Not yet exercised on
-hardware: emptying an existing lane via a send, and cross-device lane
-translation).
+sent, byte-identical verify, right values on the box UI. The two residuals
+were also verified 2026-08-04: emptying an existing lane via a send, and a
+cross-device copy carrying name-translated lanes, DN2 → DT2 through the
+console's Copy track row. The reverse direction is untested but runs the same
+name-keyed path).
 
 - `midi` — CC and NRPN numbers, from the boxes' own published charts (DT2
   Appendix B, DN2 Appendix C). This is what lets a lane be *heard*.

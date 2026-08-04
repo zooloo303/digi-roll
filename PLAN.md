@@ -593,10 +593,13 @@ experiments recorded.
   9. Draw p-lock lanes for a few curated params, send, check the values on the
      box's own TRIG page, verify byte-identical, re-import and round-trip.
 
-  Two checklist items were *not* exercised and remain open: emptying a lane via
-  a digi-roll send (watch the verify step there — though Phase 0 confirmed the
-  box's own free form is byte-identical to what the write path emits), and a
-  cross-device copy carrying translated lanes.
+  The two checklist items that round left open were both verified 2026-08-04
+  in a follow-up hardware session: emptying a lane via a digi-roll send
+  (verify passed — matching Phase 0's finding that the box's own free form is
+  byte-identical to what the write path emits), and a cross-device copy
+  carrying name-translated lanes, DN2 → DT2 through the console's Copy track
+  row using an in-memory source across a reconnect. DT2 → DN2 is untested but
+  runs the same name-keyed path.
 
 Out of scope for v1, explicitly: trigless locks, the DT2 per-step *sound*
 p-lock lane (track `+1024`, a different structure), and previewing p-locked
@@ -607,9 +610,15 @@ params in the browser.
 - [x] **P-lock Phase 0** — ran 2026-08-04 on both boxes; see the Phase 0 section.
       Both param tables measured, docs corrected, fixtures committed.
 - [x] **P-lock Phase 3 hardware smoke test** — run and passed 2026-08-04 on
-      both boxes (send + box UI + byte-identical verify). Residuals folded into
-      the next hardware session: empty-a-lane-via-send, and a cross-device copy
-      with translated lanes.
+      both boxes (send + box UI + byte-identical verify). Both residuals also
+      verified 2026-08-04: empty-a-lane-via-send, and a cross-device copy with
+      translated lanes (DN2 → DT2; the reverse runs the same path, untested).
+- [ ] **Console UX round** — three gaps surfaced by the residual testing:
+      the "Write to box" row silently drops lanes/conditions/PROB/swing
+      (notes-only legacy path — route it through `safeWriteTrack` or label it);
+      no way to save a single fetched pattern as `.syx` (only whole-project
+      backup); the cross-device copy flow is undiscoverable (the target
+      selector *is* the Connect button, and nothing says so).
 - [ ] **Retrig as a p-lock lane** — deferred from the audition round: no CC, no
       NRPN, and not one knob (RATE/LEN/VEL/on-off), so it needs a capture to show
       its shape before it can be modelled at all.
