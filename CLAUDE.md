@@ -104,8 +104,10 @@ owns `readSwing`/`applySwing`, composed onto the payload like `applyTrackProb`,
 so no protected file changed. Because it re-times **all sixteen tracks** in the
 destination slot, the send confirmation names it whenever it would change what
 the box holds, and cross-device track copy deliberately doesn't carry it. Byte
-mapping is hardware-verified on a DN2 by controlled experiment; **the write has
-not been tried on hardware** on either box.
+mapping and write path are both hardware-verified on a DN2 (mapping by
+controlled experiment, write by write-back, 2026-08-04). **Never written to a
+DT2** — the byte sits at the sibling offset and the fixtures corroborate it,
+but that write is untested.
 
 **Velocity, length and micro are per note, not per trig** (fixed 2026-08-04,
 the one approved edit to `encodeTrackNotes` so far). They used to be read from

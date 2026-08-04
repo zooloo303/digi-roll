@@ -45,6 +45,8 @@ Provenance key:
   the same A01 moved to 65%, changing that one byte from 28 to 15 and nothing
   else. Fixtures `dumps/dn2-fresh-A01.syx` (78), `dumps/dn2-fresh-A02.syx`
   (blank) and `dumps/dn2-swing-65.syx` (65); pinned by `test/swing.test.js`.
+  The write was verified the same day by a write-back to the box, which landed
+  and played — so swing is read *and* written against real DN2 hardware.
 
 Applies to **pattern struct version 3** (what OS 1.10D emits [F]). Any other
 version is refused rather than guessed at.

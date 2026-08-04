@@ -177,12 +177,10 @@ repeats them on a new OS build:
 
 Every write surface as of that date — notes, per-trig conditions, track PROB,
 fine lengths — went through encode → send → box UI → re-read on both boxes at
-the allowlisted builds (DT2 `0070`, DN2 `0049`). Per-note chord values joined
-them on 2026-08-04.
-
-*(That once read "nothing digi-roll writes is unverified any more". Swing broke
-it on 2026-08-04: its byte mapping is verified but its write isn't. See the
-chord round below.)*
+the allowlisted builds (DT2 `0070`, DN2 `0049`). Per-note chord values and
+pattern swing joined them on 2026-08-04, so **nothing digi-roll writes is
+unverified on a DN2**. The one gap is that swing has never been written to a
+*DT2* — same byte, corroborated by the fixtures, untested on the box.
 
 ## Chord round — built 2026-08-04
 
@@ -254,11 +252,17 @@ slot. Consequences, both deliberate:
 - Cross-device track copy does *not* carry it — a one-track copy has no business
   re-timing the fifteen tracks already in the target slot.
 
-**Not yet hardware-verified:** the byte mapping is (controlled experiment, DN2
-OS 1.10D), but no pattern carrying swing has been *written* to either box. Add
-to the next smoke test: send a pattern at swing 65, check the box's own swing
-setting reads 65, verify byte-identical, re-import round-trips, and confirm the
-other tracks in that slot are re-timed as expected.
+**Hardware-verified 2026-08-04**, both halves: the byte mapping by controlled
+experiment (DN2 OS 1.10D), then the write by a write-back to the box, which
+landed and played. The steps, for whoever repeats them on a new OS build:
+
+8. Set a pattern's swing, send it, and check the box's own swing setting reads
+   the same number. Verify byte-identical, re-import round-trips, and confirm
+   the other tracks in that slot are re-timed too — swing reaching past the
+   track being written is the part that is new in kind.
+
+Not verified on a **DT2**: the byte sits at the sibling offset and the fixtures
+corroborate it, but no swing has been written to one.
 
 ## Next — p-lock lanes (planned 2026-08-03)
 
