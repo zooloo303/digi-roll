@@ -247,35 +247,39 @@ export function encodeTrackNotes(spec, payload, trackIndex, notes) {
     throw new Error('pattern trig storage is full — too many trigs across all tracks');
   };
 
-  // Write the records for one trigged step. Velocity, length and micro are
-  // taken from the step's first note and mirrored across the group — exactly
-  // how both boxes store chords.
+  // Write the records for one trigged step. Velocity, length and micro belong
+  // to the *note*, not the trig: every record carries its own note's values.
+  // Both pools have the room — one record per note on 'perNote', one per note
+  // slot in a quad — and the DN2 edits all three per note in its NOTE EDIT
+  // menu (hardware-verified 2026-08-04: a box-authored 3-note chord stores
+  // velocities 127/52/69 on one step and micro −14/−9/+2 on another).
+  //
+  // A single-note trig is byte-identical to what mirroring produced, because
+  // the quad's unused slots still mirror the one note the way the box does.
   for (const [step, group] of byStep) {
-    const first = group[0];
-    const vel = first.velocity & 0x7f;
-    const len = stepsToLengthByte(first.len);
-    const micro = Math.max(-23, Math.min(23, Math.round((first.micro ?? 0) * 24))) & 0xff;
-    const writeRecord = (s, pitch) => {
+    const writeRecord = (s, n, pitch) => {
       out[s] = trackIndex;
       out[s + 1] = step;
       out[s + 2] = pitch;
-      out[s + 3] = vel;
-      out[s + 4] = len;
-      out[s + 5] = micro;
+      out[s + 3] = n.velocity & 0x7f;
+      out[s + 4] = stepsToLengthByte(n.len);
+      out[s + 5] = Math.max(-23, Math.min(23, Math.round((n.micro ?? 0) * 24))) & 0xff;
     };
     if (layout === 'quad') {
-      // One quad per trig; unused note slots carry 0xFF notes.
+      // One quad per trig; unused note slots carry 0xFF notes, and take their
+      // remaining bytes from the first note as the box leaves them.
       const o = freeGroup();
       nextGroup += GROUP;
       for (let slot = 0; slot < maxNotes; slot++) {
-        writeRecord(o + slot * 6, group[slot] ? group[slot].pitch & 0x7f : 0xff);
+        const n = group[slot];
+        writeRecord(o + slot * 6, n ?? group[0], n ? n.pitch & 0x7f : 0xff);
       }
     } else {
       // One record per note, consecutive, sharing (track, step).
       for (const n of group) {
         const o = freeGroup();
         nextGroup += GROUP;
-        writeRecord(o, n.pitch & 0x7f);
+        writeRecord(o, n, n.pitch & 0x7f);
       }
     }
     out[base + step * 2] |= TRIG_SET_HI;

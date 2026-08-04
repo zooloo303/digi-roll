@@ -34,6 +34,17 @@ Provenance key:
   OS build): the DT2's PROB/FILL/COND mapping checked against a DN2 on a
   blank A01 — log at the end of this file, fixture
   `dumps/fixtures/digitone2-A01-conditions-2026-08-02.syx`.
+- **[V3]** confirmed by the **per-note chord capture** (2026-08-04, same OS
+  build): chords entered on the box through its NOTE EDIT menu, one variable
+  per step, read back read-only — fixture
+  `dumps/digitone2-pernote-chords-2026-08-04.syx`. This is what established
+  that velocity, length and micro are per note rather than per trig.
+- **[V4]** confirmed by the **swing experiment** (2026-08-04, same OS build):
+  in a **fresh project**, A01 set to swing 78% against an untouched A02 —
+  which are otherwise byte-identical, so the diff had no noise at all — then
+  the same A01 moved to 65%, changing that one byte from 28 to 15 and nothing
+  else. Fixtures `dumps/dn2-fresh-A01.syx` (78), `dumps/dn2-fresh-A02.syx`
+  (blank) and `dumps/dn2-swing-65.syx` (65); pinned by `test/swing.test.js`.
 
 Applies to **pattern struct version 3** (what OS 1.10D emits [F]). Any other
 version is refused rather than guessed at.
@@ -120,6 +131,18 @@ Differences from the DT2, all hardware-verified [V]:
   and "record is free" must be judged by the track byte alone, not
   all-six-bytes-`FF`.
 - Free pool space is all-`FF`, records append in creation order, same as DT2.
+- **Velocity, length and micro are per note, not per trig** [V3]. Every record
+  in a chord carries its own three values, and the box's own **NOTE EDIT**
+  menu (`NOTE / TIME / LEN / VEL`, one row per note) is where they are set.
+  Records sit in **entry order, not pitch order**. Captured read-only from a
+  box-authored pattern on 2026-08-04 (`dumps/digitone2-pernote-chords-2026-08-04.syx`),
+  one variable per step so nothing is ambiguous:
+
+  | step | notes | velocity | length byte | micro |
+  |------|-------|----------|-------------|-------|
+  | 1 | 60, 63, 67 | **127 / 52 / 69** | 14, 14, 14 | 0, 0, 0 |
+  | 5 | 62, 65, 69 | 40, 40, 40 | **40 / 34 / 30** (3.25 / 2.5 / 2 steps) | 0, 0, 0 |
+  | 9 | 68, 64, 61 | 40, 40, 40 | 14, 14, 14 | **−14 / −9 / +2** |
 
 ## Trig conditions: PROB / FILL / COND [V2]
 
@@ -183,10 +206,29 @@ imported with exact per-trig velocities and lengths.
 
 **Write** ("Write to pattern", console page): same read-modify-write
 contract as the DT2 — clear the track's trig bits, free its pool records,
-write one record per note (consecutive per-note records for chords, values
-mirrored across a chord's records exactly as the box stores them), touch
+write one record per note (consecutive per-note records for chords, **each
+carrying its own velocity, length and micro** as the box does), touch
 nothing else. Enabled for OS build 0049 via the console's per-device
 allowlist.
+
+Until 2026-08-04 the encoder took those three values from a step's first note
+and mirrored them across the whole trig, so every chord reached the box as a
+flat block at the *lowest* note's velocity, length and micro — the encoder
+groups by pitch, so the bottom note won. Strum and velocity taper from the
+chord tool were silently discarded, and importing a box-authored chord and
+writing it back destroyed what the box had stored. Fixed in `encodeTrackNotes`;
+records are written in pitch order rather than the box's entry order, which is
+harmless now that each value travels with its own note.
+
+**Swing** [V4]: read on import and written on send, as one byte in the pattern
+settings tail. `js/elektron/pattern-settings.js` owns it — `readSwing` /
+`applySwing`, composed onto the payload the way `applyTrackProb` is, so neither
+`decodePatternKit` nor `encodeTrackNotes` needed changing. It is the one thing
+digi-roll writes that is **per pattern rather than per track**, so it re-times
+all sixteen tracks in the destination slot; the send confirmation spells that
+out whenever it would change what the box currently holds. Cross-device track
+copy deliberately does *not* carry it, since a one-track copy has no business
+re-timing the fifteen tracks already in the target.
 
 **Trig conditions**: handled by exactly the same code as the DT2 — the specs
 differ only in the track size, and the lanes sit at the same track-relative

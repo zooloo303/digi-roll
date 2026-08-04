@@ -87,7 +87,15 @@ Behavior:
 - Each trig the box creates appends **four consecutive, quad-aligned
   records** — one per note slot (chords on MIDI tracks). Velocity, length
   and micro are mirrored into all four; the note fills only the slots in
-  use [V].
+  use [V]. The mirroring is what the box's own editing produces, not a
+  constraint of the layout: each slot has its own `+3`/`+4`/`+5` bytes, and
+  the audio tracks are monophonic so a per-slot value would have nothing to
+  do. **Its sibling proves the fields are per note** — the DN2 stores three
+  different velocities across one chord's records and edits them per note
+  (`dn2-pattern-format.md` [V3]) — so digi-roll writes chords per note here
+  too. Unverified on a DT2 MIDI track: whether the box plays each slot's own
+  velocity/length/micro, or reads only the first. Harmless either way, since
+  the bytes round-trip and a box that ignores them just sounds unchanged.
 - Free pool space is all-`FF`. Records of **deleted trigs linger** — only
   steps whose trig bit is set in the track's step words are live [F].
 - Records are appended in creation order; a surviving trig's quad can sit
@@ -213,7 +221,10 @@ note per filled note slot.
 **Write** ("Write to pattern", console page): read-modify-write. Fetch the
 target pattern-kit, clear the chosen track's trig-enable bits and free its
 record-pool quads, write one fresh quad per trigged step (explicit note/
-velocity/length, micro rounded to ±23 ticks; chords fill extra note slots),
+velocity/length, micro rounded to ±23 ticks; chords fill extra note slots,
+**each slot carrying its own velocity/length/micro** since 2026-08-04 — a
+lone note still mirrors its values across the quad, so single-note trigs are
+byte-identical to every write made before that),
 set `0x0381` on trigged step words — and leave every other byte, including
 the whole kit, byte-identical. The result goes back as an unsolicited `0x50`
 dump response (there is no "write request" in the protocol — the box just

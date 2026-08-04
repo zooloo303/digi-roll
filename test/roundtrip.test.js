@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { splitSysExStream, DUMP } from '../js/elektron/protocol.js';
 import * as dt2 from '../js/elektron/dt2/pattern.js';
 import * as dn2 from '../js/elektron/dn2/pattern.js';
+import { voiceChord } from '../js/chords.js';
 import {
   deviceNotesToRoll, rollNotesToDevice, deviceNotesToEncoder, rollLengthForTrack,
   snapLenFine, LEN_MIN,
@@ -145,6 +146,136 @@ describe.skipIf(!have)('round-trip editing: import → piano roll → write back
       });
     });
   }
+});
+
+// Velocity, length and micro belong to the note, not the trig. They used to be
+// taken from a step's first note and mirrored across the whole group, so every
+// chord landed on the box as a flat block at the *lowest* note's values — the
+// encoder sorts by pitch, so the bottom note won. Both boxes store all three
+// per note; the DN2 edits them per note in its own NOTE EDIT menu.
+describe.skipIf(!have)('chords keep every note its own velocity, length and micro', () => {
+  // A strummed, tapered C major 7: exactly what the chord tool stamps, and the
+  // per-note micro js/chords.js promises survives write-back. The strum is a
+  // whole number of micro ticks (1/24 step) so nothing is lost to quantising.
+  const chord = step => voiceChord([60, 64, 67, 71], { velocity: 100, strum: 2 / 24 })
+    .map((v, i) => ({ ...v, step, len: [1, 2, 4, 0.5][i], prob: null, fill: null, cond: null }));
+
+  // Every pool record belonging to one (track, step), in pool order. On a quad
+  // device this includes the unused note slots, which carry a 0xFF note.
+  const recordsAt = (box, payload, trackIndex, step) => {
+    const [lo, hi] = box.pool;
+    const recs = [];
+    for (let o = lo; o < hi; o += 6) {
+      if (payload[o] !== trackIndex || payload[o + 1] !== step) continue;
+      recs.push({
+        note: payload[o + 2], velocity: payload[o + 3],
+        length: payload[o + 4], micro: (payload[o + 5] << 24) >> 24,
+      });
+    }
+    return recs;
+  };
+
+  for (const box of BOXES) {
+    describe(box.name, () => {
+      const t = box.trackIndex;
+
+      it('lands four distinct notes, each with its own three values', () => {
+        const notes = chord(0);
+        const { payload, dropped } = box.mod.encodeTrackNotes(box.payload, t, notes);
+        expect(dropped).toBe(0);
+        expect(box.mod.trackNotes(box.mod.decodePatternKit(payload), t)).toEqual(
+          notes.map(n => ({
+            step: n.step, pitch: n.pitch, velocity: n.velocity, lenSteps: n.len, micro: n.micro,
+          })),
+        );
+      });
+
+      it('writes three different velocities, lengths and micros into the records', () => {
+        // The regression itself, at the byte level: the values must differ
+        // across the chord's records rather than repeat the first note's.
+        const { payload } = box.mod.encodeTrackNotes(box.payload, t, chord(0));
+        const sounding = recordsAt(box, payload, t, 0).filter(r => r.note !== 0xff);
+        expect(sounding).toHaveLength(4);
+        for (const field of ['velocity', 'length', 'micro']) {
+          expect(new Set(sounding.map(r => r[field])).size, `${field} was mirrored`).toBe(4);
+        }
+      });
+
+      it('still mirrors a lone note across its whole record group, as the box does', () => {
+        // The property that makes this change a no-op for every single-note
+        // trig ever written: a quad's unused slots keep carrying the one
+        // note's values, so those bytes are what mirroring always produced.
+        const one = [{ step: 3, pitch: 55, velocity: 77, len: 2, micro: 5 / 24, prob: null, fill: null, cond: null }];
+        const { payload } = box.mod.encodeTrackNotes(box.payload, t, one);
+        const recs = recordsAt(box, payload, t, 3);
+        expect(recs.length).toBe(box.mod.SPEC.trig.layout === 'quad' ? 4 : 1);
+        for (const r of recs) {
+          expect(r.velocity).toBe(77);
+          expect(r.length).toBe(30); // two steps
+          expect(r.micro).toBe(5);
+        }
+      });
+
+      it('keeps the write minimal — a chord still only touches this track', () => {
+        const { payload } = box.mod.encodeTrackNotes(box.payload, t, chord(0));
+        expectOnlyTrackBytesChanged(box, box.payload, payload, t);
+      });
+
+      it('is stable on a second pass', () => {
+        const first = box.mod.encodeTrackNotes(box.payload, t, chord(0)).payload;
+        const notes = box.mod.trackNotes(box.mod.decodePatternKit(first), t);
+        const second = box.mod.encodeTrackNotes(first, t, deviceNotesToEncoder(notes)).payload;
+        expect(box.mod.diffPayloads(first, second, 100000)).toEqual([]);
+      });
+    });
+  }
+});
+
+// Ground truth for the above, captured read-only from a Digitone II (OS 1.10D,
+// build 0049) on 2026-08-04: chords entered on the box itself through NOTE
+// EDIT, one variable per step — velocities on step 1, lengths on step 5,
+// micro-timing on step 9. This is the dump that proved the boxes store all
+// three per note rather than per trig.
+const CHORD_FIXTURE = fileURLToPath(new URL('../dumps/digitone2-pernote-chords-2026-08-04.syx', import.meta.url));
+const haveChordFixture = existsSync(CHORD_FIXTURE);
+
+describe.skipIf(!haveChordFixture)('a DN2 chord the box itself wrote', () => {
+  const box = {
+    name: 'DN2', mod: dn2, payload: payloadOf(CHORD_FIXTURE, 0), trackIndex: 0,
+    stepWords: t => [4 + t * 1187, 4 + t * 1187 + 256],
+    pool: [18996, 68148],
+  };
+  // The encoder groups a step's notes by pitch, so a write-back reorders the
+  // box's records (it stores them in entry order — step 9 came off the box as
+  // 68, 64, 61). Harmless now that each value travels with its own note, but
+  // it means these comparisons sort before matching.
+  const byPitch = ns => [...ns].sort((a, b) => a.step - b.step || a.pitch - b.pitch);
+  const notesOf = payload => byPitch(box.mod.trackNotes(box.mod.decodePatternKit(payload), 0));
+
+  it('reads back exactly the per-note values seen on the hardware', () => {
+    expect(notesOf(box.payload)).toEqual([
+      { step: 0, pitch: 60, velocity: 127, lenSteps: 1, micro: 0 },
+      { step: 0, pitch: 63, velocity: 52, lenSteps: 1, micro: 0 },
+      { step: 0, pitch: 67, velocity: 69, lenSteps: 1, micro: 0 },
+      { step: 4, pitch: 62, velocity: 40, lenSteps: 3.25, micro: 0 },
+      { step: 4, pitch: 65, velocity: 40, lenSteps: 2.5, micro: 0 },
+      { step: 4, pitch: 69, velocity: 40, lenSteps: 2, micro: 0 },
+      { step: 8, pitch: 61, velocity: 40, lenSteps: 1, micro: 2 / 24 },
+      { step: 8, pitch: 64, velocity: 40, lenSteps: 1, micro: -9 / 24 },
+      { step: 8, pitch: 68, velocity: 40, lenSteps: 1, micro: -14 / 24 },
+    ]);
+  });
+
+  it('comes home unharmed through the piano roll', () => {
+    const { payload, dropped } = roundTrip(box, box.payload, 0);
+    expect(dropped).toBe(0);
+    expect(notesOf(payload)).toEqual(notesOf(box.payload));
+  });
+
+  it('touches nothing outside the track it writes', () => {
+    const { payload } = roundTrip(box, box.payload, 0);
+    expectOnlyTrackBytesChanged(box, box.payload, payload, 0);
+  });
 });
 
 describe.skipIf(!have)('roll-bridge note conversion', () => {
