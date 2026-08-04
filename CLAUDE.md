@@ -76,9 +76,11 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 `PLAN.md` is the roadmap — what's shipped and what's next.
 
 **P-lock lanes: a parameter has two independent mappings, and the split is the
-whole design** (built 2026-08-04; Phase 0 measured the same day, **but no
-p-lock byte has been *written* to hardware** — the Phase 3 smoke test is the
-open item).
+whole design** (built 2026-08-04; Phase 0 measured the same day; **write path
+hardware-verified the same day on both boxes** — lanes drawn in digi-roll,
+sent, byte-identical verify, right values on the box UI. Not yet exercised on
+hardware: emptying an existing lane via a send, and cross-device lane
+translation).
 
 - `midi` — CC and NRPN numbers, from the boxes' own published charts (DT2
   Appendix B, DN2 Appendix C). This is what lets a lane be *heard*.

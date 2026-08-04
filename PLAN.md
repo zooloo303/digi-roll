@@ -345,13 +345,17 @@ locked.
 ## P-lock lanes — the byte layer, Phases 1–3 built 2026-08-04
 
 The foundation the audition round above sits on: the 80-lane pool, read and
-written. **No p-lock byte has been written to hardware.**
+written — and as of the end of the day, **written to real hardware and
+verified**.
 
 **Phase 0 ran 2026-08-04 — both boxes, all questions answered.** See the
-section below for the results; the param tables are filled in, 441 tests
-green, and the one thing left in the whole feature is the Phase 3 hardware
-smoke test (digi-roll *writing* locks — everything measured so far was
-read-only captures of locks the box made itself).
+section below for the results; the param tables are filled in and 441 tests
+are green. **The Phase 3 write smoke test ran the same day, on both boxes:**
+lanes drawn in digi-roll, sent, verified byte-identical, and the box UI showed
+the right values with playback behaving. Not yet exercised on hardware:
+freeing an existing lane *through a digi-roll write* (the free form itself is
+hardware-corroborated — Phase 0 watched the box free a lane and the write path
+emits identical bytes), and cross-device lane translation.
 
 - **Built and unit-tested (432 tests green):** reading a pattern's lanes, carrying
   them through import → edit → write-back → cross-device copy → Library save
@@ -391,11 +395,10 @@ Three findings worth keeping:
   destination has lanes, and a caller with nothing to say about p-locks passes
   `plocks: null` and leaves the pool untouched.
 
-Still to do: the **Phase 3 hardware smoke test** — Phase 0 ran and the tables
-are filled (see below), so the write path finally has something to write.
-Trigless locks stay out of v1: a lane the box filled on a step with no trig
-comes in flagged and is held read-only rather than edited into something that
-isn't what the box has.
+Phase 0 ran and the tables are filled (see below); the Phase 3 write smoke
+test passed on both boxes the same day. Trigless locks stay out of v1: a lane
+the box filled on a step with no trig comes in flagged and is held read-only
+rather than edited into something that isn't what the box has.
 
 Scope decisions settled with Neil 2026-08-03, all honoured as built:
 
@@ -563,7 +566,7 @@ experiments recorded.
   heard. The help page says what that costs (the track's real parameters move and
   stay moved).
 
-### Phase 3 — write path — done 2026-08-04, **not hardware-verified**
+### Phase 3 — write path — done 2026-08-04, **hardware-verified the same day**
 
 - `applyTrackPLocks` in `plocks.js`, composed after `encodeTrackNotes` in
   `safe-write.js`, `copy-track.js` and the labs console. Policy: rewrite a lane
@@ -582,14 +585,18 @@ experiments recorded.
 - Minimal-diff property tests on both boxes: only the pool moves, only the
   claimed lane inside it, a freed lane is byte-identical to the fixture again,
   and a second identical write changes nothing.
-- **Hardware smoke test — not run, and blocked on Phase 0** (there is nothing to
-  write until a parameter is curated). When it runs: write locks for each curated
-  param plus one raw passthrough lane; box UI shows the right values; verify
-  byte-identical; re-import round-trips; empty a lane and confirm the free
-  behaviour matches the box's own (this is what settles Phase 0 step 6 from the
-  other direction); cross-device copy with translation. Watch the verify step
-  when freeing a lane in particular: if the box disagrees with the `FF FF` + zeros
-  form, that is where it will show.
+- **Hardware smoke test — run and passed 2026-08-04, both boxes**, once Phase 0
+  unblocked it: lanes drawn in digi-roll and sent; verify reported
+  byte-identical; the box UI showed the right values and playback behaved.
+  Kept as the recipe for a new OS build:
+
+  9. Draw p-lock lanes for a few curated params, send, check the values on the
+     box's own TRIG page, verify byte-identical, re-import and round-trip.
+
+  Two checklist items were *not* exercised and remain open: emptying a lane via
+  a digi-roll send (watch the verify step there — though Phase 0 confirmed the
+  box's own free form is byte-identical to what the write path emits), and a
+  cross-device copy carrying translated lanes.
 
 Out of scope for v1, explicitly: trigless locks, the DT2 per-step *sound*
 p-lock lane (track `+1024`, a different structure), and previewing p-locked
@@ -599,11 +606,10 @@ params in the browser.
 
 - [x] **P-lock Phase 0** — ran 2026-08-04 on both boxes; see the Phase 0 section.
       Both param tables measured, docs corrected, fixtures committed.
-- [ ] **P-lock Phase 3 hardware smoke test** — now unblocked, the last p-lock
-      item: digi-roll *writes* locks for each curated param plus a raw
-      passthrough lane; box UI shows the right values; verify byte-identical;
-      re-import round-trips; empty a lane and confirm the free form matches the
-      box's own (Phase 0 says it will); cross-device copy with translation.
+- [x] **P-lock Phase 3 hardware smoke test** — run and passed 2026-08-04 on
+      both boxes (send + box UI + byte-identical verify). Residuals folded into
+      the next hardware session: empty-a-lane-via-send, and a cross-device copy
+      with translated lanes.
 - [ ] **Retrig as a p-lock lane** — deferred from the audition round: no CC, no
       NRPN, and not one knob (RATE/LEN/VEL/on-off), so it needs a capture to show
       its shape before it can be modelled at all.

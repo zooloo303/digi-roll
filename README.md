@@ -176,12 +176,12 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 
 ## Ideas / later
 
-**P-lock lanes** are drawable, audible and stored in the pattern. The
-unpublished `paramId` numbering and value scaling were measured on both boxes
-(2026-08-04, the Phase 0 experiments — logs in `docs/`, fixtures in
-`dumps/fixtures/`); what's left is the hardware smoke test of digi-roll
-*writing* locks, since everything measured so far was read-only captures of
-locks the boxes made themselves.
+**P-lock lanes** are drawable, audible and stored in the pattern — the write
+path is hardware-verified on both boxes (2026-08-04). The unpublished
+`paramId` numbering and value scaling were measured the same day by the Phase 0
+experiments (logs in `docs/`, fixtures in `dumps/fixtures/`). Small residuals
+for the next hardware session: emptying a lane via a send, and a cross-device
+copy carrying translated lanes.
 
 After that: pattern chaining preview, and widening the write allowlist beyond one
 verified OS build per box. See `PLAN.md` for the detail.
