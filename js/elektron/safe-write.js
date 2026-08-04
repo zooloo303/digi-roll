@@ -9,11 +9,12 @@
 //                     UI downloads as .syx) before a single byte is sent, and
 //                     the write aborts if that hook throws. The hook is
 //                     mandatory: no backup, no write.
-//   2. minimal diff   only encodeTrackNotes, applyTrackTrigSettings and
-//                     applyTrackProb touch the payload, so every byte outside
-//                     the track's step words, the trig-record pool, that
-//                     track's three trig-condition lanes and its one
-//                     track-PROB byte round-trips identically.
+//   2. minimal diff   only encodeTrackNotes, applyTrackTrigSettings,
+//                     applyTrackProb and applySwing touch the payload, so every
+//                     byte outside the track's step words, the trig-record
+//                     pool, that track's three trig-condition lanes, its one
+//                     track-PROB byte and the pattern's one swing byte
+//                     round-trips identically.
 //   3. allowlist      writeGate() refuses any OS build the format hasn't been
 //                     verified against.
 //   4. verify         the pattern is read back and byte-compared; the caller
@@ -32,6 +33,7 @@
 import { buildDumpMessage, DUMP, FAMILY } from './protocol.js';
 import { bankName, diffPayloads, trackTrigCount } from './pattern-core.js';
 import { applyTrackTrigSettings, applyTrackProb, trigSettingsFromNotes } from './trig-cond.js';
+import { applySwing, readSwing } from './pattern-settings.js';
 import * as dt2 from './dt2/pattern.js';
 import * as dn2 from './dn2/pattern.js';
 
@@ -93,6 +95,9 @@ export function patternKitBackup(identity, index, payload, now = new Date()) {
 //   notes       encoder-shaped notes: { step, pitch, velocity, len, micro }
 //   trackProb   optional 0–100 track-level PROB default; null leaves the byte
 //               alone, which is what a caller with nothing to say should do
+//   swing       optional 50–80 pattern swing; null leaves the byte alone. This
+//               one is per *pattern*, so it changes every track in the slot —
+//               the confirm hook is where a caller says so
 //   onBackup    required; receives { index, payload, name, bytes } before the
 //               write. Throw from it to abort.
 //   confirm     optional; receives a summary of what is about to be
@@ -103,7 +108,7 @@ export function patternKitBackup(identity, index, payload, now = new Date()) {
 // `ok` false with an empty `diffs` never happens: a false `ok` always carries
 // the offsets that mismatched, for a loud report.
 export async function safeWriteTrack(device, {
-  index, trackIndex, notes, trackProb = null,
+  index, trackIndex, notes, trackProb = null, swing = null,
   onBackup, confirm = null, onStatus = () => {}, onLog = () => {},
 }) {
   const gate = writeGate(device?.identity);
@@ -122,7 +127,14 @@ export async function safeWriteTrack(device, {
   const target = mod.decodePatternKit(original);
   const existingTrigs = trackTrigCount(target, trackIndex);
 
-  if (confirm && !await confirm({ patternKit: target, label, index, trackIndex, existingTrigs, noteCount: notes.length })) {
+  // `swing` here is what the box is holding right now, so a UI can say what the
+  // write would change it to — it reaches every track in the slot, unlike
+  // anything else in this function.
+  const confirmArgs = {
+    patternKit: target, label, index, trackIndex, existingTrigs,
+    noteCount: notes.length, swing: readSwing(mod.SPEC, original),
+  };
+  if (confirm && !await confirm(confirmArgs)) {
     return { ok: false, cancelled: true, diffs: [], dropped: 0, written: 0, label, index, trackIndex, backup: null, payload: null };
   }
 
@@ -141,6 +153,10 @@ export async function safeWriteTrack(device, {
   // when the caller has a value; a caller that doesn't model it leaves whatever
   // the box was already holding.
   if (trackProb != null) applyTrackProb(mod.SPEC, payload, trackIndex, trackProb);
+  // Swing is one byte in the pattern's settings tail, and it belongs to the
+  // whole slot rather than this track — so it only moves when the caller has a
+  // value, and callers are expected to have warned about the reach.
+  if (swing != null) applySwing(mod.SPEC, payload, swing);
 
   onStatus(`Writing ${label} T${trackIndex + 1}…`);
   await device.sendPatternKit(index, payload);

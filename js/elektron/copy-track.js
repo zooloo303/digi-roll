@@ -122,5 +122,10 @@ export function copyTrack({
     applyTrackProb(targetMod.SPEC, payload, targetTrack,
       readTrackProb(sourceMod.SPEC, sourcePayload, sourceTrack));
   }
+  // Swing deliberately does NOT travel. It belongs to the whole pattern, so
+  // carrying it would let a one-track copy silently re-time the fifteen tracks
+  // already in the target slot — the opposite of what this function promises.
+  // The main "Send to box" path does write it, because there the roll's pattern
+  // is the pattern; here the target is somebody else's.
   return { payload, notes, dropped, drops, warnings: describeChordDrops(drops, targetName) };
 }

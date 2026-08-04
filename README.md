@@ -79,10 +79,12 @@ notes arriving.
 - Shift+drag a note up/down to set its velocity (brighter = harder); the
   slider mirrors the touched note and sets the default for new notes
 - Cmd/Ctrl+drag a note sideways for micro-timing (± half a step, shown while
-  dragging); **Swing** (50–80, per pattern) pushes the odd 16ths late
+  dragging); **Swing** (50–80, per pattern) pushes the odd 16ths late, and
+  travels to the box with a send — where it re-times every track in that slot
 - Multi-select: Cmd/Ctrl+drag on empty grid for a marquee, shift+click to
-  toggle a note in or out. Move, delete, shift+drag velocity and the Vel
-  slider all apply to the whole selection
+  toggle a note in or out. Move, delete, resize, shift+drag velocity and the
+  Velocity and Length sliders all apply to the whole selection — an edge-drag
+  keeps long and short notes different, the Length slider makes them equal
 - Cmd/Ctrl+Z / Shift+Cmd/Ctrl+Z undo and redo (100 steps); Cmd/Ctrl+C/X/V
   copy, cut and paste — the clipboard survives switching pattern slots
 - **Trig lane** under the grid — the box's TRIG page 1, one column per step:

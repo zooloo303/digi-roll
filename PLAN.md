@@ -175,11 +175,90 @@ repeats them on a new OS build:
 7. Draw a note fine-resized to 4.75 steps and one at 0.125. Send, check LEN on
    the box, re-read byte-identical, re-import exact.
 
-**Nothing digi-roll writes is unverified any more.** Every write surface —
-notes, per-trig conditions, track PROB, fine lengths — has been through
-encode → send → box UI → re-read on both boxes at the allowlisted builds
-(DT2 `0070`, DN2 `0049`). The next thing to break that is an OS update or the
-p-lock pool.
+Every write surface as of that date — notes, per-trig conditions, track PROB,
+fine lengths — went through encode → send → box UI → re-read on both boxes at
+the allowlisted builds (DT2 `0070`, DN2 `0049`). Per-note chord values joined
+them on 2026-08-04.
+
+*(That once read "nothing digi-roll writes is unverified any more". Swing broke
+it on 2026-08-04: its byte mapping is verified but its write isn't. See the
+chord round below.)*
+
+## Chord round — built 2026-08-04
+
+Both items came out of Neil playing with chords on the box.
+
+### A. Per-note velocity / length / micro — done, hardware-verified 2026-08-04
+
+`encodeTrackNotes` took all three from a step's first note and mirrored them
+across the trig, so every chord reached the box flattened to the *lowest*
+note's values (the encoder groups by pitch). Strum and velocity taper were
+discarded, and importing a box-authored chord and writing it back destroyed
+what the box had stored.
+
+Settled by a read-only capture: the DN2 edits all three per note in its own
+NOTE EDIT menu, and its records carry three different velocities within one
+trig. Ground truth is `dumps/digitone2-pernote-chords-2026-08-04.syx`, pinned
+by `test/roundtrip.test.js`. The fix is a no-op for single-note trigs — a lone
+note still mirrors across a DT2 quad — so nothing verified earlier moved. The
+only approved edit to a protected encode internal so far.
+
+Still unknown: whether a DT2 MIDI track *plays* each note slot's own values or
+reads only the first. Harmless either way; the bytes round-trip.
+
+### B. Resizing a selection — done, needs no hardware
+
+Length was the last edit that ignored the selection, while moving, deleting and
+velocity all honoured it. Two ways to change several at once, because they mean
+different things:
+
+- **Edge-drag with a selection** applies one delta to every note, so long and
+  short notes stay long and short. Clamped once for the group, so the relative
+  shape can't collapse at the pattern's end.
+- **The Length slider** (Edit panel) makes them all equal, clamped per note so
+  one cramped note doesn't hold the rest back. It runs along the LEN byte, so
+  every position is a length the hardware stores.
+
+Maths lives in `edit-ops.js` (canvas-free, unit-tested both ways); the drag is
+`pianoroll.js`, the slider is `main.js`. Verified in the running app: a chord
+of 3 / 2.75 / 3 dragged to 5 / 4.75 / 5, the slider flattened it to 2, and a
+128-step request clamped to the 8 steps of room those notes had.
+
+### C. Swing transfers to the box — done, byte mapping verified 2026-08-04
+
+Swing existed only in the browser: the realtime engine, .mid export and Library
+saves all honoured it, but nothing under `js/elektron/` had ever heard of it, so
+sending a pattern left its feel behind.
+
+Found by diffing a **fresh project**: two untouched patterns are byte-identical,
+so A01 at swing 78% against blank A02 gave a noise-free diff of one byte, and
+moving A01 to 65% changed that byte from 28 to 15 and nothing else. Both format
+docs had already flagged the byte as an unknown pattern setting and never
+connected it to swing.
+
+```
+DT2 88764 · DN2 88812 · both = pattern nameOffset + 24
+value = swing% − 50   (0 = straight, 30 = 80%)
+```
+
+`js/elektron/pattern-settings.js` holds `readSwing`/`applySwing`, composed onto
+the payload exactly as `applyTrackProb` is — **no protected file was touched**.
+Wired into send, import, and the console lab's import.
+
+The interesting wrinkle: this is the first thing digi-roll writes that is **per
+pattern, not per track**, so it re-times all sixteen tracks in the destination
+slot. Consequences, both deliberate:
+
+- The send confirmation names the change whenever it differs from what the box
+  holds, rather than letting it be discovered on playback.
+- Cross-device track copy does *not* carry it — a one-track copy has no business
+  re-timing the fifteen tracks already in the target slot.
+
+**Not yet hardware-verified:** the byte mapping is (controlled experiment, DN2
+OS 1.10D), but no pattern carrying swing has been *written* to either box. Add
+to the next smoke test: send a pattern at swing 65, check the box's own swing
+setting reads 65, verify byte-identical, re-import round-trips, and confirm the
+other tracks in that slot are re-timed as expected.
 
 ## Next — p-lock lanes (planned 2026-08-03)
 

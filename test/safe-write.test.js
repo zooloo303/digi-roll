@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { splitSysExStream, DUMP, FAMILY } from '../js/elektron/protocol.js';
+import { readSwing } from '../js/elektron/pattern-settings.js';
 import * as dt2 from '../js/elektron/dt2/pattern.js';
 import {
   safeWriteTrack, writeGate, writeResultMessage, patternKitBackup,
@@ -69,6 +70,27 @@ describe.skipIf(!have)('safeWriteTrack', () => {
     expect(result.written).toBe(2);
     expect(result.dropped).toBe(0);
     expect(seen.some(s => /Verifying/.test(s))).toBe(true);
+  });
+
+  it('carries the pattern swing, and tells the confirm hook what it is replacing', async () => {
+    // Swing reaches every track in the slot, so the hook is handed the value
+    // the box currently holds — a UI can't warn about what it can't see.
+    const box = boxWithFixture();
+    let sawSwing = null;
+    await safeWriteTrack(box, {
+      index: 1, trackIndex: 2, notes: bassline, swing: 66,
+      onBackup: () => {},
+      confirm: args => { sawSwing = args.swing; return true; },
+    });
+    expect(sawSwing).toBe(50); // the fixture pattern is straight
+    expect(readSwing(dt2.SPEC, box.slots.get(1))).toBe(66);
+  });
+
+  it('leaves swing alone when the caller does not model it', async () => {
+    const box = boxWithFixture();
+    const before = readSwing(dt2.SPEC, box.slots.get(1));
+    await safeWriteTrack(box, { index: 1, trackIndex: 2, notes: bassline, onBackup: () => {} });
+    expect(readSwing(dt2.SPEC, box.slots.get(1))).toBe(before);
   });
 
   it('actually puts the notes on the box', async () => {

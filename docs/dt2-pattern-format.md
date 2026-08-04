@@ -46,7 +46,7 @@ has a completely different track size and is not decoded.
 | 88740 | 16 | pattern name, NUL-padded [E][F] |
 | 88756 | 4 | pattern tempo, uint32be, **BPM × 120** (14400 = 120 BPM default; 20040 = 167.0 [F]) |
 | 88760 | 2 | uint16be `0x0010` = 16 — likely master pattern length in steps (matches, unconfirmed against other lengths) |
-| 88762 | 6 | unknown pattern settings (byte 88764 changed 0→5 in the one edited pattern [F]) |
+| 88762 | 6 | pattern settings: **88764 is SWING**, stored as the offset from straight (`0` = 50%, `30` = 80%) — the one edited pattern in the fixtures holds `5`, i.e. 55%, and the other 127 hold `0` [F]. Mapped on the DN2 at the sibling offset ([V3] there) and confirmed here across both fixtures. Remaining 5 bytes unknown |
 | 88768 | 1 | kit index — which kit this pattern uses; equals the pattern slot by default [E][F] |
 | 88769 | 319 | unknown, zeros in fixture |
 

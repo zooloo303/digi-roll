@@ -23,6 +23,7 @@ const DECODER_BY_FAMILY = {
 import { loadState, saveState, NUM_SLOTS } from '../state.js';
 import { deviceNotesToRoll, rollLengthForTrack, makeSource, attachTrigSettings } from '../roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from '../elektron/trig-cond.js';
+import { readSwing } from '../elektron/pattern-settings.js';
 import { PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage } from '../elektron/safe-write.js';
 import { trackNotesForTarget, describeChordDrops } from '../elektron/copy-track.js';
 import { downloadBytes } from '../download.js';
@@ -290,6 +291,7 @@ $('impGo').onclick = () => {
   p.name = `${imported.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
   p.trackProb = readTrackProb(imported.spec, imported.payload, t);
+  p.swing = readSwing(imported.spec, imported.payload); // per pattern, like the roll models it
   p.notes = deviceNotesToRoll(notes, lengthSteps);
   // Provenance: the roll's "Send to box" button starts aimed at exactly this
   // pattern and track, and refuses if a different box is plugged in.

@@ -81,7 +81,7 @@ consistent with the DN2 having no sample pool) [F].
 | 88788 | 16 | pattern name, NUL-padded [F — blank in fixture, position implied by the +48 shift] |
 | 88804 | 4 | pattern tempo, uint32be, **BPM × 120** (14400 = 120 BPM observed) [F] |
 | 88808 | 2 | uint16be `0x0010` = 16 — likely master pattern length in steps [S] |
-| 88810 | 6 | unknown pattern settings (byte 88812 is 5 in the box-edited pattern, 0 in blanks — mirrors DT2's byte 88764 exactly) [F] |
+| 88810 | 6 | pattern settings: **88812 is SWING**, stored as the offset from straight (`0` = 50%, `30` = 80%), *not* the percentage the box displays [V4]. Same relative position as the DT2's 88764 (both = `nameOffset + 24`). Remaining 5 bytes unknown |
 | 88816 | 1 | kit index — equals the pattern slot by default [F — differs per slot across all 128 blank patterns] |
 | 88817 | 271 | unknown, zeros in fixture |
 

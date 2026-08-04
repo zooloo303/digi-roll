@@ -15,6 +15,7 @@ import {
   makeSource, sourceLabel, sourceMatchesIdentity, attachTrigSettings,
 } from './roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from './elektron/trig-cond.js';
+import { readSwing, SWING_MIN } from './elektron/pattern-settings.js';
 import { downloadBytes, downloadText } from './download.js';
 import {
   BANK_PREFIX, listBank, bankEntry, saveToBank, loadFromBank, deleteFromBank,
@@ -756,9 +757,10 @@ $('sendToBox').onclick = async () => {
       trackIndex: dest.trackIndex,
       notes: rollNotesToDevice(p.notes),
       trackProb: p.trackProb ?? 100,
+      swing: p.swing ?? SWING_MIN,
       onStatus: setStatus,
       onBackup: b => downloadBytes(b.name, b.bytes),
-      confirm: ({ label, existingTrigs, patternKit }) => {
+      confirm: ({ label, existingTrigs, patternKit, swing: boxSwing }) => {
         const track = patternKit.tracks[dest.trackIndex];
         const kind = trackKindLabel(patternKit, dest.trackIndex, DECODERS[id.slug].SPEC.trackKindFallback);
         const lines = [
@@ -780,6 +782,14 @@ $('sendToBox').onclick = async () => {
         // A second write surface, so it gets named rather than slipped in.
         if ((p.trackProb ?? 100) !== 100) {
           lines.push(`That track's PROB default is also set to ${p.trackProb}% — trigs without their own PROB lock will play at those odds.`);
+        }
+        // Swing reaches further than the track being written — it's the whole
+        // pattern's feel on the box — so it's spelled out whenever it would
+        // change what the destination is currently doing.
+        const ourSwing = p.swing ?? SWING_MIN;
+        if (ourSwing !== boxSwing) {
+          lines.push(`Swing goes from ${boxSwing} to ${ourSwing} — that's the whole pattern, `
+            + `so it changes the feel of all 16 tracks in ${label}, not just track ${dest.trackIndex + 1}.`);
         }
         if (src && !sourceMatchesIdentity(src, id)) {
           lines.push(`Note: this pattern came from a ${src.deviceName || src.slug}.`);
@@ -885,6 +895,9 @@ $('impGo').onclick = () => {
   p.name = `${fetched.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
   p.trackProb = readTrackProb(fetched.spec, fetched.payload, t);
+  // Swing belongs to the pattern, not the track, so an import brings the whole
+  // slot's feel across — the roll models it the same way.
+  p.swing = readSwing(fetched.spec, fetched.payload);
   p.notes = deviceNotesToRoll(notes, lengthSteps);
   p.source = makeSource({ ...fetched.origin, trackIndex: t, patternName: fetched.patternKit.name });
   // Aim Send at where these notes came from, overriding any target this slot

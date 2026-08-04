@@ -95,3 +95,28 @@ things to know before touching them:
   steps: `snapLenFine` in `roll-bridge.js` snaps to the boxes' own LEN scale
   and is injected into the roll as `snapLen`, so `pianoroll.js` stays
   device-agnostic. Anything new that touches `n.len` has to tolerate 0.125.
+
+**Swing transfers now, and it is the one per-pattern write surface** (mapped
+2026-08-04). One byte at `nameOffset + 24` — DT2 88764, DN2 88812 — holding the
+offset from straight, not the percentage: `0` = 50%, `30` = 80%. Both format
+docs had it marked as an unknown pattern setting. `js/elektron/pattern-settings.js`
+owns `readSwing`/`applySwing`, composed onto the payload like `applyTrackProb`,
+so no protected file changed. Because it re-times **all sixteen tracks** in the
+destination slot, the send confirmation names it whenever it would change what
+the box holds, and cross-device track copy deliberately doesn't carry it. Byte
+mapping is hardware-verified on a DN2 by controlled experiment; **the write has
+not been tried on hardware** on either box.
+
+**Velocity, length and micro are per note, not per trig** (fixed 2026-08-04,
+the one approved edit to `encodeTrackNotes` so far). They used to be read from
+a step's first note and mirrored across the trig, so every chord reached the
+box flattened to the *lowest* note's values — the encoder groups by pitch.
+Strum and velocity taper from the chord tool were lost, and a box-authored
+chord imported and written back was destroyed. A lone note still mirrors its
+values across a DT2 quad, which is why the change is byte-identical for every
+single-note trig. Ground truth is `dumps/digitone2-pernote-chords-2026-08-04.syx`
+— chords entered on a DN2 through its own NOTE EDIT menu, one variable per
+step — pinned by `test/roundtrip.test.js`. Verified per-note on DN2 hardware
+(read side, 2026-08-04); **the DT2 write of a per-slot chord is not hardware-
+verified**, and whether a DT2 MIDI track plays each slot's own values is still
+unknown.
