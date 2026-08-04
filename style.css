@@ -368,6 +368,7 @@ h1 .sub {
   padding: 3px 0;
 }
 .laneRow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.laneRow .laneDot { flex: none; width: 8px; height: 8px; border-radius: 2px; }
 .laneRow.ro span { color: #7d8590; }
 .laneRow button { margin-left: auto; flex: none; padding: 1px 6px; }
 

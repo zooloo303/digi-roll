@@ -2,7 +2,7 @@ import { loadState, saveState, defaultPattern, makeNote, makePLockLane, NUM_SLOT
 import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
 import { TrigLane } from './triglane.js';
-import { PLockLane, describeLane, laneIsEditable, laneParam } from './plocklane.js';
+import { PLockLane, describeLane, laneIsEditable, laneParam, laneColor } from './plocklane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
 import { placeClipboard, setSelectionLength } from './edit-ops.js';
 import { ElektronDevice, slugFromPortName } from './elektron/device.js';
@@ -485,6 +485,11 @@ function syncPLockPanel() {
   for (const [i, lane] of lanes.entries()) {
     const row = document.createElement('div');
     row.className = 'laneRow' + (laneIsEditable(lane) ? '' : ' ro');
+    // The same colour the strip draws this lane's bars in, so the list row and
+    // the bar graph read as the same lane. Grey dot = read-only, like the bars.
+    const dot = document.createElement('span');
+    dot.className = 'laneDot';
+    dot.style.background = laneIsEditable(lane) ? laneColor(i).bar : '#565d6b';
     const label = document.createElement('span');
     label.textContent = describeLane(lane);
     label.title = laneParam(lane).curated
@@ -495,7 +500,7 @@ function syncPLockPanel() {
     del.textContent = 'Remove';
     del.title = 'Take this lane off the pattern. Sending afterwards frees it on the box too.';
     del.onclick = () => removePLockLane(i);
-    row.append(label, del);
+    row.append(dot, label, del);
     list.appendChild(row);
   }
   // "You can hear this but not send it yet" is the single most surprising thing

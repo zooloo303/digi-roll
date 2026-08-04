@@ -42,6 +42,20 @@ import { paramTableFor } from './elektron/param-tables.js';
 import { describeParam, clampParamValue } from './elektron/params.js';
 
 export const ROW_H = 30;
+
+// Each editable lane gets its own hue, by row order — adjacent lanes always
+// differ, which is what tells three stacked bar graphs apart at a glance. Grey
+// is reserved for read-only lanes, so colour keeps meaning "you can drag this".
+// The panel's lane list uses the same palette to tie its rows to the strip's.
+export const LANE_COLORS = [
+  { bar: '#8d6fd1', cap: '#c9b6f2' }, // purple — the original lane colour
+  { bar: '#4aa8a0', cap: '#a8ded9' }, // teal
+  { bar: '#c9974a', cap: '#edd2a8' }, // amber
+  { bar: '#5b8dd6', cap: '#b3ccf0' }, // blue
+  { bar: '#c76a8d', cap: '#eab6ca' }, // rose
+  { bar: '#7aa84a', cap: '#c8e0a8' }, // green
+];
+export const laneColor = row => LANE_COLORS[row % LANE_COLORS.length];
 // Headroom above a full bar, so "at maximum" doesn't read as "clipped by the row
 // above". Exported because it is part of the geometry contract between drawing
 // and dragging: the pointer sits on the top edge of the bar it is setting, so a
@@ -319,11 +333,11 @@ export class PLockLane {
         if (value != null) {
           const frac = barFraction(param, value);
           const barH = Math.max(1, frac * (ROW_H - BAR_PAD));
-          // Read-only lanes are drawn in grey rather than the editable purple,
+          // Read-only lanes are drawn in grey rather than the lane's colour,
           // so "you can't drag this" is visible before you try.
-          ctx.fillStyle = editable ? '#8d6fd1' : '#565d6b';
+          ctx.fillStyle = editable ? laneColor(r).bar : '#565d6b';
           ctx.fillRect(x + 1, y + ROW_H - barH, CELL_W - 2, barH);
-          ctx.fillStyle = editable ? '#c9b6f2' : '#7d8590';
+          ctx.fillStyle = editable ? laneColor(r).cap : '#7d8590';
           ctx.fillRect(x + 1, y + ROW_H - barH - 1, CELL_W - 2, 1);
         } else if (isLive) {
           ctx.fillStyle = '#2b303a';
@@ -351,6 +365,12 @@ export class PLockLane {
       const editable = laneIsEditable(lane);
       ctx.fillStyle = '#171a20';
       ctx.fillRect(0, y, KEY_W, ROW_H);
+      // The lane's colour as a stripe on the gutter edge, so the label and its
+      // bars read as one row even when the bars are half a screen away.
+      if (editable) {
+        ctx.fillStyle = laneColor(r).bar;
+        ctx.fillRect(0, y, 3, ROW_H);
+      }
       ctx.fillStyle = editable ? '#9aa2ae' : '#646b78';
       // Two lines: the parameter, then its range — the gutter is narrow, so the
       // label is clipped rather than shrunk.
