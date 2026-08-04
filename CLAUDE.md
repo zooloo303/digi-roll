@@ -58,10 +58,12 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 
 - `js/state.js` pattern model (notes + micro-timing + swing + track PROB +
   provenance) · `js/pianoroll.js` canvas editor, knows nothing about devices ·
-  `js/edit-ops.js` paste placement, canvas-free · `js/main.js` UI wiring ·
+  `js/edit-ops.js` paste placement and selection resize, canvas-free ·
+  `js/main.js` UI wiring ·
   `js/midi.js` realtime engine
 - `js/elektron/` protocol + pattern structs · `safe-write.js` the write flow ·
-  `copy-track.js` cross-device copy · `js/roll-bridge.js` roll ↔ device notes
+  `copy-track.js` cross-device copy · `pattern-settings.js` pattern-level bytes
+  (swing) · `js/roll-bridge.js` roll ↔ device notes
 - `js/bank.js` named saves · `js/labs/` device console + diffing lab pages
 - `docs/elektron-sysex-protocol.md`, `docs/dt2-pattern-format.md`,
   `docs/dn2-pattern-format.md` — the byte-level truth, including the first

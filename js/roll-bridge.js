@@ -43,6 +43,12 @@ export function snapLenFine(steps, maxSteps = Infinity) {
   return lengthByteToSteps(byte);
 }
 
+// The LEN scale as a slider axis, for a UI that wants to offer exactly the
+// lengths the hardware holds. Byte 0-126 is the boxes' own spacing — fine at
+// the bottom, coarse at the top — so a slider over it spends its travel where
+// the musical resolution actually is, unlike a linear ramp in steps.
+export { lengthByteToSteps as lenByteToSteps, stepsToLengthByte as lenStepsToByte } from './elektron/pattern-core.js';
+
 // Roll slot length for a device track: whole bars, at least one, at most eight.
 export function rollLengthForTrack(track) {
   return Math.min(128, Math.max(16, Math.ceil(track.lengthSteps / 16) * 16));

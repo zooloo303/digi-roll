@@ -62,6 +62,14 @@
           <span class="lab">Velocity</span><b id="velLabel"></b>
         </div>
         <input id="velocity" type="range" min="1" max="127">
+        <div class="row" title="Length of the selected notes, on the box's own LEN scale — drag a note's edge instead to keep long and short notes different">
+          <span class="lab">Length</span><b id="lenLabel"></b>
+        </div>
+        <input id="noteLen" type="range" min="0" max="126">
+        <div class="row" title="The odds every trig in this pattern plays at unless it has its own PROB lock in the lane below the grid. 100% = always, the box default. Unlike Velocity and Length this one is per pattern, not per selected note — it sits here because the box keeps the three together.">
+          <span class="lab">Probability</span><b id="trackProbLabel"></b>
+        </div>
+        <input id="trackProb" type="range" min="0" max="100">
         <div class="btns" style="margin-top:10px">
           <button id="undo" title="Undo (Cmd/Ctrl+Z)">↶ Undo</button>
           <button id="redo" title="Redo (Shift+Cmd/Ctrl+Z)">↷ Redo</button>
@@ -69,13 +77,9 @@
       </div>
       <div class="grp">
         <div class="cap">Pattern</div>
-        <div class="row" title="Swing amount for this pattern — 50 is straight, 66 is classic triplet feel">
+        <div class="row" title="Swing amount for this pattern — 50 is straight, 66 is classic triplet feel. Sent to the box with the pattern, where it re-times all 16 tracks in the slot, not just the one you write.">
           <span class="lab">Swing</span><input id="swing" type="number" min="50" max="80" step="1">
         </div>
-        <div class="row" title="The odds every trig plays at unless it has its own PROB lock in the lane below the grid. 100% = always, the box default.">
-          <span class="lab">Track PROB</span><b id="trackProbLabel"></b>
-        </div>
-        <input id="trackProb" type="range" min="0" max="100">
         <div class="btns" style="margin-top:10px">
           <button id="dup" title="Add a bar and copy the last bar's notes into it">Dup bar</button>
           <button id="clear" title="Clear all notes in this pattern">Clear</button>
@@ -89,7 +93,7 @@
         </div>
         <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       </div>
-      <p class="hint">Drag a note's right edge to resize (hold shift for fine lengths) · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · alt+drag a note to duplicate it · right-click to delete. Paste lands where you last clicked. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid.</p>
+      <p class="hint">Drag a note's right edge to resize (hold shift for fine lengths); with a selection, they all move by the same amount · <b>Length</b> above makes them all equal instead · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · alt+drag a note to duplicate it · right-click to delete. Paste lands where you last clicked. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid.</p>
     </aside>
 
     <!-- ===== Harmony ===== -->
@@ -219,8 +223,8 @@
         <li><b>COND</b> — click for the picker: the eight logic conditions (<b>PRE</b>, <b>NEI</b>, <b>1ST</b>, <b>LST</b> and their <b>!</b> negations) plus every ratio from <b>1:2</b> to <b>!8:8</b>, tabbed by denominator. <code>2:4</code> plays on loop 2 of every 4; <code>!2:4</code> plays on all the others.</li>
         <li><b>FILL</b> — click to cycle none → <b>ON</b> → <b>OFF</b>. ON plays only while FILL is held on the box; OFF plays only while it isn't. Unlocked ignores fill mode entirely — that's a real third state, not a synonym for OFF.</li>
       </ul>
-      <h4>Track PROB — odds for the whole pattern</h4>
-      <p>The <b>Track PROB</b> slider in the <b>Edit</b> panel is the track's own probability default, the same byte the box holds: every trig runs at those odds <i>unless</i> it carries a PROB lock of its own, which wins. So "30% across the track, but these three trigs always" is a 30% slider plus three trigs locked at 100 — not a value stamped onto every step. Unlocked steps show the inherited number dimmed in the PROB row so you can see what they'll actually do. It's per pattern, it travels with write-back, cross-device copy and Library saves, and it's honoured in the browser preview.</p>
+      <h4>Probability — odds for the whole pattern</h4>
+      <p>The <b>Probability</b> slider in the <b>Edit</b> panel sits under Velocity and Length, the way the box keeps the three together, but it works differently from those two: it is the track's own probability default rather than anything applied to the notes you've selected — the same byte the box holds: every trig runs at those odds <i>unless</i> it carries a PROB lock of its own, which wins. So "30% across the track, but these three trigs always" is a 30% slider plus three trigs locked at 100 — not a value stamped onto every step. Unlocked steps show the inherited number dimmed in the PROB row so you can see what they'll actually do. It's per pattern, it travels with write-back, cross-device copy and Library saves, and it's honoured in the browser preview.</p>
       <p>Drag sideways to paint a value across steps · right-click (or alt-click) clears a cell · and if the step you click holds selected notes, the edit reaches <b>every selected step at once</b>. A conditioned trig is marked in the grid too: a dark corner flag on the note, plus the values written inside it once the note is two steps or wider. Conditions survive write-back, cross-device copy and Library saves; they are not in exported .mid files, which have no such concept.</p>
       <p><b>Playing them here is a partial preview.</b> Probability and the loop-counting conditions (<code>1ST</code> and every <code>A:B</code> ratio) are evaluated for real, so a <code>2:4</code> trig really does play every fourth loop. <code>PRE</code>, <code>NEI</code>, <code>LST</code> and <code>FILL</code> always play, because the browser has no neighbour track, no idea a pattern change is coming and no FILL button — the preview is never quieter than the box. Send it to the hardware to hear those properly.</p>
       <h3>Chords</h3>

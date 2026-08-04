@@ -3,7 +3,8 @@
 // Interactions:
 //   click/drag on empty cell  -> create note, drag right to set length
 //   drag note body            -> move (pitch + step)
-//   drag note's right edge    -> resize
+//   drag note's right edge    -> resize; a selection follows by the same delta,
+//                                so long and short notes stay long and short
 //   shift + drag note's edge  -> fine resize, snapped to what the box can store
 //   shift+drag on note        -> velocity (up = harder), applied to the whole selection
 //   shift+click on note       -> toggle it in/out of the selection
@@ -15,6 +16,7 @@
 //   Delete/Backspace          -> delete selected notes
 
 import { makeNote } from './state.js';
+import { resizeSelectionBy } from './edit-ops.js';
 
 export const PITCH_MAX = 96; // C8 as the box labels it
 export const PITCH_MIN = 24; // C2 as the box labels it
@@ -175,6 +177,22 @@ export class PianoRoll {
     return { x, y, step, pitch, inGrid, note, nearEdge };
   }
 
+  // What a resize carries, and the lengths it starts from. The whole selection
+  // comes along when the grabbed note belongs to it — which is the same rule
+  // moving and velocity already follow, and after a plain click or a fresh
+  // stamp the selection *is* just the note(s) in hand, so a single note still
+  // resizes alone with no special case. Start lengths are captured here so the
+  // drag applies one delta to them rather than compounding per mousemove.
+  _resizeStart(note, extra = {}) {
+    const sel = this.selectedNotes();
+    const group = sel.some(x => x.id === note.id) ? sel : [note];
+    return {
+      mode: 'resize', note, startLen: note.len,
+      items: group.map(x => ({ n: x, step: x.step, len: x.len })),
+      ...extra,
+    };
+  }
+
   // Bounds of the current selection, for clamping a group move.
   _groupStart() {
     const items = this.selectedNotes().map(n => ({ n, step: n.step, pitch: n.pitch }));
@@ -228,7 +246,7 @@ export class PianoRoll {
       this.drag = mod
         ? { mode: 'micro', note: pos.note, startX: e.clientX, startMicro: pos.note.micro ?? 0 }
         : pos.nearEdge
-          ? { mode: 'resize', note: pos.note }
+          ? this._resizeStart(pos.note)
           : { mode: 'move', note: pos.note, dStep: pos.step - pos.note.step,
               baseStep: pos.note.step, basePitch: pos.note.pitch, group: this._groupStart() };
     } else if (mod) {
@@ -243,13 +261,13 @@ export class PianoRoll {
         p.notes.push(...made);
         this.setSelection(made.map(n => n.id));
         this.hover = null;
-        this.drag = { mode: 'resize', note: made.at(-1), chord: made, created: true };
+        this.drag = this._resizeStart(made.at(-1), { created: true });
         for (const c of chord) this.onPreview(c.pitch, c.velocity);
       } else {
         const n = makeNote(pos.step, pos.pitch, 1, this.getDefaultVelocity());
         p.notes.push(n);
         this.select(n);
-        this.drag = { mode: 'resize', note: n, created: true };
+        this.drag = this._resizeStart(n, { created: true });
         this.onPreview(n.pitch, n.velocity);
       }
       this.onChange();
@@ -320,8 +338,20 @@ export class PianoRoll {
         : Math.max(1, Math.min(pos.step - n.step + 1, room));
       const wasFine = this.drag.fine;
       this.drag.fine = fine;
-      if (len !== n.len) {
-        for (const cn of this.drag.chord ?? [n]) cn.len = len; // chord notes share a step, so one clamp fits all
+      // The whole selection follows, by the delta this note travelled from
+      // where the drag began — measured from the starting lengths, not the
+      // current ones, so a drag that reverses lands back where it started
+      // instead of accumulating. Fine mode's floor is whatever the device can
+      // store, which snapLen knows and this module deliberately does not.
+      const items = this.drag.items;
+      const lens = resizeSelectionBy(items, len - this.drag.startLen, {
+        lengthSteps: p.lengthSteps,
+        snapLen: fine ? this.snapLen : null,
+        minLen: fine ? this.snapLen(0, room) : 1,
+      });
+      if (items.some((it, i) => it.n.len !== lens[i])) {
+        items.forEach((it, i) => { it.n.len = lens[i]; });
+        this.onSelect?.(n); // the Length readout tracks the drag, as velocity's does
         this.draw();
       } else if (fine !== wasFine) {
         this.draw(); // the readout appears (or goes) the moment shift is pressed

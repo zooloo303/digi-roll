@@ -3,7 +3,7 @@ import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
 import { TrigLane } from './triglane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
-import { placeClipboard } from './edit-ops.js';
+import { placeClipboard, setSelectionLength } from './edit-ops.js';
 import { ElektronDevice } from './elektron/device.js';
 import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
 import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
@@ -11,6 +11,7 @@ import * as dt2 from './elektron/dt2/pattern.js';
 import * as dn2 from './elektron/dn2/pattern.js';
 import {
   rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack, snapLenFine,
+  lenByteToSteps, lenStepsToByte,
   makeSource, sourceLabel, sourceMatchesIdentity, attachTrigSettings,
 } from './roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from './elektron/trig-cond.js';
@@ -127,6 +128,7 @@ const roll = new PianoRoll($('roll'), {
     state.defaultVelocity = note.velocity;
     $('velocity').value = note.velocity;
     $('velLabel').textContent = note.velocity;
+    showNoteLen(note.len); // and the Length readout follows a resize drag live
   },
   // The trig lane draws in step with the grid, so it rides the roll's own
   // resize and redraw rather than being chased from every call site.
@@ -247,6 +249,9 @@ function syncToolbar() {
   $('chordStrum').value = state.chord.strum;
   $('velocity').value = state.defaultVelocity;
   $('velLabel').textContent = state.defaultVelocity;
+  // Length has no stored default — it reads out the last note touched, so a
+  // slot switch parks it on the one-step note a click would draw.
+  showNoteLen(roll?.selectedNotes().at(-1)?.len ?? 1);
   // Per pattern, unlike Velocity, so it has to be re-read on every slot switch.
   $('trackProb').value = pattern().trackProb ?? 100;
   $('trackProbLabel').textContent = `${pattern().trackProb ?? 100}%`;
@@ -342,6 +347,30 @@ $('velocity').oninput = () => {
   persist();
 };
 $('velocity').onchange = () => { velGesture = false; };
+// Length, on the boxes' own LEN scale: the slider position *is* the length byte,
+// so every stop it can reach is a length the hardware can store, and the travel
+// is fine where the resolution is. It edits the selection and sets no default
+// for new notes — unlike the velocity slider — because "all the same length" is
+// a deliberate act, while drawing wants the plain one-step note it always got.
+function showNoteLen(len) {
+  $('noteLen').value = lenStepsToByte(len);
+  $('lenLabel').textContent = `${+len.toFixed(3)}`;
+}
+let lenGesture = false; // one undo entry per slider drag, like velocity's
+$('noteLen').oninput = () => {
+  const len = lenByteToSteps(+$('noteLen').value);
+  $('lenLabel').textContent = `${+len.toFixed(3)}`;
+  const sel = roll.selectedNotes();
+  if (!sel.length) return; // nothing selected — the slider is only a readout
+  if (!lenGesture) { lenGesture = true; pushUndo(); }
+  const lens = setSelectionLength(sel, len, {
+    lengthSteps: pattern().lengthSteps, snapLen: snapLenFine,
+  });
+  sel.forEach((n, i) => { n.len = lens[i]; });
+  roll.draw();
+  persist();
+};
+$('noteLen').onchange = () => { lenGesture = false; dropUnchangedUndo(); };
 // Track-level PROB: the odds an unlocked trig runs at. One undo entry per drag,
 // like the velocity slider — but this one lives on the pattern, not on the app.
 let trackProbGesture = false;

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { clipboardAnchor, placeClipboard } from '../js/edit-ops.js';
+import {
+  clipboardAnchor, placeClipboard, resizeSelectionBy, setSelectionLength,
+} from '../js/edit-ops.js';
+import { snapLenFine, LEN_MIN } from '../js/roll-bridge.js';
 import { PITCH_MIN, PITCH_MAX } from '../js/pianoroll.js';
 
 // Paste placement, canvas-free. The rule that matters is that a block keeps its
@@ -88,5 +91,74 @@ describe('pasting with no caret yet', () => {
 describe('an empty clipboard', () => {
   it('places nothing', () => {
     expect(placeClipboard([], { step: 0, pitch: 60 }, bounds())).toEqual({ notes: [], dropped: 0 });
+  });
+});
+
+// Resizing a selection. The two entry points answer different questions, so
+// they clamp differently and the tests below are mostly about the edges: a drag
+// exists to keep long and short notes different, the LEN control exists to make
+// them the same.
+const sel = (...pairs) => pairs.map(([step, len]) => ({ step, len }));
+
+describe('dragging one edge with a selection behind it', () => {
+  it('moves every note by the same delta, so the shape survives', () => {
+    expect(resizeSelectionBy(sel([0, 1], [4, 2], [8, 4]), 1, { lengthSteps: 16 }))
+      .toEqual([2, 3, 5]);
+  });
+
+  it('shrinks by the same delta too', () => {
+    expect(resizeSelectionBy(sel([0, 4], [4, 3]), -2, { lengthSteps: 16 }))
+      .toEqual([2, 1]);
+  });
+
+  it('stops the whole group at the first note that runs out of room', () => {
+    // A 1-step note at step 14 of a 16-step pattern can grow by exactly one
+    // before it hits the end, so asking for four holds everyone to one rather
+    // than letting the others run on and flatten the differences this mode
+    // exists to keep.
+    expect(resizeSelectionBy(sel([0, 1], [14, 1]), 4, { lengthSteps: 16 }))
+      .toEqual([2, 2]);
+  });
+
+  it('stops the whole group at the shortest note when shrinking', () => {
+    expect(resizeSelectionBy(sel([0, 4], [4, 1]), -3, { lengthSteps: 16 }))
+      .toEqual([4, 1]);
+  });
+
+  it('never shrinks past the floor it is given', () => {
+    const lens = resizeSelectionBy(sel([0, 2], [4, 8]), -100, { lengthSteps: 16 });
+    expect(lens).toEqual([1, 7]); // the 2-step note hits 1, so the delta stops at -1
+  });
+
+  it('snaps every result to what the device can store', () => {
+    // A fine drag: the delta lands each note on the box's own LEN scale rather
+    // than on some value that would quietly round on write.
+    const lens = resizeSelectionBy(sel([0, 1], [4, 2]), 0.1,
+      { lengthSteps: 16, snapLen: snapLenFine, minLen: LEN_MIN });
+    expect(lens).toEqual([snapLenFine(1.1), snapLenFine(2.1)]);
+    for (const len of lens) expect(snapLenFine(len)).toBe(len); // already representable
+  });
+
+  it('places no lengths for an empty selection', () => {
+    expect(resizeSelectionBy([], 2, { lengthSteps: 16 })).toEqual([]);
+  });
+});
+
+describe('the LEN control over a selection', () => {
+  it('makes every note the same length', () => {
+    expect(setSelectionLength(sel([0, 1], [4, 2], [8, 4]), 3, { lengthSteps: 16 }))
+      .toEqual([3, 3, 3]);
+  });
+
+  it('clamps per note, so a note short of room takes what it has', () => {
+    // Deliberately unlike the drag: one cramped note must not hold the rest
+    // back from the length that was actually asked for.
+    expect(setSelectionLength(sel([0, 1], [14, 1]), 4, { lengthSteps: 16 }))
+      .toEqual([4, 2]);
+  });
+
+  it('snaps to the device scale and honours its floor', () => {
+    expect(setSelectionLength(sel([0, 4]), 0.01,
+      { lengthSteps: 16, snapLen: snapLenFine, minLen: LEN_MIN })).toEqual([LEN_MIN]);
   });
 });
