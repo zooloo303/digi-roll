@@ -21,9 +21,9 @@ Phases 1–4, hardware-verified on a Digitakt II (OS 1.15B) and a Digitone II
   micro-timing, MIDI file import/export
 - The diffing lab (`difflab.html`) that reverse-engineered the DN2 format
 
-**Per-trig conditions — PROB / FILL / COND** (2026-08-02). The byte mapping is
-hardware-verified on both boxes; **the write path is not yet hardware-verified**
-(see the smoke-test checklist below). All three turned out to be plain per-step
+**Per-trig conditions — PROB / FILL / COND** (2026-08-02). Byte mapping *and*
+write path both hardware-verified on both boxes — the mapping 2026-08-02, the
+write 2026-08-03 (checklist below). All three turned out to be plain per-step
 byte lanes in the track struct — track offsets 256 (COND), 384 (FILL) and 512
 (PROB) — *not* p-lock pool entries, which stayed empty throughout the
 experiment. Identical on the DT2 and DN2, including one shared 76-value COND
@@ -37,7 +37,8 @@ carriage through import, write-back, cross-device copy and Library saves. The
 browser preview evaluates probability and the loop-counting conditions; PRE,
 NEI, LST and FILL always play, and the UI says so.
 
-Smoke test to run on hardware before calling this done:
+Smoke test, run and passed 2026-08-03. Kept as the recipe for repeating it on
+a new OS build:
 
 1. Throwaway project. Draw a pattern with a PROB lock, a FILL trig, a ratio and
    a negated ratio, and one locked chord. Send to box.
@@ -159,11 +160,13 @@ the roll's resize handler and the import bridge.
   said in the help page); MIDI import keeps rounding.
 - **Chords:** the format stores one LEN per step — unchanged, not fought.
 
-### Hardware smoke test — run 2026-08-03
+### Hardware smoke test — run and passed 2026-08-03
 
 Track PROB was the item at risk, and it works on the box: the byte lands, the
 TRIG page shows it, and an explicit per-trig 100% lock stays distinct from the
-track default. The steps, kept for whoever repeats them on a new OS build:
+track default. Fine note lengths verified in the same session, as did the
+per-trig conditions checklist above (steps 1–5). The steps, kept for whoever
+repeats them on a new OS build:
 
 6. Set track PROB 30% with one trig explicitly locked at 100%. Send to box —
    the TRIG page default shows 30, the locked trig shows 100, playback
@@ -172,8 +175,11 @@ track default. The steps, kept for whoever repeats them on a new OS build:
 7. Draw a note fine-resized to 4.75 steps and one at 0.125. Send, check LEN on
    the box, re-read byte-identical, re-import exact.
 
-The per-trig conditions checklist above (steps 1–5) is the same session's
-remaining work — ask Neil what it covered before calling that one verified.
+**Nothing digi-roll writes is unverified any more.** Every write surface —
+notes, per-trig conditions, track PROB, fine lengths — has been through
+encode → send → box UI → re-read on both boxes at the allowlisted builds
+(DT2 `0070`, DN2 `0049`). The next thing to break that is an OS update or the
+p-lock pool.
 
 ## Next — p-lock lanes (planned 2026-08-03)
 
