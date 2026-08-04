@@ -17,6 +17,27 @@ const PRODUCTS = {
   43: { name: 'Digitone II', slug: 'digitone2', family: 0x15 }, // both values captured from real hardware 2026-08-01 (family byte via 0x60 probe sweep)
 };
 
+// Which box a MIDI port name looks like, without asking it.
+//
+// The real answer comes from the identity handshake (`identify()` below), but
+// that needs SysEx permission and a round trip, and the main page deliberately
+// puts both off until you actually send or fetch something. Until then the port
+// name is all we have — and it is enough to tell a Digitone II from a Digitakt II
+// in the MIDI output menu, which is what the UI needs to stop offering you the
+// wrong box's parameters.
+//
+// Longest name first, so "Elektron Digitakt II" isn't claimed by the gen-1
+// "Digitakt" entry it starts with. A name we don't recognise returns null, and
+// every caller treats that as "don't know" rather than as a default.
+const PRODUCTS_BY_NAME_LENGTH = Object.values(PRODUCTS)
+  .sort((a, b) => b.name.length - a.name.length);
+
+export function slugFromPortName(portName) {
+  if (!portName) return null;
+  const lower = portName.toLowerCase();
+  return PRODUCTS_BY_NAME_LENGTH.find(p => lower.includes(p.name.toLowerCase()))?.slug ?? null;
+}
+
 const REQUEST_TIMEOUT_MS = 5000; // elk-herd uses 5 s with 2 retries
 const REQUEST_RETRIES = 2;
 const DUMP_STALL_MS = 5000;      // max silence between dump stream messages

@@ -26,6 +26,11 @@ python3 -m http.server 8123
 
 Allow the MIDI permission prompt, pick your box in the output menu.
 
+There's no build step, so the browser is caching the ES modules directly — after
+editing a `js/` file, a plain reload can quietly keep running the old code (the
+symptom is a change that "didn't take"). Use a cache-bypassing reload
+(**Cmd/Ctrl+Shift+R**), or keep DevTools open with *Disable cache* ticked.
+
 ## Workflow: sending a pattern to the box (Digitakt II / Digitone II)
 
 Both everyday routes live in the **Box** panel (⇄) on the main page; the device
@@ -43,9 +48,10 @@ aimed at where the notes came from, and it refuses to write to a different box
 than the one they came from.
 
 Every write is the same safe flow: re-read the destination pattern, download a
-`.syx` backup of it, change only that track's notes, read it back and compare
-every byte. Sounds, p-locks and other tracks are untouched, and writes are
-gated on a per-device OS-build allowlist.
+`.syx` backup of it, change only that track, read it back and compare every byte.
+Sounds, the kit and the other fifteen tracks are untouched, and writes are gated
+on a per-device OS-build allowlist. That track's own p-lock lanes *are* replaced,
+the same way its trigs are — the confirmation says so before anything is sent.
 
 ## Fallback: capturing a pattern by live recording
 
@@ -94,6 +100,18 @@ notes arriving.
   paint across steps, right-click to clear, and edits reach every selected step
   at once. These belong to the trig, so every note on a step shares them —
   exactly as the hardware works
+- **P-lock lanes** below the trig lane — per-step parameter automation as bar
+  rows. Eleven parameters both boxes share (filter cutoff, resonance, filter env
+  depth, pan, overdrive, delay/reverb/chorus send, LFO 1–3 depth). Click in a lane
+  to set a step, drag to draw, sideways to paint. **Press Play and you hear it on
+  the box** — lanes are sent as live NRPN parameter changes ahead of each trig, so
+  a filter sweep can be auditioned before anything is transferred. And they
+  **transfer into the pattern**: the unpublished internal numbers the format
+  uses were measured from real hardware on both boxes (2026-08-04), so all
+  eleven store, round-trip and translate across boxes by name. A lane
+  automating a parameter *outside* the eleven comes in read-only and is
+  **preserved byte-exact** through write-back, copy and Library saves. See
+  `PLAN.md`
 - **Dup bar** adds a bar and copies the last one into it (up to 8 bars)
 - Scale menu (root + scale) tints the in-scale rows; purely visual
 - Octave numbering follows the boxes: the key column calls MIDI 60 **C5**, the
@@ -145,20 +163,28 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
   (timestamped `MIDIOutput.send`, 24 ppqn clock, start/stop transport)
 - `js/pianoroll.js` — canvas editor
 - `js/triglane.js` — the step-aligned PROB/COND/FILL strip under the roll
+- `js/plocklane.js` — the p-lock automation lanes below it
 - `js/main.js` — UI wiring
 - `js/elektron/` — SysEx protocol: `sevenbit.js` (7↔8-bit packing),
   `protocol.js` (framing/checksums), `device.js` (handshake, dumps),
   `pattern-core.js` + `dt2/` + `dn2/` (pattern struct decode/encode),
-  `conditions.js` + `trig-cond.js` (the PROB/FILL/COND tables and lanes)
+  `conditions.js` + `trig-cond.js` (the PROB/FILL/COND tables and lanes),
+  `plocks.js` + `params.js` (the p-lock lane pool and its parameter tables)
 - `js/labs/` — the device console and diffing-lab pages
 - `test/` — Vitest unit tests for the protocol code (dev-only; the app itself
   stays dependency-free): `npm install && npm test`
 
 ## Ideas / later
 
-Next up: **p-lock lanes** (filter, pitch, … as automation lanes), then pattern
-chaining preview and widening the write allowlist beyond one verified OS build
-per box. See `PLAN.md` for the detail.
+**P-lock lanes** are drawable, audible and stored in the pattern. The
+unpublished `paramId` numbering and value scaling were measured on both boxes
+(2026-08-04, the Phase 0 experiments — logs in `docs/`, fixtures in
+`dumps/fixtures/`); what's left is the hardware smoke test of digi-roll
+*writing* locks, since everything measured so far was read-only captures of
+locks the boxes made themselves.
+
+After that: pattern chaining preview, and widening the write allowlist beyond one
+verified OS build per box. See `PLAN.md` for the detail.
 
 Per-trig conditions — `50%`, `FILL`, `1ST`, `PRE`, the `A:B` ratios — landed in
 the **trig lane** under the roll. The byte format is hardware-verified on both

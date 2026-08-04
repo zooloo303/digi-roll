@@ -1,10 +1,11 @@
-import { loadState, saveState, defaultPattern, makeNote, NUM_SLOTS } from './state.js';
+import { loadState, saveState, defaultPattern, makeNote, makePLockLane, NUM_SLOTS } from './state.js';
 import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
 import { TrigLane } from './triglane.js';
+import { PLockLane, describeLane, laneIsEditable, laneParam } from './plocklane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
 import { placeClipboard, setSelectionLength } from './edit-ops.js';
-import { ElektronDevice } from './elektron/device.js';
+import { ElektronDevice, slugFromPortName } from './elektron/device.js';
 import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
 import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
 import * as dt2 from './elektron/dt2/pattern.js';
@@ -13,8 +14,12 @@ import {
   rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack, snapLenFine,
   lenByteToSteps, lenStepsToByte,
   makeSource, sourceLabel, sourceMatchesIdentity, attachTrigSettings,
+  devicePLocksToRoll, rollPLocksToDevice, pruneLanesToTrigs,
+  plockMessagesForStep, hasAuditableLanes,
 } from './roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from './elektron/trig-cond.js';
+import { readTrackPLocks } from './elektron/plocks.js';
+import { DEVICE_KINDS, auditableParamsFor } from './elektron/param-tables.js';
 import { readSwing, SWING_MIN } from './elektron/pattern-settings.js';
 import { downloadBytes, downloadText } from './download.js';
 import {
@@ -77,7 +82,12 @@ const engine = new MidiEngine(() => ({
   bpm: state.bpm,
   sendClock: state.sendClock,
   countIn: state.countIn,
-}));
+}), {
+  // p-lock lanes are auditioned as real parameter changes on the box, so a filter
+  // sweep can be heard before anything is written into a pattern. The engine
+  // knows nothing about CC or NRPN numbers; this is the injection seam.
+  plockMessages: plockMessagesForStep,
+});
 
 // --- Chord draw --------------------------------------------------------------
 // The pitch math is js/chords.js; this closes it over the toolbar settings.
@@ -102,8 +112,15 @@ function chordSpecs(rootPitch, velocity, taper = true) {
 }
 
 // Declared up front: PianoRoll's constructor resizes, and that reaches for the
-// lane through the hooks below before the assignment further down has run.
+// lanes through the hooks below before the assignments further down have run.
 let trigLane = null;
+let plockLane = null;
+
+// The v1 rule for p-locks: a lock rides on a trig. Deleting a note takes its
+// locks with it — the same scrub the box does to a deleted trig's condition
+// bytes — but only on lanes digi-roll is actually authoring. Read-only lanes are
+// being carried back to the box byte-exact and are not ours to prune.
+const pruneLanes = () => pruneLanesToTrigs(pattern().plocks, pattern().notes, laneIsEditable);
 
 const roll = new PianoRoll($('roll'), {
   getPattern: pattern,
@@ -111,7 +128,7 @@ const roll = new PianoRoll($('roll'), {
   // Shift+resize snaps to what the boxes can actually store; the roll itself
   // knows nothing about devices, so the scale is handed to it.
   snapLen: snapLenFine,
-  onChange: () => { dropUnchangedUndo(); persist(); },
+  onChange: () => { pruneLanes(); dropUnchangedUndo(); persist(); plockLane?.draw(); },
   onBeforeEdit: pushUndo,
   getScale: () => state.scale === 'off' ? null : { root: state.scaleRoot, set: new Set(SCALES[state.scale]) },
   getChord: pitch => state.chord.on ? chordSpecs(pitch, state.defaultVelocity) : null,
@@ -131,10 +148,10 @@ const roll = new PianoRoll($('roll'), {
     $('velLabel').textContent = note.velocity;
     showNoteLen(note.len); // and the Length readout follows a resize drag live
   },
-  // The trig lane draws in step with the grid, so it rides the roll's own
-  // resize and redraw rather than being chased from every call site.
-  onResize: () => trigLane?.resize(),
-  onAfterDraw: () => trigLane?.draw(),
+  // Both lanes draw in step with the grid, so they ride the roll's own resize
+  // and redraw rather than being chased from every call site.
+  onResize: () => { trigLane?.resize(); plockLane?.resize(); },
+  onAfterDraw: () => { trigLane?.draw(); plockLane?.draw(); },
 });
 
 trigLane = new TrigLane($('trigLane'), {
@@ -145,10 +162,19 @@ trigLane = new TrigLane($('trigLane'), {
   onChange: () => { dropUnchangedUndo(); persist(); roll.draw(); },
 });
 
-// The lane has no scrollbar of its own — it tracks the roll's horizontal
-// position so the two grids stay aligned.
+plockLane = new PLockLane($('plockLane'), {
+  getPattern: pattern,
+  getSelectedIds: () => roll.selected,
+  onBeforeEdit: pushUndo,
+  onChange: () => { dropUnchangedUndo(); persist(); syncPLockPanel(); },
+  onStatus: setStatus,
+});
+
+// Neither lane has a scrollbar of its own — they track the roll's horizontal
+// position so the grids stay aligned.
 $('rollWrap').addEventListener('scroll', () => {
   $('trigLaneWrap').scrollLeft = $('rollWrap').scrollLeft;
+  $('plockLaneWrap').scrollLeft = $('rollWrap').scrollLeft;
 });
 
 // --- Toolbar wiring ---------------------------------------------------------
@@ -256,6 +282,9 @@ function syncToolbar() {
   // Per pattern, unlike Velocity, so it has to be re-read on every slot switch.
   $('trackProb').value = pattern().trackProb ?? 100;
   $('trackProbLabel').textContent = `${pattern().trackProb ?? 100}%`;
+  // Per pattern too, and it changes the height of the lane strip, so it has to
+  // be re-read on every slot switch rather than only when edited.
+  syncPLockPanel();
   railFlag('harmonyPanel', state.chord.on);
   syncSend();
 }
@@ -275,6 +304,10 @@ lenSel.onchange = () => {
   pattern().lengthSteps = len;
   pattern().notes = pattern().notes.filter(n => n.step < len);
   for (const n of pattern().notes) n.len = Math.min(n.len, len - n.step);
+  // Shortening drops notes, which takes their locks with them. Read-only lanes
+  // keep their full 128 steps regardless — they're being passed back to the box
+  // as they came, and the box's own track length is not this menu's business.
+  pruneLanes();
   roll.resize();
   persist();
 };
@@ -383,11 +416,148 @@ $('trackProb').oninput = () => {
   persist();
 };
 $('trackProb').onchange = () => { trackProbGesture = false; dropUnchangedUndo(); };
+
+// --- P-lock lanes ------------------------------------------------------------
+// Per-step automation, one lane per parameter, drawn under the grid by
+// js/plocklane.js. The panel is the lane *list*: add one, see what a pattern
+// carries, take one off. The values themselves are edited on the lane.
+//
+// The two boxes use different CC numbers for the same knob (pan is 90 on a DT2
+// and 89 on a DN2, where 89 is Volume), so a lane always belongs to *one named
+// box* — offering both boxes' parameters at once is just an invitation to pick
+// the wrong one.
+//
+// So the picker shows one box, resolved in this order:
+//
+//   1. the pattern's own provenance — where its notes came from, or where they
+//      were last sent. A lane on an imported pattern has to speak the numbering
+//      of the box it will go home to;
+//   2. the connected box's identity, once a fetch or send has handshaked with it;
+//   3. the MIDI output menu's port name, which is the only clue available before
+//      any SysEx happens — and is what the menu is already showing you;
+//   4. nothing known: fall back to showing both, grouped by box, rather than
+//      leaving the feature dead.
+//
+// Every parameter here can be **heard**: the CC/NRPN numbers come from the boxes'
+// own MIDI charts. Not every one can yet be **sent** — that needs the p-lock
+// paramId, measured on hardware (PLAN.md Phase 0). The panel says which is which
+// rather than pretending they're the same thing.
+
+const plockAddSel = $('plockAdd');
+
+// Which box's parameter numbering applies to the pattern being edited, or null
+// when there is genuinely no way to tell yet.
+function plockDeviceKind() {
+  const slug = pattern().source?.slug ?? box?.identity?.slug ?? slugFromPortName(engine.output?.name);
+  return DECODERS[slug]?.SPEC.device ?? null;
+}
+
+function fillPLockPicker() {
+  const kind = plockDeviceKind();
+  const kinds = kind ? [kind] : DEVICE_KINDS;
+  plockAddSel.innerHTML = '';
+  for (const k of kinds) {
+    const group = document.createElement('optgroup');
+    group.label = k;
+    for (const p of auditableParamsFor(k)) {
+      const o = new Option(p.label, `${k}:${p.name}`);
+      o.title = `${p.label} on the ${k} — `
+        + (p.midi.nrpn ? `NRPN ${p.midi.nrpn[0]}/${p.midi.nrpn[1]}` : `CC ${p.midi.cc}`)
+        + (p.writable ? '' : ' · preview only until its p-lock slot is mapped');
+      group.appendChild(o);
+    }
+    if (group.children.length) plockAddSel.appendChild(group);
+  }
+  const n = plockAddSel.querySelectorAll('option').length;
+  if (!n) plockAddSel.add(new Option('— none mapped yet —', ''));
+  plockAddSel.disabled = !n;
+  $('plockAddGo').disabled = !n;
+  return { count: n, kind };
+}
+
+function syncPLockPanel() {
+  const lanes = pattern().plocks ?? [];
+  // Re-filled on every sync: the box in play changes with the slot you're editing
+  // and with the MIDI output you pick, so this can't be built once at start-up.
+  const { count: curatedParamCount, kind } = fillPLockPicker();
+  const list = $('plockList');
+  list.innerHTML = '';
+  for (const [i, lane] of lanes.entries()) {
+    const row = document.createElement('div');
+    row.className = 'laneRow' + (laneIsEditable(lane) ? '' : ' ro');
+    const label = document.createElement('span');
+    label.textContent = describeLane(lane);
+    label.title = laneParam(lane).curated
+      ? `${laneParam(lane).label} on the ${lane.deviceKind}`
+      : `paramId 0x${lane.paramId.toString(16).padStart(2, '0')} on the ${lane.deviceKind ?? 'source box'} — `
+        + 'digi-roll hasn\'t mapped this parameter, so the lane is read-only and written back exactly as it came';
+    const del = document.createElement('button');
+    del.textContent = 'Remove';
+    del.title = 'Take this lane off the pattern. Sending afterwards frees it on the box too.';
+    del.onclick = () => removePLockLane(i);
+    row.append(label, del);
+    list.appendChild(row);
+  }
+  // "You can hear this but not send it yet" is the single most surprising thing
+  // about the feature right now, so the hint leads with it when it applies.
+  const previewOnly = lanes.filter(l => laneIsEditable(l) && !laneParam(l).writable).length;
+  $('plockHint').textContent = lanes.some(laneIsEditable)
+    ? 'Drag in a lane under the grid to set a step, sideways to paint. Right-click clears a step. '
+      + (previewOnly
+        ? `${previewOnly === lanes.length ? 'These lanes are' : `${previewOnly} of them are`} preview only: `
+          + 'Play sends them to the box as real parameter changes so you can hear them, but they can\'t be '
+          + 'stored in a pattern yet. Previewing moves the track\'s actual parameters and doesn\'t put them back.'
+        : 'Lanes travel with the pattern when you send it.')
+    : lanes.length
+      ? 'These lanes are shown as the box has them and written back untouched — digi-roll can\'t edit '
+        + 'a parameter it hasn\'t mapped yet.'
+      : curatedParamCount
+      ? `No lanes yet — add one above to draw automation you can hear on the box, or import a track `
+        + 'that already has p-locks.'
+        + (kind ? '' : ' Pick your box in the MIDI output menu and this list narrows to just its parameters.')
+      : 'Nothing mapped yet.';
+  plockLane?.resize();
+}
+
+$('plockAddGo').onclick = () => {
+  const [kind, name] = (plockAddSel.value || '').split(':');
+  if (!kind || !name) return;
+  const p = pattern();
+  if ((p.plocks ?? []).some(l => l.deviceKind === kind && l.name === name)) {
+    setStatus('That parameter already has a lane in this pattern', true);
+    return;
+  }
+  pushUndo();
+  // Named, with no paramId: which byte the pattern format stores this in hasn't
+  // been measured yet, and the lane doesn't need it to be drawn or heard.
+  p.plocks = [...(p.plocks ?? []), makePLockLane({ name, deviceKind: kind })];
+  syncPLockPanel();
+  persist();
+  const added = p.plocks.at(-1);
+  const label = laneParam(added).label;
+  setStatus(`Added a ${label} lane (${kind}) — drag in it under the grid, then Play to hear it on the box`
+    + (laneParam(added).writable ? '' : '. It can\'t be stored in a pattern yet, only previewed'));
+};
+
+function removePLockLane(i) {
+  const p = pattern();
+  const lane = (p.plocks ?? [])[i];
+  if (!lane) return;
+  pushUndo();
+  p.plocks = p.plocks.filter((_, j) => j !== i);
+  syncPLockPanel();
+  persist();
+  setStatus(`Removed the ${laneParam(lane).label} lane`
+    + (p.source ? ' — sending frees it on the box too' : ''));
+}
+
 $('clear').onclick = () => {
   if (!pattern().notes.length || confirm(`Clear all notes in ${pattern().name}?`)) {
     pushUndo();
     // Provenance survives a clear: emptying an imported slot and writing it
-    // back is how you erase that track on the box.
+    // back is how you erase that track on the box. p-lock lanes deliberately do
+    // *not* survive — locks ride on trigs, so erasing the trigs erases the
+    // automation with them, which is what writing this back should do.
     state.patterns[state.current] = {
       ...defaultPattern(state.current),
       channel: pattern().channel, lengthSteps: pattern().lengthSteps,
@@ -469,6 +639,10 @@ $('importFile').onchange = async () => {
     p.lengthSteps = lengthSteps;
     p.notes = notes.map(n => makeNote(n.step, Math.max(PITCH_MIN, Math.min(PITCH_MAX, n.pitch)), n.len, n.velocity, n.micro));
     p.source = null; // these notes came from a file, not from a box track
+    // …and so does the automation: a MIDI file replaces the music, and lanes
+    // left over from whatever was in the slot would be riding on notes that no
+    // longer exist. They go with the provenance.
+    p.plocks = [];
     roll.clearSelection();
     syncToolbar();
     roll.resize();
@@ -752,15 +926,21 @@ $('sendToBox').onclick = async () => {
   try {
     setStatus('Looking for the box…');
     const id = await connectForSend(src, sameSlot(dest, src));
+    // The roll's lane set is the truth for the track being written, exactly as
+    // its notes and conditions are: lanes it doesn't have are freed on the box.
+    // Lanes belonging to the *other* box's numbering can't be written and are
+    // reported rather than aimed at a guess.
+    const { lanes, warnings: laneWarnings } = rollPLocksToDevice(p.plocks, DECODERS[id.slug].SPEC.device);
     const result = await safeWriteTrack(box, {
       index: dest.patternIndex,
       trackIndex: dest.trackIndex,
       notes: rollNotesToDevice(p.notes),
       trackProb: p.trackProb ?? 100,
+      plocks: lanes,
       swing: p.swing ?? SWING_MIN,
       onStatus: setStatus,
       onBackup: b => downloadBytes(b.name, b.bytes),
-      confirm: ({ label, existingTrigs, patternKit, swing: boxSwing }) => {
+      confirm: ({ label, existingTrigs, patternKit, swing: boxSwing, boxPLocks, freeLanes }) => {
         const track = patternKit.tracks[dest.trackIndex];
         const kind = trackKindLabel(patternKit, dest.trackIndex, DECODERS[id.slug].SPEC.trackKindFallback);
         const lines = [
@@ -779,6 +959,21 @@ $('sendToBox').onclick = async () => {
           lines.push(`That track is ${track.lengthSteps} steps long and this pattern is ${p.lengthSteps} — `
             + `the rest is stored but won't play until you raise the track's LEN on the box.`);
         }
+        // p-lock lanes are replaced the way the trigs are — the roll is the
+        // truth for this track — so any automation the box holds on it and this
+        // pattern doesn't goes away. Never left to be discovered on playback.
+        if (boxPLocks.length || lanes.length) {
+          const going = boxPLocks.filter(b => !lanes.some(l => l.paramId === b.paramId)).length;
+          const parts = [];
+          if (lanes.length) parts.push(`writes ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}`);
+          if (going) parts.push(`clears ${going} p-lock lane${going === 1 ? '' : 's'} that track has on the box`);
+          if (parts.length) lines.push(`This also ${parts.join(' and ')}.`);
+          if (lanes.length > freeLanes + boxPLocks.length) {
+            lines.push(`Careful: the pattern only has ${freeLanes} spare p-lock lane${freeLanes === 1 ? '' : 's'}, `
+              + 'so some of them won\'t fit — you\'ll be told which.');
+          }
+        }
+        for (const w of laneWarnings) lines.push(`Note: ${w}`);
         // A second write surface, so it gets named rather than slipped in.
         if ((p.trackProb ?? 100) !== 100) {
           lines.push(`That track's PROB default is also set to ${p.trackProb}% — trigs without their own PROB lock will play at those odds.`);
@@ -798,7 +993,12 @@ $('sendToBox').onclick = async () => {
         return window.confirm(lines.join('\n'));
       },
     });
-    const { text, isError } = writeResultMessage(result);
+    // Lanes that couldn't be written at all were reported before the write; they
+    // belong in the result line too, so a successful send never reads as if
+    // everything went.
+    const { text, isError } = writeResultMessage({
+      ...result, warnings: [...(result.warnings ?? []), ...(result.cancelled ? [] : laneWarnings)],
+    });
     setStatus(text, isError);
     if (isError) window.alert(text); // rule 4: a verify mismatch must never be quiet
     if (result.ok) {
@@ -890,11 +1090,21 @@ $('impGo').onclick = () => {
     readTrackTrigSettings(fetched.spec, fetched.payload, t),
   );
 
+  // p-lock lanes come off the raw payload like the condition lanes do. `live` is
+  // every step the track has a trig on — not just the ones inside the roll's
+  // length — so a lane is only called trigless when it really has no trig to
+  // ride on, rather than because the roll shows fewer bars than the track holds.
+  const live = new Set(track.steps.flatMap((w, s) => (w & 1 ? [s] : [])));
+  const lanes = devicePLocksToRoll(
+    readTrackPLocks(fetched.spec, fetched.payload, t), fetched.spec.device, live,
+  );
+
   pushUndo();
   const p = pattern();
   p.name = `${fetched.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
   p.trackProb = readTrackProb(fetched.spec, fetched.payload, t);
+  p.plocks = lanes;
   // Swing belongs to the pattern, not the track, so an import brings the whole
   // slot's feel across — the roll models it the same way.
   p.swing = readSwing(fetched.spec, fetched.payload);
@@ -907,7 +1117,9 @@ $('impGo').onclick = () => {
   syncToolbar();
   roll.resize();
   persist();
-  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${fetched.label} T${t + 1} — edit away, Send writes it home (undo to get the old slot back)`);
+  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${fetched.label} T${t + 1}`
+    + (lanes.length ? ` and ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}` : '')
+    + ' — edit away, Send writes it home (undo to get the old slot back)');
 };
 
 // --- Keyboard shortcuts --------------------------------------------------------
@@ -953,6 +1165,12 @@ function togglePlay() {
     engine.start();
     $('play').textContent = '■ Stop';
     $('play').classList.add('active');
+    // Auditioning p-locks sends real parameter changes, which stay where the last
+    // one left them. Said once per playback rather than buried in a tooltip.
+    if (hasAuditableLanes(pattern().plocks)) {
+      setStatus('Playing — p-lock lanes are being sent to the box as parameter changes, '
+        + 'so the track\'s knobs will move and stay moved (reload the kit on the box to undo)');
+    }
     animate();
   }
 }
@@ -997,6 +1215,9 @@ function refreshOutputs(outputs) {
   } else {
     setStatus('No MIDI outputs found — plug in your box via USB', true);
   }
+  // A box appearing or disappearing changes which parameters the p-lock picker
+  // should offer, the same as picking one by hand.
+  syncPLockPanel();
 }
 
 outSel.onchange = () => {
@@ -1004,6 +1225,9 @@ outSel.onchange = () => {
   if (state.outputId && engine.setOutput(state.outputId)) {
     setStatus(`Connected: ${outSel.options[outSel.selectedIndex].text}`);
   }
+  // The port name is how the p-lock picker knows which box's parameters to offer
+  // before any SysEx handshake, so changing it re-narrows the list.
+  syncPLockPanel();
   persist();
 };
 

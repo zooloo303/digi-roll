@@ -264,10 +264,140 @@ landed and played. The steps, for whoever repeats them on a new OS build:
 Not verified on a **DT2**: the byte sits at the sibling offset and the fixtures
 corroborate it, but no swing has been written to one.
 
-## Next — p-lock lanes (planned 2026-08-03)
+## P-lock audition round — built 2026-08-04
 
-p-lock lanes in the roll (filter, pitch, amp, …) as automation lanes. Scope
-decisions settled with Neil 2026-08-03:
+Neil's idea, and it changed the shape of the feature: **each curated parameter has
+a MIDI CC/NRPN number, so a lane can be *heard* before it can be *stored*.** The
+charts are public (DT2 Appendix B, DN2 Appendix C — extracted from the manual
+PDFs, and independently matching midi.guide's DT2 table value for value), which
+means the audition half needs no reverse engineering at all.
+
+The design consequence is the whole of this round: a parameter now carries **two
+independent mappings**, and separating them is what unblocks everything.
+
+```
+midi   { cc, ccLsb, nrpn }        published → known now
+plock  { id, toStored, fromStored }  hardware → null on every entry
+```
+
+A parameter with `midi` and no `plock` can be drawn and auditioned but not
+written. So lanes are identified by **canonical name** when digi-roll authors
+them and by raw `paramId` when they come off a box, values live on the
+parameter's **display axis** rather than the lane's uint16, and the byte
+conversion happens only at the roll↔device seam where a missing measurement can
+be refused out loud instead of guessed.
+
+What that buys, working today: add a `FLTR CUTOFF` lane, draw a sweep, hit Play,
+and the box sweeps. Sent over NRPN on the pattern's channel, 2 ms ahead of the
+step's note-ons, suppressed when a trig is silenced by probability. Trying to
+*send* that lane into a pattern is refused with a warning that says both halves:
+"digi-roll can play that parameter over MIDI but hasn't yet measured which p-lock
+slot the pattern format stores it in."
+
+The eleven, chosen because they exist on both boxes: filter cutoff, resonance,
+filter env depth, pan, overdrive, delay/reverb/chorus send, LFO 1–3 depth. The
+full CC/NRPN table with its traps and manual typos is in
+`docs/dt2-pattern-format.md`. **Retrig is deferred** — no CC, no NRPN, and not
+one knob (RATE/LEN/VEL/on-off), so nothing to audition and no reason to assume a
+single lane; it joins the list once a capture shows its shape.
+
+Decisions taken with Neil: NRPN over CC (reaches the DN2's LFO 3, which has no CC
+at all; carries 14 bits; numbering mostly shared between boxes where the CCs
+emphatically are not — pan is CC 90 on a DT2 and CC 89 on a DN2, where 89 is
+Volume). Retrig deferred. Auditioning moves the box's real parameters and nothing
+puts them back: accepted, and said plainly in the panel, on Play, and in the help
+page, rather than hidden behind a toggle.
+
+Two UI changes came out of driving it:
+
+- The lane **sets on press**, click-to-set and drag-to-draw, like any automation
+  lane. It first copied the trig lane's 3 px drag threshold, which exists there to
+  tell a click (open the COND picker, cycle FILL) from a drag — the p-lock lane has
+  no click action, so the threshold bought nothing and created a dead zone that
+  swallowed small adjustments near the press point.
+- The add-lane picker shows **one box**, not both. Offering 22 parameters when only
+  one box is in play is an invitation to pick the wrong one, and the two boxes even
+  label the same knob differently (`FLTR CUTOFF` vs `FLTR FREQ`). Resolved in
+  order: the pattern's own provenance, then the connected box's identity once a
+  handshake has happened, then the **MIDI port name** (`slugFromPortName` in
+  `device.js` — longest name first, so "Elektron Digitakt II" isn't claimed by the
+  gen-1 "Digitakt" entry it starts with), then both as a fallback with a hint
+  saying to pick a box. Re-filled on every panel sync, so it tracks the slot you
+  switch to and the output you choose.
+
+### The first real lane, and what it says
+
+A p-lock made on a DN2 and imported through digi-roll — the first allocated lane
+in any capture this project holds. Full log in `docs/dn2-pattern-format.md`:
+
+```
+paramId 74 (0x4A), track 0, step 1 = 16169 (0x3F29), every other step FFFF
+```
+
+Three findings. The `FFFF`-means-no-value guess the write path was making is now
+**confirmed** rather than inferred. A lane value uses far more than 7 bits, so it
+is *not* the CC-scale number — `0x3F29` sits just under the 14-bit ceiling of
+16383, which is exactly what NRPN carries. And paramId 74 is not any of the
+eleven's NRPN LSBs, but it *is* an NRPN LSB in the DN2 appendix — SYN page 1,
+data entry knob B — so the hypothesis below survives and even predicts what was
+locked.
+
+## P-lock lanes — the byte layer, Phases 1–3 built 2026-08-04
+
+The foundation the audition round above sits on: the 80-lane pool, read and
+written. **No p-lock byte has been written to hardware.**
+
+**Phase 0 ran 2026-08-04 — both boxes, all questions answered.** See the
+section below for the results; the param tables are filled in, 441 tests
+green, and the one thing left in the whole feature is the Phase 3 hardware
+smoke test (digi-roll *writing* locks — everything measured so far was
+read-only captures of locks the box made itself).
+
+- **Built and unit-tested (432 tests green):** reading a pattern's lanes, carrying
+  them through import → edit → write-back → cross-device copy → Library save
+  byte-exact, the write path with its scrub/reallocate policy and lane budget, the
+  stacked lane UI under the grid, and the difflab **p-lock lane report** that turns
+  a capture pair into "lane 0 allocated: paramId 0x2a, track 3, step 1 = 0x2000".
+- **Measured 2026-08-04 (was: blocked on hardware):** which parameter each
+  paramId *is*, and what its uint16 values scale to — the Phase 0 results
+  below. The `plock` half of all 22 table entries is filled in from the
+  captures; the fixture-backed tests read the numbers back off the real dumps.
+- **Consequence today:** a curated lane — digi-roll-authored *or* imported off
+  a box, now that paramIds resolve — is editable, audible and sendable. A lane
+  whose paramId is still not one of the measured eleven keeps the old
+  behaviour: listed, drawn grey, read-only, preserved byte-exact, never
+  translated.
+
+Against the plan below: Phase 1 (decode + docs) complete; Phase 2 (model + lane
+UI) complete; Phase 3 (write path) complete and composed after `encodeTrackNotes`
+with a minimal-diff property test on both boxes — **no protected file was
+touched**. Only Phase 0 is outstanding, and it is hardware work.
+
+Three findings worth keeping:
+
+- **Both format docs were wrong about the free-lane form.** They said `FFFF`
+  marked an unused value word. Measured across every committed fixture — all 128
+  DT2 patterns and every DN2 dump — a free lane is `FF FF` followed by **256 zero
+  bytes**: exactly 160 `FF`s and 20 480 zeros in the region, no exceptions. That
+  is what `applyTrackPLocks` writes when it frees a lane, and both docs are now
+  corrected with the evidence.
+- **The per-step `FFFF` sentinel is confirmed**, no longer inferred. It was the one
+  guess the write path was making, and the first real lane (see the audition round
+  above) holds `FFFF` on all 127 of its unlocked steps.
+- **Sending a pattern now replaces the destination track's lanes**, freeing any
+  the roll doesn't have — the same bargain `applyTrackTrigSettings` has always
+  struck with the PROB/FILL/COND lanes. Before this round, p-locks survived a send
+  by accident of the layout. The send confirmation names it whenever the
+  destination has lanes, and a caller with nothing to say about p-locks passes
+  `plocks: null` and leaves the pool untouched.
+
+Still to do: the **Phase 3 hardware smoke test** — Phase 0 ran and the tables
+are filled (see below), so the write path finally has something to write.
+Trigless locks stay out of v1: a lane the box filled on a step with no trig
+comes in flagged and is held read-only rather than edited into something that
+isn't what the box has.
+
+Scope decisions settled with Neil 2026-08-03, all honoured as built:
 
 - **Curated params + raw passthrough.** Reverse-engineer a curated musical set
   properly (candidate list: filter cutoff/resonance, tune, pan, volume, decay —
@@ -287,11 +417,11 @@ skeleton (step-aligned hit-testing, drag-painting, selection-aware edits via
 read/apply over a payload, composed *after* `encodeTrackNotes`, minimal-diff
 property test).
 
-The lane **layout** is already documented, not unexercised: 80 lanes × 258
-bytes at `pLocksIndex` — `paramId` u8, `track` u8, then a uint16be per step,
-`FF` = unused (`docs/dt2-pattern-format.md:45`, dn2 `:69`; spec fields
-`numPLocks`/`pLockSize` in both device specs; the diff annotator already names
-lane offsets). What's genuinely unknown, and is the real work:
+The lane **layout** is documented and now exercised: 80 lanes × 258 bytes at
+`pLocksIndex` — `paramId` u8, `track` u8, then a uint16be per step, a free lane
+being `FF FF` + 256 zeros (see the p-lock sections of both format docs; spec
+fields `numPLocks`/`pLockSize` in both device specs). What's genuinely unknown,
+and is the real work:
 
 1. the **paramId numbering** on each box (they differ),
 2. **value scaling** per param (what the u16 means),
@@ -299,13 +429,73 @@ lane offsets). What's genuinely unknown, and is the real work:
    box writes when the last lock of a param is removed (paramId back to `FF`?
    lanes compacted?).
 
-### Phase 0 — experiments (Neil on hardware, difflab to decode)
+### Phase 0 — **ran 2026-08-04, complete on both boxes**
+
+Eleven captures (six DT2, five DN2), Neil on the knobs and the difflab p-lock
+lane report reading every diff. Logs in both format docs ([V3] in the DT2's,
+[V5] in the DN2's); fixtures in `dumps/fixtures/`; the `plock` halves of both
+param tables are filled in and pinned by fixture-backed tests.
+
+What the captures settled, against the questions below:
+
+1. **paramId numbering, both boxes.** NOT the NRPN LSB — experiment 0's
+   hypothesis died in the first capture (cutoff: NRPN LSB 20, paramId 44). It
+   is each box's internal page-ordered parameter index, and it differs per box
+   with a real collision: **74 = overdrive on the DT2, filter frequency on the
+   DN2**, so translation stays by canonical name. DT2: cutoff/reso/envDepth
+   44/45/46, cho/del/rev/pan 62–65, overdrive 74. DN2: the same blocks at
+   74/75/76 and 92–95, overdrive 104. LFO1/2/3 depth are 29/30/31 on *both*.
+2. **Value scaling: one law everywhere.** stored = (display − min) / range ×
+   32768 — a 15-bit axis, not the 14-bit NRPN value. On digi-roll's MIDI 0–127
+   display axis that is exactly ×256 for every curated parameter, so all 22
+   entries are `scaledPlock(id, 256)`. The box keeps sub-MIDI fine resolution
+   in the low bits (a knob nudge leaves +1/256 residues); re-sending an
+   imported lock quantises it to the nearest MIDI step — accepted, and the DN2
+   mystery lane is now identified as FLTR FREQ ≈ 63.16.
+3. **Allocation/free semantics: exactly what `applyTrackPLocks` guessed.**
+   Lowest free lane claimed including mid-pool holes; freeing is in-place to
+   the `FF FF` + 256-zeros form with **no compaction** — byte-for-byte what the
+   write path already emits. The lane key is (paramId, track), confirmed by the
+   same paramId allocated once per track. A lock inside a chord is **one value
+   per step**, and a new lock joins its parameter's existing lane.
+
+The original experiment plan, kept for reference:
 
 DT2 first (its per-step sound p-lock at track `+1024` is the worked example),
 then repeat on the DN2. Throwaway project; commit every dump to
 `dumps/fixtures/` with the established naming. For each capture, diff against
 the previous dump in the difflab and log findings in the format docs with the
 usual [V]/[F]/[S] markings.
+
+The difflab now does the reading for you: tick **p-lock lane report** and each
+capture pair prints which lane was allocated or freed, its paramId and track, and
+every per-step value word that moved, in hex and decimal. It saves into the
+notebook and exports to Markdown with the byte ranges, so a capture becomes a
+docs entry without hand-decoding 20 640 bytes. A capture where the pool didn't
+change says so explicitly — itself a finding, and the one the trig-condition
+experiments recorded.
+
+**Do experiment 0 first — it may collapse most of the rest.**
+
+> **Hypothesis: `paramId` == the parameter's NRPN LSB, and the lane's uint16 is
+> the 14-bit value NRPN carries.**
+>
+> Why it's plausible: the two boxes use wildly different CC numbers for the same
+> knob but *largely the same NRPN numbers* (cutoff 1/20 on both, all three sends
+> identical, all three LFO depths identical), which is what an internal parameter
+> index looks like rather than a MIDI assignment. The one real lane we have holds
+> `0x3F29` — just under the 14-bit ceiling — so the value side fits too, and its
+> paramId 74 is a valid DN2 NRPN LSB (SYN page 1 knob B).
+>
+> The capture: p-lock **filter frequency** on one trig, set to a known value, and
+> dump. Then check (a) does the lane's paramId read **20**, and (b) is its uint16
+> the 14-bit number NRPN would send for that display value? Sweep the same
+> parameter to min / centre / max on three trigs to get the scaling in one go.
+>
+> If both hold, both parameter tables come off the manual and steps 3–4 below
+> collapse to a handful of confirmations. If the paramId doesn't match, it needs
+> enumerating by hand, one parameter per capture — which is what steps 3–4 are.
+> Either way this is one dump, and it decides how much work the rest is.
 
 1. Baseline: one track, a few plain trigs, dump.
 2. P-lock **one** curated param on one trig → which lane allocates, what
@@ -322,47 +512,84 @@ usual [V]/[F]/[S] markings.
 8. Observe only, for the follow-up: a trigless lock → what changes in the step
    words.
 
-### Phase 1 — decode + docs
+### Phase 1 — decode + docs — done 2026-08-04
 
-- `js/elektron/plocks.js`: pure `readTrackPLocks(payload, spec, trackIdx)` →
-  lanes as `{ paramId, values }`. No writes yet. **pattern-core stays
-  untouched** — param-name enrichment for diffs goes in the difflab layer.
-- Param tables `js/elektron/dt2/params.js` / `dn2/params.js`: id, canonical
-  name (shared across devices for translation), display range, u16 mapping.
-- Format docs get the paramId tables and experiment logs.
-- Tests: fixture-backed lane reads, `conditions.test.js` idiom.
+- `js/elektron/plocks.js`: pure `readLane` / `readAllPLocks` /
+  `readTrackPLocks(spec, payload, trackIdx)` → lanes as
+  `{ lane, paramId, track, values }`, values being the stored uint16 or `null`.
+  **pattern-core untouched** — the lane-level enrichment for diffs lives in the
+  difflab layer (`plockReport`), as planned.
+- Param tables `js/elektron/dt2/params.js` / `dn2/params.js`, plus the shared
+  descriptor layer `js/elektron/params.js` and `param-tables.js` as the registry.
+  A descriptor carries a canonical name, labels, and the **two independent
+  mappings** the audition round introduced: `midi` (CC/NRPN, filled in from the
+  manuals) and `plock` (paramId + uint16 scaling, **null on all 22 entries** —
+  Phase 0's output, with `plainPlock`/`scaledPlock` ready for whichever shape the
+  measurements turn out to need). A test asserts every `plock` is still null, so
+  filling one in is a deliberate, visible act.
+- Format docs get the layout, the measured free-lane form, the published CC/NRPN
+  table with its traps, the first real lane's bytes, and an explicit list of what
+  remains unknown. The paramId numbering itself awaits Phase 0.
+- Tests: fixture-backed lane reads over both boxes, including that all 128 DT2
+  patterns and every DN2 fixture hold no allocated lane.
 
-### Phase 2 — model + lane UI
+### Phase 2 — model + lane UI — done 2026-08-04
 
-- State: `pattern.plocks` — curated lanes keyed by canonical param name with
-  display-scaled per-step values; unknown lanes kept raw
-  (`{ deviceKind, paramId, u16 values }`) and flagged read-only. Bank
-  serialize/deserialize ride-along, no schema bump.
-- Import via roll-bridge; values land only on steps that have notes (v1 rule);
-  a lock on a trigless step keeps its lane raw/read-only rather than lying.
-- `js/plocklane.js` in the triglane idiom: add-lane picker from the device's
-  curated set, bar rows, drag to set / paint across steps, alt/right-click
-  clears, selection-aware, snaps to the param's device resolution. Read-only
-  raw lanes render dimmed, uneditable.
-- Browser preview does **not** simulate p-locked params (nothing to synthesize)
-  — say so in the help page, like the condition caveats.
+- State: `pattern.plocks`, lanes as `{ name, paramId, deviceKind, values,
+  trigless }`. Identity is the canonical **name** when digi-roll authored the lane
+  and the raw **paramId** when it came off a box — one of the two is always set,
+  both once Phase 0 lands. Values live on the parameter's **display axis** (MIDI
+  0–127), not the lane's uint16, which is what lets a lane be drawn and heard
+  before any scaling is known; the byte conversion happens only at the roll↔device
+  seam, and is the identity for an unidentifiable lane so it still round-trips
+  byte-exact. `deviceKind` is what stops a DT2 lane being read as a DN2 one. Bank
+  serialize/deserialize ride along, no schema bump, stored step-keyed
+  (`{"3": 96}`) so a nearly-empty 128-step lane doesn't bloat a save.
+- Import via roll-bridge in both the main page and the console lab. The v1
+  "locks ride on trigs" rule is enforced on the way *out* (`pruneLanesToTrigs`,
+  on editable lanes only — pruning a read-only lane would change bytes we
+  promised not to touch), and a lane the box filled on a trigless step comes in
+  flagged `trigless` and is held read-only.
+- `js/plocklane.js` in the triglane idiom: bar rows under the trig lane, click to
+  set and drag to draw, absolute (the pointer sits on the bar's top edge — there's
+  a test for drag and draw agreeing on the geometry), sideways paint,
+  alt/right-click clears, selection-aware, snapped to the parameter's own
+  resolution. Unidentifiable and trigless lanes render grey and refuse edits with a
+  status line saying why. The strip disappears entirely when a pattern has no
+  lanes. The add-lane picker shows one box's parameters, resolved from provenance /
+  identity / port name (see the audition round above).
+- The browser does not *synthesize* p-locked parameters — but as of the audition
+  round it does **send them to the box** as live parameter changes, so they can be
+  heard. The help page says what that costs (the track's real parameters move and
+  stay moved).
 
-### Phase 3 — write path
+### Phase 3 — write path — done 2026-08-04, **not hardware-verified**
 
-- `applyTrackPLocks` in `plocks.js`: scrub-then-write like
-  `applyTrackTrigSettings` — free this track's lanes exactly the way Phase 0
-  step 6 observed, reallocate one lane per param with values, reapply raw
-  read-only lanes byte-exact, leave other tracks' lanes alone. Composed after
-  `encodeTrackNotes` in `safe-write.js`, `copy-track.js` and the labs console.
-- Cross-device copy translates curated params by canonical name; untranslatable
-  lanes are dropped with a warning listing them (chord-policy style).
-- Warn when a write would exceed the 80-lane budget.
-- Minimal-diff property test (`trig-write.test.js` model) proving only the
-  expected lanes moved.
-- Hardware smoke test: write locks for each curated param plus one raw
-  passthrough lane; box UI shows the right values; verify byte-identical;
-  re-import round-trips; empty a lane and confirm the free behavior matches
-  the box's own; cross-device copy with translation.
+- `applyTrackPLocks` in `plocks.js`, composed after `encodeTrackNotes` in
+  `safe-write.js`, `copy-track.js` and the labs console. Policy: rewrite a lane
+  **where it already sits** (lane order on the box is unknown, so the smallest
+  diff is the safest guess), free lanes the track no longer wants to the measured
+  `FF FF` + zeros form, give new parameters the lowest free lane *after* the
+  frees, never read or move another track's lanes, and don't allocate a lane with
+  no values in it. `plocks: null` leaves the pool entirely alone, for a caller
+  that doesn't model p-locks.
+- Cross-device copy translates by canonical name through both descriptors'
+  scaling; untranslatable lanes are dropped with a warning naming them, exactly
+  like the chord policy. Same-box copies short-circuit and carry lanes unchanged.
+- The 80-lane budget is reported as a warning on an otherwise-good write, and
+  `writeResultMessage` treats a warning as loud — "verified byte-identical" alone
+  would read as "all of it went".
+- Minimal-diff property tests on both boxes: only the pool moves, only the
+  claimed lane inside it, a freed lane is byte-identical to the fixture again,
+  and a second identical write changes nothing.
+- **Hardware smoke test — not run, and blocked on Phase 0** (there is nothing to
+  write until a parameter is curated). When it runs: write locks for each curated
+  param plus one raw passthrough lane; box UI shows the right values; verify
+  byte-identical; re-import round-trips; empty a lane and confirm the free
+  behaviour matches the box's own (this is what settles Phase 0 step 6 from the
+  other direction); cross-device copy with translation. Watch the verify step
+  when freeing a lane in particular: if the box disagrees with the `FF FF` + zeros
+  form, that is where it will show.
 
 Out of scope for v1, explicitly: trigless locks, the DT2 per-step *sound*
 p-lock lane (track `+1024`, a different structure), and previewing p-locked
@@ -370,6 +597,19 @@ params in the browser.
 
 ## Also open
 
+- [x] **P-lock Phase 0** — ran 2026-08-04 on both boxes; see the Phase 0 section.
+      Both param tables measured, docs corrected, fixtures committed.
+- [ ] **P-lock Phase 3 hardware smoke test** — now unblocked, the last p-lock
+      item: digi-roll *writes* locks for each curated param plus a raw
+      passthrough lane; box UI shows the right values; verify byte-identical;
+      re-import round-trips; empty a lane and confirm the free form matches the
+      box's own (Phase 0 says it will); cross-device copy with translation.
+- [ ] **Retrig as a p-lock lane** — deferred from the audition round: no CC, no
+      NRPN, and not one knob (RATE/LEN/VEL/on-off), so it needs a capture to show
+      its shape before it can be modelled at all.
+- [ ] **Trigless locks** — out of scope for p-lock v1; a lane the box filled on a
+      step with no trig is carried read-only rather than authored. Needs a
+      trig-type bit in the step words, which is why it waits.
 - [ ] **Pattern chaining preview** — play slots A→B→C to audition a sequence
       (pure frontend, no device risk; the last unfinished editor item)
 - [ ] **Firmware stability across an OS update.** The allowlist pins exactly one

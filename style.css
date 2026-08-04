@@ -347,6 +347,30 @@ h1 .sub {
 }
 #trigLaneWrap canvas { cursor: pointer; }
 
+/* P-lock lanes sit below the trig lane and scroll with it. The strip carries
+   .hidden whenever the pattern has no lanes, so it costs no height until there
+   is automation to show. */
+#plockLaneWrap {
+  flex: none;
+  overflow: hidden;        /* scrollLeft is driven from #rollWrap, like the trig lane */
+  border-top: 1px solid #2a2e38;
+  background: #15171b;
+}
+#plockLaneWrap canvas { cursor: ns-resize; }
+
+/* One row per lane in the Edit panel's P-locks group. */
+.laneRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #b7bdc8;
+  padding: 3px 0;
+}
+.laneRow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.laneRow.ro span { color: #7d8590; }
+.laneRow button { margin-left: auto; flex: none; padding: 1px 6px; }
+
 /* COND picker: 76 values need grouping, so it opens on tabs. */
 .trigPicker {
   position: absolute;

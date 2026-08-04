@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ElektronDevice } from '../js/elektron/device.js';
+import { ElektronDevice, slugFromPortName } from '../js/elektron/device.js';
 import { buildApiMessage, buildDumpMessage, parseSysEx, API, DUMP, FAMILY } from '../js/elektron/protocol.js';
 
 const ascii = s => [...s].map(c => c.charCodeAt(0));
@@ -131,5 +131,37 @@ describe('fetchProjectDump', () => {
     const dump = await dev.fetchProjectDump();
     expect(parseSysEx(dump).family).toBe(FAMILY.DIGITAKT_2);
     dev.close();
+  });
+});
+
+// Recognising a box from its MIDI port name, for the UI decisions that have to be
+// made before any SysEx handshake — which box's p-lock parameters to offer, in
+// particular. The names are the ones the Device response reports, which is what
+// the ports are called too.
+describe('slugFromPortName', () => {
+  it('recognises the two boxes digi-roll writes to', () => {
+    expect(slugFromPortName('Elektron Digitakt II')).toBe('digitakt2');
+    expect(slugFromPortName('Elektron Digitone II')).toBe('digitone2');
+  });
+
+  it('is case- and decoration-insensitive, as port names vary by OS', () => {
+    expect(slugFromPortName('elektron digitone ii')).toBe('digitone2');
+    expect(slugFromPortName('Digitakt II MIDI 1')).toBe('digitakt2');
+    expect(slugFromPortName('Elektron Digitakt II Port 1 (USB)')).toBe('digitakt2');
+  });
+
+  it('does not mistake a gen-1 Digitakt for a Digitakt II', () => {
+    // "Digitakt II" starts with "Digitakt", so a naive first-match would claim
+    // the gen-1 box supports things it doesn't.
+    expect(slugFromPortName('Elektron Digitakt')).toBe('digitakt');
+    expect(slugFromPortName('Elektron Digitakt II')).toBe('digitakt2');
+  });
+
+  it('says nothing rather than guessing at an unknown port', () => {
+    expect(slugFromPortName('Octatrack MKII')).toBe(null);
+    expect(slugFromPortName('IAC Driver Bus 1')).toBe(null);
+    expect(slugFromPortName('')).toBe(null);
+    expect(slugFromPortName(null)).toBe(null);
+    expect(slugFromPortName(undefined)).toBe(null);
   });
 });
