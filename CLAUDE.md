@@ -76,11 +76,13 @@ Per-trig conditions shipped 2026-08-02: `js/elektron/conditions.js` is the
 canonical PROB/FILL/COND table, `js/elektron/trig-cond.js` reads and writes the
 three per-step lanes, and `js/triglane.js` is the step-aligned editing strip
 under the roll. They are **not** p-lock pool entries — the pool is still
-untouched by anything, which is the p-lock feature's actual work. The byte
-mapping is hardware-verified; the write path is not yet.
+untouched by anything, which is the p-lock feature's actual work. Byte mapping
+and write path are both hardware-verified (mapping 2026-08-02, write
+2026-08-03).
 
 The user-feedback round landed 2026-08-03 (paste at the caret + alt-drag-copy,
-track-level PROB, fine note lengths). Two things to know before touching them:
+track-level PROB, fine note lengths), verified on hardware the same day. Two
+things to know before touching them:
 
 - **Track-level PROB is a second write surface, hardware-verified 2026-08-03.**
   `readTrackProb`/`applyTrackProb` live in `trig-cond.js` alongside the lane

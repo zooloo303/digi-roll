@@ -80,7 +80,7 @@ describe.skipIf(!haveFixture)('decodePatternKit on the DN2 fixture', () => {
   });
 });
 
-describe.skipIf(!haveFixture)('DN2 encodeTrackNotes (not yet written to hardware)', () => {
+describe.skipIf(!haveFixture)('DN2 encodeTrackNotes', () => {
   const blank = () => patternKits.find(m => m.index === 1).payload;
   const busy = () => patternKits.find(m => m.index === 0).payload;
 
