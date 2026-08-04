@@ -27,9 +27,13 @@
 // Callers never pass in bytes captured earlier: writing back a stale payload
 // would silently revert everything changed on the box since.
 //
-// The console page's own Phase 2 button keeps its original inline flow
-// untouched (it is the hardware-verified one); this module is what the Phase 4
-// paths — write-back from the piano roll, and cross-device copy — run.
+// Every write path in the app runs this function: write-back from the piano
+// roll, cross-device copy, and — since the console UX round of 2026-08-04 — the
+// console's own "Write to pattern" row, which until then kept the original
+// inline Phase 2 flow and so wrote notes and nothing else. That divergence is
+// the argument for this module: the same slot sent from two places has to land
+// the same way, and each surface a write touches (conditions, PROB, p-lock
+// lanes, swing) is one a caller can forget.
 
 import { buildDumpMessage, DUMP, FAMILY } from './protocol.js';
 import { bankName, diffPayloads, trackTrigCount } from './pattern-core.js';
@@ -78,16 +82,24 @@ export function writeGate(identity) {
   return { ok: true, reason: '', mod };
 }
 
-// Wrap an untouched pattern payload back up as a replayable .syx message.
-export function patternKitBackup(identity, index, payload, now = new Date()) {
+// One pattern as a replayable .syx file: exactly the bytes the box sent, wrapped
+// back up as a dump message the box would accept again. `kind` is the word in the
+// filename, so a pre-write backup and a plain "save this pattern" sit apart on
+// disk. `identity` needs only { slug, family } — which is all a pattern decoded
+// from a file has, having never had a handshake.
+export function patternKitFile(identity, index, payload, { kind = 'backup', now = new Date() } = {}) {
   const stamp = now.toISOString().slice(0, 19).replaceAll(':', '-');
   return {
     index,
     payload,
-    name: `${identity.slug}-${bankName(index)}-backup-${stamp}.syx`,
+    name: `${identity.slug}-${bankName(index)}-${kind}-${stamp}.syx`,
     bytes: buildDumpMessage(identity.family, DUMP.PATTERN_KIT, index, payload),
   };
 }
+
+// Wrap an untouched pattern payload back up as a replayable .syx message.
+export const patternKitBackup = (identity, index, payload, now = new Date()) =>
+  patternKitFile(identity, index, payload, { now });
 
 // Replace one track's notes in one pattern on the box, safely.
 //
@@ -201,6 +213,61 @@ export async function safeWriteTrack(device, {
     warnings,
     label, index, trackIndex, backup, payload,
   };
+}
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
+// Every write path ends with this line, so no confirm dialog can imply the
+// backup is optional.
+export const BACKUP_LINE = 'A backup of the whole destination pattern downloads first.';
+
+// The sentences a confirm dialog must not leave out: what a write does *beyond*
+// replacing the named track's trigs. Shared by every write path, because each
+// one of these is a surface a user can be surprised by — automation vanishing,
+// unlocked trigs suddenly playing at 40% odds, or the whole slot's feel moving
+// because swing belongs to the pattern rather than the track. A path that drops
+// one of them silently is the bug this function exists to prevent.
+//
+//   lanes        the p-lock lanes about to be written (after any translation)
+//   boxPLocks    what that track holds on the box right now (from confirm's args)
+//   freeLanes    spare lanes in the pattern's pool of 80, or null to skip the check
+//   trackProb    the PROB default travelling with the notes; null = not touched
+//   swing        the swing about to be written; null = not touched
+//   boxSwing     what the box holds now, so a write that changes nothing stays quiet
+//
+// Callers write their own header, trig-count line and path-specific caveats
+// around these, and append BACKUP_LINE last.
+export function writeImpactLines({
+  label, trackIndex, lanes = [], boxPLocks = [], freeLanes = null,
+  trackProb = null, swing = null, boxSwing = null,
+}) {
+  const lines = [];
+  // p-lock lanes are replaced the way the trigs are — the caller's lane set is
+  // the truth for this track — so automation the box holds and the caller
+  // doesn't goes away. Never left to be discovered on playback.
+  if (boxPLocks.length || lanes.length) {
+    const going = boxPLocks.filter(b => !lanes.some(l => l.paramId === b.paramId)).length;
+    const parts = [];
+    if (lanes.length) parts.push(`writes ${plural(lanes.length, 'p-lock lane')}`);
+    if (going) parts.push(`clears ${plural(going, 'p-lock lane')} that track has on the box`);
+    if (parts.length) lines.push(`This also ${parts.join(' and ')}.`);
+    if (freeLanes != null && lanes.length > freeLanes + boxPLocks.length) {
+      lines.push(`Careful: the pattern only has ${plural(freeLanes, 'spare p-lock lane')}, `
+        + 'so some of them won\'t fit — you\'ll be told which.');
+    }
+  }
+  // A second write surface, so it gets named rather than slipped in.
+  if (trackProb != null && trackProb !== 100) {
+    lines.push(`That track's PROB default is also set to ${trackProb}% — trigs without their own PROB lock will play at those odds.`);
+  }
+  // Swing reaches further than the track being written — it's the whole
+  // pattern's feel on the box — so it's spelled out whenever it would change
+  // what the destination is currently doing.
+  if (swing != null && boxSwing != null && swing !== boxSwing) {
+    lines.push(`Swing goes from ${boxSwing} to ${swing} — that's the whole pattern, `
+      + `so it changes the feel of all 16 tracks in ${label}, not just track ${trackIndex + 1}.`);
+  }
+  return lines;
 }
 
 // The one-line report for a finished write, identical wording everywhere it is

@@ -6,7 +6,9 @@ import { PLockLane, describeLane, laneIsEditable, laneParam, laneColor } from '.
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
 import { placeClipboard, setSelectionLength } from './edit-ops.js';
 import { ElektronDevice, slugFromPortName } from './elektron/device.js';
-import { safeWriteTrack, writeGate, writeResultMessage } from './elektron/safe-write.js';
+import {
+  safeWriteTrack, writeGate, writeResultMessage, writeImpactLines, BACKUP_LINE,
+} from './elektron/safe-write.js';
 import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
 import * as dt2 from './elektron/dt2/pattern.js';
 import * as dn2 from './elektron/dn2/pattern.js';
@@ -964,37 +966,17 @@ $('sendToBox').onclick = async () => {
           lines.push(`That track is ${track.lengthSteps} steps long and this pattern is ${p.lengthSteps} — `
             + `the rest is stored but won't play until you raise the track's LEN on the box.`);
         }
-        // p-lock lanes are replaced the way the trigs are — the roll is the
-        // truth for this track — so any automation the box holds on it and this
-        // pattern doesn't goes away. Never left to be discovered on playback.
-        if (boxPLocks.length || lanes.length) {
-          const going = boxPLocks.filter(b => !lanes.some(l => l.paramId === b.paramId)).length;
-          const parts = [];
-          if (lanes.length) parts.push(`writes ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}`);
-          if (going) parts.push(`clears ${going} p-lock lane${going === 1 ? '' : 's'} that track has on the box`);
-          if (parts.length) lines.push(`This also ${parts.join(' and ')}.`);
-          if (lanes.length > freeLanes + boxPLocks.length) {
-            lines.push(`Careful: the pattern only has ${freeLanes} spare p-lock lane${freeLanes === 1 ? '' : 's'}, `
-              + 'so some of them won\'t fit — you\'ll be told which.');
-          }
-        }
+        // Everything this write touches beyond the track's trigs — lanes, PROB,
+        // swing — is worded once, in safe-write.js, so every write path says it.
+        lines.push(...writeImpactLines({
+          label, trackIndex: dest.trackIndex, lanes, boxPLocks, freeLanes,
+          trackProb: p.trackProb ?? 100, swing: p.swing ?? SWING_MIN, boxSwing,
+        }));
         for (const w of laneWarnings) lines.push(`Note: ${w}`);
-        // A second write surface, so it gets named rather than slipped in.
-        if ((p.trackProb ?? 100) !== 100) {
-          lines.push(`That track's PROB default is also set to ${p.trackProb}% — trigs without their own PROB lock will play at those odds.`);
-        }
-        // Swing reaches further than the track being written — it's the whole
-        // pattern's feel on the box — so it's spelled out whenever it would
-        // change what the destination is currently doing.
-        const ourSwing = p.swing ?? SWING_MIN;
-        if (ourSwing !== boxSwing) {
-          lines.push(`Swing goes from ${boxSwing} to ${ourSwing} — that's the whole pattern, `
-            + `so it changes the feel of all 16 tracks in ${label}, not just track ${dest.trackIndex + 1}.`);
-        }
         if (src && !sourceMatchesIdentity(src, id)) {
           lines.push(`Note: this pattern came from a ${src.deviceName || src.slug}.`);
         }
-        lines.push('', 'A backup of the whole destination pattern downloads first.');
+        lines.push('', BACKUP_LINE);
         return window.confirm(lines.join('\n'));
       },
     });

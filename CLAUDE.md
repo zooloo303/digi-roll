@@ -23,7 +23,13 @@ require changing one, **stop and explain why** rather than editing.
 
 Non-negotiable, enforced in code. `js/elektron/safe-write.js` implements all
 five as one function so a caller can't skip one — new write paths go through it
-rather than reimplementing the sequence.
+rather than reimplementing the sequence. Since 2026-08-04 **every** path does,
+including the console's "Write to pattern" row, which was the last holdout and
+whose inline copy of the flow had quietly stopped keeping up (notes only — no
+conditions, PROB, lanes or swing). Don't add a sixth write path by hand.
+`writeImpactLines` in the same file owns the confirm sentences about what a
+write touches *beyond* the track's trigs; a caller that needs a new one adds it
+there so all three dialogs get it.
 
 1. **Auto-backup** the target before writing (offered as a `.syx` download); no
    backup, no write.
@@ -38,6 +44,25 @@ rather than reimplementing the sequence.
 Always re-fetch the target pattern immediately before encoding. Never write back
 a payload captured earlier: it would silently revert anything changed on the box
 since.
+
+## The diff lab is contributor-facing, and read-only by construction
+
+Since 2026-08-04 the diff lab is aimed at Elektronauts users mapping boxes nobody
+here owns (`docs/adding-a-device.md` is the walkthrough). Two rules protect that:
+
+- **The lab's hardware paths cannot write.** `fetchDump` and
+  `probeDumpRequests` in `device.js` throw on any opcode outside the dump-request
+  range `0x60`–`0x6e`, because an `0x5n` is what stores a payload on a box. Never
+  relax that guard, and never route a lab feature through a write path — the
+  pitch to strangers is "this page cannot touch your patterns", and it has to
+  stay literally true. `test/device.test.js` asserts it.
+- **Struct annotation is keyed on what was captured**, not on the connected box:
+  `describerFor(family, requestType)` in `difflab.js`. A box we haven't mapped
+  must show raw offsets rather than another box's field names, or a contributor's
+  first experiment teaches them something false.
+
+Mapping a device never switches writing on: `WRITE_ALLOWED_BUILDS` still gates
+every write on a hardware-verified OS build.
 
 ## Hardware is not part of the dev loop
 
@@ -66,7 +91,9 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
   `dt2|dn2/params.js` the curated p-lock parameter tables ·
   `js/roll-bridge.js` roll ↔ device notes and lanes
 - `js/plocklane.js` the p-lock automation strip · `js/triglane.js` the trig strip
-- `js/bank.js` named saves · `js/labs/` device console + diffing lab pages
+- `js/bank.js` named saves · `js/labs/` device console + diffing lab pages ·
+  `labs/probe.js` + `labs/capture-pair.js` the contributor path for mapping boxes
+  we don't own (see below)
 - `docs/elektron-sysex-protocol.md`, `docs/dt2-pattern-format.md`,
   `docs/dn2-pattern-format.md` — the byte-level truth, including the first
   public documentation of the DN2 pattern format

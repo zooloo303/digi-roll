@@ -135,17 +135,32 @@ hex log of every exchange, identifies the device (model + OS version), and can
 - **Import from box** — fetch any pattern (or open a `.syx` backup), pick a
   track, and its trigs land in the piano roll with exact notes, velocities,
   lengths and micro-timing (Digitakt II + Digitone II);
-- **Write to pattern** — the reference implementation of the write path the
-  main page's *Send to box* runs: a piano-roll pattern written straight into a
-  pattern slot's track, with automatic pre-write backup, a per-device
-  OS-version allowlist and byte-level verify-after-write (Digitakt II +
-  Digitone II, both hardware-verified);
-- **Copy track** — a track from one pattern (or one box) into another, via a
-  live fetch or a saved `.syx`.
+- **Save .syx** — keep the pattern you just fetched as a single-pattern file,
+  restorable on its own and loadable as a copy source on the other box;
+- **Write to pattern** — a piano-roll pattern written straight into a pattern
+  slot's track — notes, trig conditions, track PROB and p-lock lanes, plus the
+  pattern's swing — with automatic pre-write backup, a per-device OS-version
+  allowlist and byte-level verify-after-write (Digitakt II + Digitone II, both
+  hardware-verified). Same flow as the main page's *Send to box*: both run
+  `safeWriteTrack`;
+- **Copy track** — a track from one pattern (or one box) into another. The
+  destination is always the connected box, so *Connect* is how you pick it, and
+  a loaded source is held in memory: to copy between two boxes, load the source
+  off the first one, switch the device dropdown, connect the second, and copy.
+  A saved `.syx` works as a source too, for a copy in a later session.
 
 `difflab.html` is the reverse-engineering workbench that mapped those formats:
 capture a pattern, make one edit on the box, capture again, and read a hex
 diff annotated with struct-region names, saved to a lab notebook.
+
+**Own an Elektron box digi-roll can't read yet?** The lab is set up so you can
+map it without writing code, and it never writes to a box — it physically
+refuses to send anything but read-only dump requests. **Probe dump protocol**
+finds which SysEx family byte your box answers; then each capture pair
+(baseline → one edit → capture, exported as one file) teaches us one byte-level
+fact about its pattern format. Donated pairs can be diffed here with no hardware
+attached. See **[docs/adding-a-device.md](docs/adding-a-device.md)** for the
+walkthrough and exactly what a pair contains.
 
 Protocol notes live in `docs/elektron-sysex-protocol.md`; the pattern formats
 — including what we believe is the first public documentation of the

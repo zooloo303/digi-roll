@@ -90,6 +90,113 @@ describe('identify', () => {
   });
 });
 
+// The generic dump fetch and the probe are the contributor-facing primitives:
+// they are what lets someone with a box digi-roll has never met capture real
+// bytes for us. Read-only is structural here, not a convention — anything that
+// isn't a request opcode is refused before a byte is sent.
+describe('fetchDump', () => {
+  // An unknown box speaking a not-quite-standard framing: version bytes that
+  // aren't buildDumpMessage's 0x01 0x01. The capture must keep them.
+  function fakeUnknownBox() {
+    return fakePorts(msg => {
+      if (msg.kind !== 'dump' || msg.family !== 0x1a || msg.type !== 0x61) return;
+      const reply = buildDumpMessage(0x1a, 0x51, msg.index, Uint8Array.of(9, 8, 7));
+      reply[7] = 0x03; reply[8] = 0x02; // version bytes are outside the checksum
+      return [reply];
+    });
+  }
+
+  it('fetches any dump type from any family, no identity needed', async () => {
+    const { input, output } = fakeUnknownBox();
+    const dev = new ElektronDevice(input, output);
+    const { payload, msg } = await dev.fetchDump(0x1a, 0x61, 3);
+    expect([...payload]).toEqual([9, 8, 7]);
+    expect(msg).toMatchObject({ family: 0x1a, type: 0x51, index: 3 });
+    dev.close();
+  });
+
+  it('keeps the raw message exactly as the box sent it — version bytes included', async () => {
+    const { input, output } = fakeUnknownBox();
+    const dev = new ElektronDevice(input, output);
+    const { raw } = await dev.fetchDump(0x1a, 0x61, 0);
+    expect(raw[0]).toBe(0xf0);
+    expect(raw[raw.length - 1]).toBe(0xf7);
+    expect([raw[7], raw[8]]).toEqual([0x03, 0x02]); // not normalised to 0x01 0x01
+    dev.close();
+  });
+
+  it('refuses to send anything that is not a request opcode', () => {
+    const { input, output } = fakeUnknownBox();
+    const dev = new ElektronDevice(input, output);
+    // 0x51 is a dump *payload* — sending one is what writes to a box.
+    expect(() => dev.fetchDump(0x1a, 0x51, 0)).toThrow(/not a dump request opcode/);
+    expect(() => dev.fetchDump(0x1a, 0x50, 0)).toThrow(/refusing/);
+    dev.close();
+  });
+
+  it('still serves fetchPatternKit, byte for byte', async () => {
+    const { input, output } = fakePorts(msg => {
+      if (msg.kind === 'api' && msg.apiId === API.DEVICE) {
+        return [buildApiMessage(1, API.DEVICE + API.RESPONSE, [42, 0, ...ascii('Digitakt II'), 0], msg.msgId)];
+      }
+      if (msg.kind === 'api') {
+        return [buildApiMessage(2, API.VERSION + API.RESPONSE, [...ascii('0070'), 0, ...ascii('1.15B'), 0], msg.msgId)];
+      }
+      if (msg.kind === 'dump' && msg.type === DUMP.PATTERN_KIT_REQUEST) {
+        return [buildDumpMessage(FAMILY.DIGITAKT_2, DUMP.PATTERN_KIT, msg.index, Uint8Array.of(1, 2, 3, 4))];
+      }
+    });
+    const dev = new ElektronDevice(input, output);
+    await dev.identify();
+    expect([...await dev.fetchPatternKit(5)]).toEqual([1, 2, 3, 4]);
+    dev.close();
+  });
+});
+
+describe('probeDumpRequests', () => {
+  // A box that answers exactly one family byte, like the real DN2 sweep found.
+  const fakeShyBox = () => fakePorts(msg => {
+    if (msg.kind !== 'dump' || msg.family !== 0x1a) return;
+    if (msg.type === 0x61) return [buildDumpMessage(0x1a, 0x51, msg.index, new Uint8Array(64))];
+    if (msg.type === 0x62) return [buildDumpMessage(0x1a, 0x52, msg.index, new Uint8Array(16))];
+  });
+
+  it('reports which requests answered, attributed by the reply itself', async () => {
+    const { input, output } = fakeShyBox();
+    const dev = new ElektronDevice(input, output);
+    const findings = await dev.probeDumpRequests([
+      { family: 0x14, type: 0x60, index: 0 }, // silence
+      { family: 0x1a, type: 0x60, index: 0 }, // silence — this box splits pattern and kit
+      { family: 0x1a, type: 0x61, index: 0 },
+      { family: 0x1a, type: 0x62, index: 0 },
+    ], { paceMs: 0, settleMs: 25 });
+    expect(findings.map(f => [f.family, f.type, f.bytes])).toEqual([
+      [0x1a, 0x51, 64],
+      [0x1a, 0x52, 16],
+    ]);
+    expect(findings.every(f => f.ok)).toBe(true);
+    dev.close();
+  });
+
+  it('resolves empty when nothing answers, rather than hanging or throwing', async () => {
+    const { input, output } = fakePorts(() => undefined);
+    const dev = new ElektronDevice(input, output);
+    expect(await dev.probeDumpRequests([{ family: 0x22, type: 0x60, index: 0 }], { paceMs: 0, settleMs: 25 }))
+      .toEqual([]);
+    dev.close();
+  });
+
+  it('refuses a plan containing anything but request opcodes', async () => {
+    const { input, output } = fakeShyBox();
+    const dev = new ElektronDevice(input, output);
+    await expect(dev.probeDumpRequests([
+      { family: 0x1a, type: 0x61, index: 0 },
+      { family: 0x1a, type: 0x51, index: 0 }, // a payload message — would write
+    ])).rejects.toThrow(/not a dump request opcode/);
+    dev.close();
+  });
+});
+
 describe('fetchProjectDump', () => {
   it('collects the stream until project settings and returns the raw bytes', async () => {
     const { input, output } = fakeDigitakt2();

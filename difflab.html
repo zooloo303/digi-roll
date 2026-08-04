@@ -6,12 +6,15 @@
 <title>digi-roll — dump diffing lab</title>
 <link rel="stylesheet" href="style.css">
 <style>
-  #labBar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  #labBar, #contribBar { flex: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
     padding: 6px 14px; border-bottom: 1px solid #2a2e38; background: #171a20; font-size: 12px; }
-  #labBar .dim { color: #7d8590; }
-  #labBar button { padding: 2px 8px; font-size: 12px; }
-  #labBar input[type=text] { background: #14161a; color: #d8dae0; border: 1px solid #2a2e38;
+  #labBar .dim, #contribBar .dim { color: #7d8590; }
+  #labBar button, #contribBar button { padding: 2px 8px; font-size: 12px; }
+  #labBar input[type=text], #contribBar input[type=text] { background: #14161a; color: #d8dae0; border: 1px solid #2a2e38;
     border-radius: 4px; padding: 2px 6px; font-size: 12px; width: 26em; }
+  #contribBar input[type=text] { width: 3em; }
+  .probeReport { margin: 0 0 8px; padding: 8px 10px; border: 1px solid #2a2e38; border-radius: 6px;
+    background: #171a20; color: #b7bdc8; white-space: pre-wrap; }
   #captureInfo { color: #9aa0ab; }
   #labWrap { flex: 1; display: flex; min-height: 0; }
   #diffPane { flex: 3; overflow-y: auto; padding: 8px 14px;
@@ -63,6 +66,33 @@
       <input id="labPLocks" type="checkbox" checked> p-lock lane report
     </label>
     <span id="captureInfo"></span>
+  </div>
+
+  <div id="contribBar">
+    <span class="dim">New box</span>
+    <button id="labProbe" title="Sweep dump requests across candidate family bytes to find which one this box answers — the first step of mapping a device digi-roll doesn't know. Sends read-only requests, never a payload." disabled>Probe dump protocol</button>
+    <span class="dim">capture target</span>
+    <label class="field">family <input id="labFamily" type="text" size="3" placeholder="hex" title="Dump family byte (hex) — filled from the identity for a known box, from the probe for a new one"></label>
+    <select id="labType" title="Which dump to request per capture — a known box's pattern lives in 0x60; gen-1 and Analog boxes may only answer the split requests">
+      <option value="96">0x60 pattern+kit</option>
+      <option value="97">0x61 pattern</option>
+      <option value="98">0x62 kit</option>
+      <option value="99">0x63 sound</option>
+      <option value="100">0x64 project settings</option>
+    </select>
+    <span class="dim">·</span>
+    <button id="labExportPair" title="Save baseline + capture + your note as one JSON file — the thing to attach to the forum thread" disabled>Export pair</button>
+    <button id="labImportPair" title="Open a capture pair someone else exported and read its diff — no box needed">Open pair…</button>
+    <input id="labImportPairInput" type="file" accept=".json" hidden>
+  </div>
+
+  <div class="barhint">
+    <b>Own a box digi-roll can't read yet</b> — Digitone, Syntakt, Analog Rytm, Analog Four?
+    You can help map it, and nothing here ever writes to a box: this page only sends read-only requests.
+    <b>Connect</b> → <b>Probe dump protocol</b> → post the report to the thread. If the probe finds a
+    family byte, go further: <b>Capture baseline</b>, change <em>exactly one thing</em> on the box
+    (add one trig, turn one knob one click), <b>Capture + diff</b>, write what you changed in the note,
+    then <b>Export pair</b> and attach the file. Each pair teaches us one byte-level fact about your box.
   </div>
 
   <div id="labWrap">

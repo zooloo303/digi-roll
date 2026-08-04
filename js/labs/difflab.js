@@ -12,6 +12,10 @@
 import { ElektronDevice } from '../elektron/device.js';
 import { bankName, diffAnnotatedRanges } from '../elektron/pattern-core.js';
 import { readAllPLocks } from '../elektron/plocks.js';
+import { PRODUCT_BY_FAMILY } from '../elektron/safe-write.js';
+import { downloadText } from '../download.js';
+import { sweepPlan, deepPlan, summarizeFindings, contributorReport, REQUEST_TYPES } from './probe.js';
+import { buildCapturePair, parseCapturePair } from './capture-pair.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
 
@@ -26,6 +30,16 @@ const SPECS = {
   digitakt2: dt2.SPEC,
   digitone2: dn2.SPEC,
 };
+
+// Struct knowledge is keyed off what was actually captured — the family byte
+// and request type — not off the connected box, so a donated capture pair from
+// a DT2 gets the full annotation with no box attached, and a probe-discovered
+// dump from an unmapped box gets honest raw offsets instead of the wrong map.
+const slugForFamily = family => PRODUCT_BY_FAMILY[family]?.slug ?? null;
+const describerFor = (family, requestType) =>
+  (requestType === 0x60 ? DESCRIBERS[slugForFamily(family)] ?? null : null);
+const specFor = (family, requestType) =>
+  (requestType === 0x60 ? SPECS[slugForFamily(family)] ?? null : null);
 
 const $ = id => document.getElementById(id);
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -57,13 +71,34 @@ function refreshPorts() {
   if ([...portSel.options].some(o => o.value === prev)) portSel.value = prev;
 }
 
+// What a capture will fetch: family byte + request type, editable so a box the
+// code has never met can be captured the moment a probe finds its family byte.
+// For a known box these fill themselves from the identity and nothing changes.
+// 0x10 is refused — a message with that family byte parses as API traffic, not
+// a dump, so nothing useful can ever be captured with it.
+function captureTarget() {
+  const family = parseInt($('labFamily').value, 16);
+  const requestType = +$('labType').value;
+  if (!Number.isInteger(family) || family < 0x01 || family > 0x7f || family === 0x10) return null;
+  if (!REQUEST_TYPES[requestType]) return null;
+  return { family, requestType };
+}
+
 function syncButtons() {
-  const connected = !!device?.identity?.supported;
-  $('capA').disabled = !connected;
+  const connected = !!device?.identity;
+  const target = captureTarget();
+  $('labProbe').disabled = !connected;
+  $('capA').disabled = !connected || !target;
   $('capB').disabled = !connected || !baseline;
   $('labSave').disabled = !lastDiff;
-  $('labChain').disabled = !lastCapture;
+  $('labChain').disabled = !lastCapture || !connected;
+  // A pair is exportable once both sides exist and came off a box in this
+  // session — re-exporting an imported file would only launder its metadata.
+  $('labExportPair').disabled = !(baseline && lastCapture && lastDiff && !lastDiff.fromFile);
 }
+
+$('labFamily').oninput = syncButtons;
+$('labType').onchange = syncButtons;
 
 $('port').onchange = () => { device?.close(); device = null; baseline = null; lastCapture = null; lastDiff = null; $('deviceInfo').textContent = ''; syncButtons(); };
 
@@ -76,8 +111,12 @@ $('connect').onclick = async () => {
   try {
     const id = await device.identify();
     $('deviceInfo').innerHTML = `<b>${esc(id.name)}</b>&nbsp; OS ${esc(id.version)} (build ${esc(id.build)})`;
+    // The capture target follows the identity when we have one; for an unknown
+    // box it stays blank until the probe (or the user) supplies a family byte.
+    $('labFamily').value = id.family != null ? id.family.toString(16).padStart(2, '0') : '';
+    $('labType').value = '96'; // 0x60, the pattern(+kit) request
     if (!id.supported) {
-      setStatus(`${id.name} identified, but its dump family byte is unknown — the lab can't fetch from it yet`, true);
+      setStatus(`${id.name} identified, but its dump family byte is unknown — hit “Probe dump protocol” to look for one (read-only)`, true);
     } else {
       setStatus(`Connected to ${id.name} — capture a baseline${DESCRIBERS[id.slug] ? '' : ' (no struct map for this box yet: diffs will be raw offsets)'}`);
     }
@@ -94,20 +133,35 @@ $('connect').onclick = async () => {
 
 for (let i = 0; i < 128; i++) $('labPattern').add(new Option(bankName(i), i));
 
-let baseline = null;    // { index, payload, label }
-let lastCapture = null; // the most recent B capture
-let lastDiff = null;    // { device, build, version, index, ranges }
+let baseline = null;    // { index, payload, raw, family, requestType, at }
+let lastCapture = null; // the most recent B capture, same shape
+let lastDiff = null;    // { device, build, version, index, ranges, … }
 
-async function capture() {
+// "family 0x1a · request 0x61" for anything that isn't a mapped box's
+// pattern-kit — the notebook and the export need to say what was captured,
+// because for a new box that *is* the finding.
+function targetLabel(family, requestType) {
+  return describerFor(family, requestType)
+    ? null
+    : `family 0x${family.toString(16).padStart(2, '0')} · request 0x${requestType.toString(16)}`;
+}
+
+// Fetch through the capture target. The target is pinned per experiment: a
+// baseline remembers what it was fetched with, and B reuses that rather than
+// the UI fields — otherwise editing the target mid-experiment would diff two
+// different structs and call the whole file a change.
+async function capture(target) {
   const index = +$('labPattern').value;
-  setStatus(`Fetching ${bankName(index)}…`);
-  const payload = await device.fetchPatternKit(index);
-  return { index, payload, at: new Date().toISOString() };
+  setStatus(`Fetching ${bankName(index)} (family 0x${target.family.toString(16)}, request 0x${target.requestType.toString(16)})…`);
+  const { payload, raw } = await device.fetchDump(target.family, target.requestType, index);
+  return { index, payload, raw, ...target, at: new Date().toISOString() };
 }
 
 $('capA').onclick = async () => {
+  const target = captureTarget();
+  if (!target) return;
   try {
-    baseline = await capture();
+    baseline = await capture(target);
     lastCapture = null; lastDiff = null;
     $('captureInfo').textContent = `baseline: ${bankName(baseline.index)}, ${baseline.payload.length} bytes`;
     setStatus(`Baseline captured — now make ONE edit on the box, then “Capture + diff”`);
@@ -240,27 +294,39 @@ function renderDiff(diff, a, b) {
   $('diffPane').innerHTML = parts.join('');
 }
 
+// Build the diff record from any A/B pair — a live capture or an imported
+// donation; `deviceInfo` is either the connected identity or the pair file's.
+function makeDiff(a, b, deviceInfo, { fromFile = false } = {}) {
+  return {
+    device: deviceInfo.name, slug: deviceInfo.slug, build: deviceInfo.build,
+    version: deviceInfo.version, productId: deviceInfo.productId,
+    index: b.index, at: b.at, family: a.family, requestType: a.requestType,
+    target: targetLabel(a.family, a.requestType),
+    fromFile,
+    ranges: diffAnnotatedRanges(a.payload, b.payload, describerFor(a.family, a.requestType)),
+    plocks: plockReport(specFor(a.family, a.requestType), a.payload, b.payload),
+    a: a.payload, b: b.payload,
+  };
+}
+
+function reportDiff() {
+  const laneChanges = lastDiff.plocks?.changed.length ?? 0;
+  setStatus(lastDiff.ranges.length
+    ? `${lastDiff.ranges.length} region(s) changed`
+      + (laneChanges ? `, including ${laneChanges} p-lock lane(s)` : '')
+      + ' — describe the edit and save it to the notebook'
+    : 'No differences found');
+}
+
 $('capB').onclick = async () => {
   if (!baseline) return;
   try {
-    const cap = await capture();
+    const cap = await capture({ family: baseline.family, requestType: baseline.requestType });
     if (cap.index !== baseline.index) throw new Error('pattern slot changed between captures');
     lastCapture = cap;
-    const id = device.identity;
-    lastDiff = {
-      device: id.name, slug: id.slug, build: id.build, version: id.version,
-      index: cap.index, at: cap.at,
-      ranges: diffAnnotatedRanges(baseline.payload, cap.payload, DESCRIBERS[id.slug]),
-      plocks: plockReport(SPECS[id.slug], baseline.payload, cap.payload),
-      a: baseline.payload, b: cap.payload,
-    };
+    lastDiff = makeDiff(baseline, cap, device.identity);
     renderDiff(lastDiff, baseline.payload, cap.payload);
-    const laneChanges = lastDiff.plocks?.changed.length ?? 0;
-    setStatus(lastDiff.ranges.length
-      ? `${lastDiff.ranges.length} region(s) changed`
-        + (laneChanges ? `, including ${laneChanges} p-lock lane(s)` : '')
-        + ' — describe the edit and save it to the notebook'
-      : 'No differences found');
+    reportDiff();
   } catch (err) {
     setStatus(`Capture failed: ${err.message}`, true);
   }
@@ -274,6 +340,122 @@ $('labChain').onclick = () => {
   $('captureInfo').textContent = `baseline: ${bankName(baseline.index)} (chained)`;
   $('diffPane').innerHTML = '<span class="dim">Chained: the last capture is the new baseline. Make the next edit…</span>';
   setStatus('Chained — make the next edit on the box');
+  syncButtons();
+};
+
+// --- Probe: find an unmapped box's dump protocol -----------------------------------
+//
+// The recipe that found the DN2's family byte (a 0x60 request sweep across
+// candidate bytes — only 0x15 answered), as a button, because it is the first
+// thing a contributor with a Syntakt or an Analog Rytm has to do and it used to
+// live only in a session log. Two passes: sweep every candidate family with the
+// two pattern-shaped requests, then ask any family that answered for all five
+// dump types. Requests only — the device layer refuses to send anything else.
+
+const hexByte = v => `0x${v.toString(16).padStart(2, '0')}`;
+
+function renderProbeReport(report, summary) {
+  const pick = summary[0]?.replies.find(r => REQUEST_TYPES[r.requestType]);
+  $('diffPane').innerHTML =
+    `<div class="region"><span class="label">Probe report — post this to the digi-roll thread</span></div>`
+    + `<pre class="probeReport">${esc(report)}</pre>`
+    + `<button id="copyReport">Copy report</button>`
+    + (pick
+      ? `<span class="dim">  The capture target above is set to what answered — capture a baseline, `
+        + `make ONE edit on the box, capture again, then “Export pair”.</span>`
+      : '');
+  $('copyReport').onclick = async () => {
+    await navigator.clipboard.writeText(report);
+    setStatus('Report copied — paste it into the forum thread');
+  };
+}
+
+$('labProbe').onclick = async () => {
+  if (!device?.identity) return;
+  $('labProbe').disabled = true;
+  try {
+    const plan = sweepPlan({ index: +$('labPattern').value });
+    setStatus(`Probing: ${plan.length} dump requests, read-only — this takes ~20 seconds…`);
+    const onProgress = p => { if (p.sent) setStatus(`Probing… request ${p.sent}/${plan.length} (read-only)`); };
+    const first = await device.probeDumpRequests(plan, { onProgress });
+    let findings = first;
+    let probed = plan.length;
+
+    const answered = [...new Set(first.map(f => f.family))];
+    if (answered.length) {
+      const plan2 = deepPlan(answered, { index: +$('labPattern').value });
+      setStatus(`Family ${answered.map(hexByte).join(', ')} answered — asking it for every dump type…`);
+      findings = [...first, ...await device.probeDumpRequests(plan2)];
+      probed += plan2.length;
+    }
+
+    const summary = summarizeFindings(findings);
+    const report = contributorReport({
+      identity: device.identity,
+      portName: [...access.outputs.values()].find(o => o.id === $('port').value)?.name ?? '',
+      summary, probed,
+    });
+    renderProbeReport(report, summary);
+
+    // Point the capture target at the best thing that answered, so the next
+    // click is a capture rather than a hex-typing exercise.
+    const fam = summary[0];
+    const reply = fam?.replies.find(r => r.ok && REQUEST_TYPES[r.requestType]);
+    if (reply) {
+      $('labFamily').value = fam.family.toString(16).padStart(2, '0');
+      $('labType').value = String(reply.requestType);
+      setStatus(`Probe done: family ${hexByte(fam.family)} answers — capture target set, copy the report to the thread`);
+    } else {
+      setStatus('Probe done: no family byte answered — copy the report to the thread anyway, silence is a finding too', true);
+    }
+  } catch (err) {
+    setStatus(`Probe failed: ${err.message}`, true);
+  }
+  syncButtons();
+};
+
+// --- Capture pairs: the shareable experiment ---------------------------------------
+//
+// Export writes baseline + after + the note into one JSON file; import reads
+// one back and diffs it with no box attached. This is the whole contribution
+// loop: someone who owns the box runs the experiment, we read the bytes.
+
+$('labExportPair').onclick = () => {
+  if (!(baseline && lastCapture && lastDiff) || lastDiff.fromFile) return;
+  const id = device.identity;
+  const name = `digiroll-capture-${id.slug !== 'elektron' ? id.slug : `product${id.productId}`}`
+    + `-${bankName(baseline.index)}-${lastCapture.at.slice(0, 19).replaceAll(':', '-')}.json`;
+  downloadText(name, buildCapturePair({
+    device: id,
+    family: baseline.family, requestType: baseline.requestType, index: baseline.index,
+    note: $('labNote').value.trim(),
+    capturedAt: lastCapture.at,
+    baselineRaw: baseline.raw, afterRaw: lastCapture.raw,
+  }));
+  setStatus(`Capture pair saved: ${name} — attach it to the thread with the probe report`);
+};
+
+$('labImportPair').onclick = () => $('labImportPairInput').click();
+$('labImportPairInput').onchange = async () => {
+  const file = $('labImportPairInput').files[0];
+  if (!file) return;
+  try {
+    const pair = parseCapturePair(await file.text());
+    const meta = { at: pair.capturedAt ?? '', index: pair.index, family: pair.family, requestType: pair.requestType };
+    baseline = { ...meta, payload: pair.baseline.payload, raw: pair.baseline.raw };
+    lastCapture = { ...meta, payload: pair.after.payload, raw: pair.after.raw };
+    lastDiff = makeDiff(baseline, lastCapture, pair.device, { fromFile: true });
+    $('labNote').value = pair.note;
+    $('labFamily').value = pair.family.toString(16).padStart(2, '0');
+    if (REQUEST_TYPES[pair.requestType]) $('labType').value = String(pair.requestType);
+    $('captureInfo').textContent = `from ${file.name}: ${bankName(pair.index)}, ${pair.baseline.payload.length} bytes`
+      + ` · ${pair.device.name ?? 'unknown device'}${pair.device.build ? ` build ${pair.device.build}` : ''}`;
+    renderDiff(lastDiff, baseline.payload, lastCapture.payload);
+    reportDiff();
+  } catch (err) {
+    setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
+  }
+  $('labImportPairInput').value = '';
   syncButtons();
 };
 
@@ -292,7 +474,7 @@ function renderNotebook() {
     div.innerHTML =
       `<button data-del="${i}">✕</button>` +
       `<h3>${esc(e.note || '(unlabelled experiment)')}</h3>` +
-      `<span class="meta">${esc(e.device)} OS ${esc(e.version)} (build ${esc(e.build)}) · ${bankName(e.index)} · ${esc(e.at.slice(0, 19).replace('T', ' '))}</span>` +
+      `<span class="meta">${esc(e.device)} OS ${esc(e.version)} (build ${esc(e.build)}) · ${bankName(e.index)}${e.target ? ` · ${esc(e.target)}` : ''} · ${esc(e.at.slice(0, 19).replace('T', ' '))}</span>` +
       (e.plocks?.length ? `<ul>${e.plocks.map(l => `<li>p-lock: ${esc(l)}</li>`).join('')}</ul>` : '') +
       `<ul>${e.ranges.map(r => `<li>[${r.start}..${r.end}] ${esc(r.label)}: <code>${esc(r.was)}</code> → <code>${esc(r.now)}</code></li>`).join('')}</ul>`;
     $('notebook').appendChild(div);
@@ -314,6 +496,9 @@ $('labSave').onclick = () => {
     note: $('labNote').value.trim(),
     device: lastDiff.device, build: lastDiff.build, version: lastDiff.version,
     index: lastDiff.index, at: lastDiff.at,
+    // Named when this wasn't a mapped box's pattern-kit — for a new box, what
+    // was captured is itself part of the finding.
+    target: lastDiff.target ?? undefined,
     // Lane findings, tags stripped: these go straight into the format docs, and
     // they're the whole point of a p-lock capture.
     plocks: (lastDiff.plocks?.changed ?? []).map(l => l.text.replace(/<[^>]+>/g, '')),
@@ -338,7 +523,7 @@ $('labExport').onclick = () => {
     ...nb.flatMap(e => [
       `## ${e.note || '(unlabelled experiment)'}`,
       '',
-      `${e.device} OS ${e.version} (build ${e.build}), pattern ${bankName(e.index)}, ${e.at}`,
+      `${e.device} OS ${e.version} (build ${e.build}), pattern ${bankName(e.index)}${e.target ? ` (${e.target})` : ''}, ${e.at}`,
       '',
       ...(e.plocks?.length ? [...e.plocks.map(l => `- **p-lock** ${l}`), ''] : []),
       ...e.ranges.map(r => `- \`[${r.start}..${r.end}]\` ${r.label}: \`${r.was}\` → \`${r.now}\``),

@@ -26,6 +26,7 @@
     <button id="impFetch" title="Fetch this pattern from the connected device" disabled>Fetch</button>
     <button id="impFile" title="Or decode a saved .syx backup / pattern dump instead">Open .syx…</button>
     <input id="impFileInput" type="file" accept=".syx" hidden>
+    <button id="impSave" title="Save just this one pattern as a .syx file — restorable on its own, and loadable as a copy source on the other box" disabled>Save .syx</button>
     <span id="impPatternInfo" class="field"></span>
     <select id="impTrack" title="Which track's trigs to import" disabled></select>
     <span class="dim">→</span>
@@ -39,8 +40,9 @@
     <span class="dim">→</span>
     <select id="wrPattern" title="Pattern slot on the box (current project)"></select>
     <select id="wrTrack" title="Which track's trigs to replace"></select>
-    <button id="wrGo" title="Backs up the target pattern, replaces that track's trigs, then reads back and verifies" disabled>Write to pattern…</button>
+    <button id="wrGo" title="Backs up the target pattern, replaces that track's trigs, conditions, PROB and p-lock lanes, sets the pattern's swing, then reads back and verifies" disabled>Write to pattern…</button>
     <button id="wrRestore" title="Send the pre-write backup of the last written pattern back to the box" disabled>Restore backup</button>
+    <span class="dim">carries notes, conditions, PROB, p-lock lanes — and the pattern's swing</span>
     <span id="wrInfo" class="field"></span>
   </div>
 
@@ -51,16 +53,23 @@
       <option value="file">from .syx file</option>
     </select>
     <select id="copySrcPattern" title="Source pattern slot"></select>
-    <button id="copySrcLoad" title="Load that pattern as the copy source">Load source</button>
+    <button id="copySrcLoad" title="Load that pattern as the copy source — it is held in memory, so you can switch boxes afterwards">Load source</button>
     <input id="copySrcFileInput" type="file" accept=".syx" hidden>
+    <button id="copySrcSave" title="Save the held source as a single-pattern .syx, to copy from it in a later session" disabled>Save .syx</button>
     <span id="copySrcInfo" class="field"></span>
     <select id="copySrcTrack" title="Which track's notes to copy" disabled></select>
-    <span class="dim">→</span>
+    <span class="dim">→ into</span>
+    <span id="copyDstBox" class="field" title="The destination is always the box you're connected to — Connect is the target picker">no box connected</span>
     <select id="copyDstPattern" title="Target pattern slot on the connected box"></select>
     <select id="copyDstTrack" title="Target track — only its notes change"></select>
     <button id="copyGo" title="Backs up the target pattern, replaces that track's notes with the source track's, then reads back and verifies" disabled>Copy to track…</button>
     <span id="copyInfo" class="field"></span>
   </div>
+
+  <!-- Filled by syncCopyHint(): what it says depends on whether a source is held
+       and whether the connected box is the same model, because that is exactly
+       what the controls above can't show. -->
+  <div id="copyHint" class="barhint"></div>
 
   <div id="consoleWrap">
     <div class="logbar">

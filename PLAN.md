@@ -118,9 +118,10 @@ some trigs at 100%".
   `labs/console.js`; applied in `safe-write.js` (new optional `trackProb`
   option, `null` = leave the byte alone), `copy-track.js`, and the console's
   cross-device copy. Out-of-range reads warn and give 100 rather than throwing.
-  The console's Phase 2 inline write button is deliberately **not** touched —
-  CLAUDE.md keeps it as the untouched hardware-verified reference, and it
-  already carries no per-trig conditions either.
+  The console's Phase 2 inline write button was deliberately **not** touched at
+  the time — it was kept as the untouched hardware-verified reference, and it
+  already carried no per-trig conditions either. (Superseded by the console UX
+  round below: that row now runs `safeWriteTrack` like everything else.)
 - **Preview:** `shouldPlay(note, loop, rng, trackProb = 100)` uses the track
   default when `note.prob == null`; the engine passes `pattern.trackProb`.
 - **Tests:** fixture-backed byte reads, a one-byte-moved property test for
@@ -613,12 +614,102 @@ params in the browser.
       both boxes (send + box UI + byte-identical verify). Both residuals also
       verified 2026-08-04: empty-a-lane-via-send, and a cross-device copy with
       translated lanes (DN2 → DT2; the reverse runs the same path, untested).
-- [ ] **Console UX round** — three gaps surfaced by the residual testing:
-      the "Write to box" row silently drops lanes/conditions/PROB/swing
-      (notes-only legacy path — route it through `safeWriteTrack` or label it);
-      no way to save a single fetched pattern as `.syx` (only whole-project
-      backup); the cross-device copy flow is undiscoverable (the target
-      selector *is* the Connect button, and nothing says so).
+- [x] **Console UX round** — the three gaps the residual testing surfaced, all
+      closed 2026-08-04. **Not hardware-verified** (see below).
+
+  1. **The "Write to box" row now runs `safeWriteTrack`.** It was the last
+     caller still on its own inline copy of the write sequence — the original
+     Phase 2 implementation — so it wrote notes and nothing else: trig
+     conditions, track PROB, p-lock lanes and swing were silently dropped, and
+     the same slot landed differently depending on which page you sent it from.
+     Its duplicated `WRITE_ALLOWED_BUILDS` and backup-download helper are gone
+     with it, so the allowlist lives in exactly one place.
+  2. **Save one pattern as `.syx`.** `patternKitFile` in `safe-write.js` wraps a
+     payload back into a dump message the box would accept; `patternKitBackup`
+     is now a thin wrapper on it, differing only in the word in the filename
+     (`-backup-` vs `-pattern-`). The import row's new **Save .syx** button
+     saves whatever is currently decoded — fetched or file-loaded — which is
+     also the missing first step of a cross-device copy.
+  3. **The copy row names its destination, and says the source is held.** It
+     reads "→ into *Digitakt II*", amber "no box connected" when there isn't
+     one. The first pass at this shipped a static hint describing the `.syx`
+     detour — which was the *wrong flow to document*: `copySource` is an
+     in-memory snapshot and nothing clears it, so the real route between two
+     boxes is **Load source → switch the device dropdown → Connect the other box
+     → Copy to track**, no file at all. (That is the route the Phase 3 residual
+     was hardware-verified on.) Nothing in the row said the source survives a
+     reconnect, so it was unguessable. The hint is now state-dependent — no
+     source / held with no box / held on the same model / held and crossing
+     models — and lives in `js/labs/copy-hint.js` as a pure function so the
+     wording is testable, like `writeResultMessage`. A **Save .syx** button also
+     sits in the copy row now, so the file route (for a *later session*, which is
+     all it's good for) doesn't send you to the import bar to borrow a button.
+
+  One shared piece came out of the first gap: `writeImpactLines` in
+  `safe-write.js`, next to `writeResultMessage`. It owns the sentences a confirm
+  dialog must not leave out — lanes written and cleared, a pool with no room, a
+  PROB default that isn't 100, and swing reaching all sixteen tracks — so that
+  the class of bug gap 1 *was* (a write path quietly not mentioning a surface)
+  can't come back one path at a time. All three callers use it: the roll's send,
+  the console's write row, and cross-device copy, which as a bonus now names the
+  source track's PROB default it has been carrying silently, and says out loud
+  that the destination's swing is left alone.
+
+  Covered by five tests in `test/copy-hint.test.js` (every hint state, including
+  that the same-model one names the dropdown-and-Connect route) and eight in
+  `test/safe-write.test.js` (the impact sentences
+  including the quiet cases, and the single-pattern file round-tripping through
+  `splitSysExStream`), and the save path was exercised end to end in a real
+  browser against `dumps/digitakt2-project-2026-08-01T23-37-04.syx`: the
+  downloaded file is one valid pattern-kit message whose payload is
+  byte-identical to the fixture's. **What is not verified: no byte has been sent
+  to a box.** The console write row is new code over an already-verified flow —
+  the same `safeWriteTrack` the main page's hardware-verified send uses — but
+  the row itself has not been run against hardware, and on a DT2 that path now
+  includes the swing byte, whose write is still DN2-only (see the swing section).
+  The smoke test is: send a slot with conditions, a track PROB, a p-lock lane
+  and a non-straight swing from the console row, and check all four on the box.
+- [x] **Diff lab: crowdsourced device mapping** — built 2026-08-04 so the
+      Elektronauts community can map boxes nobody here owns (Digitone, Syntakt,
+      Analog Rytm/Four, gen-1 Digitakt). The lab could already *diff* a box it
+      had a family byte for; it could not onboard one, and a contributor's bytes
+      could not leave their browser. Three things closed that:
+
+  1. **Probe** (`js/labs/probe.js` + `ElektronDevice.probeDumpRequests`) — the
+     sweep that found the DN2's `0x15` by hand, as a button. Two passes: every
+     candidate family byte × the two pattern-shaped requests, then all five dump
+     types for whatever answered. Output is a Markdown report to paste into the
+     thread, and it points the capture target at what replied. Silence is
+     reported as a finding rather than an error.
+  2. **Generic capture** — `fetchDump(family, requestType, index)` under the old
+     `fetchPatternKit`, plus editable family/type fields, so a box the code has
+     never met is capturable the moment the probe finds its family byte. Struct
+     annotation is keyed on *what was captured* (family + request type), not on
+     the connected box, so an unmapped box gets honest raw offsets instead of the
+     wrong map, and a donated DT2 pair gets the full annotation.
+  3. **Capture pairs** (`js/labs/capture-pair.js`) — baseline + after + the note
+     as one JSON file, the two dumps kept byte-exact including framing and
+     version bytes (on an unmapped box those are evidence). Export is the thread
+     attachment; **Open pair…** diffs a donation *with no box attached*, which is
+     what lets us work on a format we can't reach.
+
+  **Read-only is structural, not a promise:** `0x5n` is the opcode that stores a
+  payload, so `fetchDump` and the probe refuse anything outside the request range
+  `0x60`–`0x6e` and throw before sending. That is the guarantee the pitch to
+  strangers rests on, and `test/device.test.js` asserts it directly.
+
+  Tests: 7 new in `test/device.test.js` (generic fetch, raw-framing preservation,
+  opcode refusal on both paths, probe attribution, probe silence), 12 in
+  `test/probe.test.js` (plans, the 0x10 exclusion, report contents), 7 in
+  `test/capture-pair.test.js` (byte-exact round trip incl. a real 111,616-byte
+  pattern, and each malformed-donation message). Verified in a browser with no
+  box: a synthetic DT2 donation imports and annotates correctly
+  (`[132..132] track 1 step word, step 65 (hi byte)`), and a synthetic Syntakt
+  donation (family `0x1a`, request `0x61`) falls back to raw offsets with no
+  p-lock report and carries `family 0x1a · request 0x61` into the notebook.
+  **Not verified: the probe against real hardware** — it needs a box, and the two
+  here are already mapped, so the honest test is a contributor's first report.
+  `docs/adding-a-device.md` is the walkthrough to link from the forum post.
 - [ ] **Retrig as a p-lock lane** — deferred from the audition round: no CC, no
       NRPN, and not one knob (RATE/LEN/VEL/on-off), so it needs a capture to show
       its shape before it can be modelled at all.

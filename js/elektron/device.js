@@ -42,6 +42,16 @@ const REQUEST_TIMEOUT_MS = 5000; // elk-herd uses 5 s with 2 retries
 const REQUEST_RETRIES = 2;
 const DUMP_STALL_MS = 5000;      // max silence between dump stream messages
 
+// The read-only guard shared by fetchDump and the probe: dump *requests* are
+// 0x60–0x6e. An 0x5n message is what stores a payload on the box, so refusing
+// everything outside the request range makes these paths incapable of writing —
+// which matters most when the box belongs to a contributor mapping it for us.
+function assertRequestOpcode(type) {
+  if (!Number.isInteger(type) || type < 0x60 || type > 0x6e) {
+    throw new Error(`0x${Number(type).toString(16)} is not a dump request opcode — refusing to send it`);
+  }
+}
+
 const cp1252 = new TextDecoder('windows-1252');
 
 // Null-terminated Windows-1252 string at `start`; returns [value, nextOffset].
@@ -141,29 +151,98 @@ export class ElektronDevice {
     return this.identity;
   }
 
-  // Fetch a single pattern-kit dump (one 0x60 request → one 0x50 response).
-  // Resolves to the decoded payload bytes of that pattern-kit message.
-  fetchPatternKit(index) {
-    const family = this.identity?.family;
-    if (family == null) throw new Error(`no known dump protocol for ${this.identity?.name ?? 'this device'}`);
+  // Fetch one dump of any type from any family: one 0x6n request → one 0x5n
+  // response (the response opcode is always the request minus 0x10). This is
+  // the generic primitive under fetchPatternKit, and the diff lab's way of
+  // capturing from a box whose family byte was just discovered by a probe —
+  // before any code knows the device.
+  //
+  // `family` and `requestType` are explicit rather than read off the identity,
+  // because for an unmapped box there is nothing on the identity to read.
+  // Resolves to { payload, raw, msg }: `raw` is the complete SysEx message
+  // exactly as the box sent it — an unknown box's version bytes and framing are
+  // evidence, so captures keep the original rather than a re-encoding.
+  fetchDump(family, requestType, index, { what = `dump 0x${requestType.toString(16)}` } = {}) {
+    assertRequestOpcode(requestType);
     if (this._dumpSink) throw new Error('a dump fetch is already running');
+    const responseType = requestType - 0x10;
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this._dumpSink = null;
-        reject(new Error(`no response to pattern request (slot ${index})`));
+        reject(new Error(`no response to ${what} request (slot ${index})`));
       }, DUMP_STALL_MS);
       this._dumpSink = (raw, msg) => {
-        if (msg.family !== family || msg.type !== DUMP.PATTERN_KIT || msg.index !== index) return;
+        if (msg.family !== family || msg.type !== responseType || msg.index !== index) return;
         clearTimeout(timer);
         this._dumpSink = null;
         if (!msg.checksumOk || !msg.countOk) {
-          return reject(new Error(`corrupt pattern-kit message (slot ${index})`));
+          return reject(new Error(`corrupt ${what} message (slot ${index})`));
         }
-        resolve(msg.payload);
+        resolve({ payload: msg.payload, raw: Uint8Array.from(raw), msg });
       };
-      this._send(buildDumpMessage(family, DUMP.PATTERN_KIT_REQUEST, index));
+      this._send(buildDumpMessage(family, requestType, index));
     });
+  }
+
+  // Fetch a single pattern-kit dump (one 0x60 request → one 0x50 response).
+  // Resolves to the decoded payload bytes of that pattern-kit message.
+  async fetchPatternKit(index) {
+    const family = this.identity?.family;
+    if (family == null) throw new Error(`no known dump protocol for ${this.identity?.name ?? 'this device'}`);
+    const { payload } = await this.fetchDump(family, DUMP.PATTERN_KIT_REQUEST, index, { what: 'pattern-kit' });
+    return payload;
+  }
+
+  // Send a batch of dump *requests* and report every dump message that comes
+  // back — the tool form of the probe sweep that discovered the DN2's family
+  // byte (0x15, 2026-08-01, done by hand at the time). Responses carry their
+  // own family and type bytes, so a batch needs no per-request bookkeeping:
+  // whatever answers, answers identifiably.
+  //
+  //   probes      [{ family, type, index }] — `type` MUST be a request opcode
+  //   paceMs      gap between sends, so an unknown box is never flooded
+  //   settleMs    silence after the last send (or last reply) before resolving;
+  //               generous by default because a full pattern dump takes seconds
+  //               to cross USB-MIDI and arrives as one message at the end
+  //   onProgress  ({ sent, total } | { received }) for the UI
+  //
+  // Resolves to [{ family, type, index, bytes, ok, raw }], one per reply.
+  // This function is structurally incapable of writing: an 0x5n message is what
+  // *stores* a payload on a box, and the opcode guard refuses to send one — the
+  // probe exists so strangers can point it at patterns they care about.
+  async probeDumpRequests(probes, { paceMs = 120, settleMs = 5000, onProgress = () => {} } = {}) {
+    for (const p of probes) assertRequestOpcode(p.type);
+    if (this._dumpSink) throw new Error('a dump fetch is already running');
+
+    const findings = [];
+    await new Promise(resolve => {
+      let timer = null;
+      let allSent = false;
+      const finish = () => { clearTimeout(timer); this._dumpSink = null; resolve(); };
+      const arm = () => { clearTimeout(timer); timer = setTimeout(finish, settleMs); };
+
+      this._dumpSink = (raw, msg) => {
+        findings.push({
+          family: msg.family, type: msg.type, index: msg.index,
+          bytes: msg.payload.length, ok: msg.checksumOk && msg.countOk,
+          raw: Uint8Array.from(raw),
+        });
+        onProgress({ received: findings.length });
+        if (allSent) arm(); // replies can trail the last send by seconds
+      };
+
+      (async () => {
+        for (let i = 0; i < probes.length; i++) {
+          this._send(buildDumpMessage(probes[i].family, probes[i].type, probes[i].index ?? 0));
+          onProgress({ sent: i + 1, total: probes.length });
+          await new Promise(r => setTimeout(r, paceMs));
+        }
+        allSent = true;
+        arm();
+      })();
+    });
+    return findings;
   }
 
   // Write a pattern-kit: there is no "write request" in the protocol — you

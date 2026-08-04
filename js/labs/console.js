@@ -5,7 +5,7 @@
 // the scarier browser permission prompt.
 
 import { ElektronDevice } from '../elektron/device.js';
-import { splitSysExStream, buildDumpMessage, DUMP, FAMILY } from '../elektron/protocol.js';
+import { splitSysExStream, DUMP, FAMILY } from '../elektron/protocol.js';
 import { trackNotes, trackTrigCount, bankName, diffPayloads } from '../elektron/pattern-core.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
@@ -22,14 +22,19 @@ const DECODER_BY_FAMILY = {
 };
 import { loadState, saveState, NUM_SLOTS } from '../state.js';
 import {
-  deviceNotesToRoll, rollLengthForTrack, makeSource, attachTrigSettings, devicePLocksToRoll,
+  deviceNotesToRoll, rollNotesToDevice, rollLengthForTrack, makeSource, attachTrigSettings,
+  devicePLocksToRoll, rollPLocksToDevice,
 } from '../roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from '../elektron/trig-cond.js';
 import { readTrackPLocks } from '../elektron/plocks.js';
-import { readSwing } from '../elektron/pattern-settings.js';
-import { PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage } from '../elektron/safe-write.js';
+import { readSwing, SWING_MIN } from '../elektron/pattern-settings.js';
+import {
+  PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage, writeImpactLines,
+  patternKitFile, BACKUP_LINE,
+} from '../elektron/safe-write.js';
 import { trackNotesForTarget, describeChordDrops, plockLanesForTarget } from '../elektron/copy-track.js';
 import { downloadBytes } from '../download.js';
+import { copyHintHtml } from './copy-hint.js';
 
 const $ = id => document.getElementById(id);
 
@@ -202,13 +207,33 @@ function patternSummary(patternKit, label) {
 
 // `payload` and `spec` are kept alongside the decoded kit because the per-trig
 // condition lanes are read straight off the raw bytes at import time.
-function showPatternKit({ patternKit, payload, spec, label, kindFallback = 'sample', origin = null }) {
-  imported = { patternKit, payload, spec, label, origin };
+// `identity` ({ slug, family, patternIndex }) is what "Save .syx" needs to wrap
+// the payload back up as a message the box would accept — a file-decoded pattern
+// has no handshake to ask, so it comes from the dump's own family byte.
+function showPatternKit({
+  patternKit, payload, spec, label, identity, kindFallback = 'sample', origin = null,
+}) {
+  imported = { patternKit, payload, spec, label, identity, origin };
   $('impPatternInfo').textContent = patternSummary(patternKit, label);
   const any = fillTrackOptions($('impTrack'), patternKit, kindFallback);
   $('impGo').disabled = !any;
+  // Saving works whether or not a track has trigs — an empty pattern is still
+  // worth keeping a copy of before you overwrite it.
+  $('impSave').disabled = false;
   if (!any) setStatus(`${label} decoded, but no track has any trigs`, true);
 }
+
+// Save just this pattern as .syx. The whole-project backup is the safety net;
+// this is the one you can hand to the *other* box's copy-source picker, and the
+// one that makes a single slot restorable without replaying a whole project.
+$('impSave').onclick = () => {
+  if (!imported) return;
+  const { slug, family, patternIndex } = imported.identity;
+  const file = patternKitFile({ slug, family }, patternIndex, imported.payload, { kind: 'pattern' });
+  downloadBytes(file.name, file.bytes);
+  setStatus(`Saved ${imported.label} as ${file.name} (${file.bytes.length} bytes)`);
+  logNote(`Saved single pattern: ${file.name}`);
+};
 
 $('impFetch').onclick = async () => {
   if (!device) return;
@@ -224,6 +249,7 @@ $('impFetch').onclick = async () => {
       payload,
       spec: decoder.SPEC,
       label: bankName(index),
+      identity: { slug: device.identity.slug, family: device.identity.family, patternIndex: index },
       kindFallback: decoder.SPEC.trackKindFallback,
       origin: {
         slug: device.identity.slug,
@@ -261,6 +287,7 @@ $('impFileInput').onchange = async () => {
       payload: msg.payload,
       spec: mod.SPEC,
       label: bankName(msg.index),
+      identity: { slug: product.slug, family: msg.family, patternIndex: msg.index },
       kindFallback: mod.SPEC.trackKindFallback,
       origin: {
         slug: product.slug,
@@ -318,23 +345,13 @@ $('impGo').onclick = () => {
   logNote(`Imported ${imported.label} T${t + 1} → piano-roll slot ${slot + 1} (${notes.length} notes${laneNote})`);
 };
 
-// --- Write to box: piano-roll pattern → DT2 track --------------------------------
-// The original hardware-verified write path. Safety rules from CLAUDE.md,
-// enforced here:
-//   1. the target pattern is fetched and downloaded as a backup before writing;
-//   2. the encoder only touches the track's step words + the trig-record pool
-//      (everything else round-trips byte-identical);
-//   3. firmware allowlist — only OS builds the format was verified on;
-//   4. verify-after-write: re-read, byte-compare, loud diff on mismatch.
-
-// OS builds the pattern write path has been verified against on real
-// hardware, per device — a full encode → send → re-read → byte-compare
-// cycle plus a controlled-experiment pass over the trig fields (see the
-// format docs). Extend a list only after re-verifying on the new build.
-const WRITE_ALLOWED_BUILDS = {
-  digitakt2: ['0070'],  // 1.15B, verified 2026-08-01
-  digitone2: ['0049'],  // 1.10D, verified 2026-08-01
-};
+// --- Write to box: piano-roll pattern → device track -----------------------------
+// This row runs `safeWriteTrack`, the same flow as the piano roll's own "Send to
+// box" and as cross-device copy below. It used to have its own inline copy of the
+// sequence — the original Phase 2 implementation — which meant it wrote *only*
+// notes: trig conditions, track PROB, p-lock lanes and swing were all silently
+// dropped, so the same slot sent from the roll and sent from here landed
+// differently. One flow, one set of surfaces, one confirm wording.
 
 let lastBackup = null; // { index, payload } of the last pattern we overwrote
 
@@ -342,38 +359,28 @@ for (let i = 0; i < NUM_SLOTS; i++) $('wrSlot').add(new Option(`Pattern ${i + 1}
 for (let i = 0; i < 128; i++) $('wrPattern').add(new Option(bankName(i), i));
 for (let t = 0; t < 16; t++) $('wrTrack').add(new Option(`T${t + 1}`, t));
 
-// Slot labels mirror the shared piano-roll state ("A01 T11", note counts).
+// Slot labels mirror the shared piano-roll state ("A01 T11", note counts) and
+// name the p-lock lanes too, since this row now carries them.
 function refreshWriteSlots() {
   const st = loadState();
   for (let i = 0; i < NUM_SLOTS; i++) {
     const p = st.patterns[i];
-    $('wrSlot').options[i].text = `${p.name} · ${p.notes.length} note${p.notes.length === 1 ? '' : 's'}`;
+    const lanes = p.plocks?.length ?? 0;
+    $('wrSlot').options[i].text = `${p.name} · ${p.notes.length} note${p.notes.length === 1 ? '' : 's'}`
+      + (lanes ? ` · ${lanes} lane${lanes === 1 ? '' : 's'}` : '');
   }
 }
 window.addEventListener('storage', e => { if (e.key === 'digiroll-v1') refreshWriteSlots(); });
 refreshWriteSlots();
 
 function syncWriteButtons() {
-  const slug = device?.identity?.slug;
-  const writable = !!DECODERS[slug]
-    && WRITE_ALLOWED_BUILDS[slug]?.includes(device.identity.build);
-  $('wrGo').disabled = !writable;
-  $('wrRestore').disabled = !writable || !lastBackup;
-  $('wrInfo').textContent = DECODERS[slug] && !writable
-    ? `OS build ${device.identity.build} isn't write-verified yet — read-only`
-    : '';
+  const gate = writeGate(device?.identity);
+  $('wrGo').disabled = !gate.ok;
+  $('wrRestore').disabled = !gate.ok || !lastBackup;
+  // Only worth saying when we can decode the box but not write to it: "no device
+  // connected" is already obvious from the toolbar.
+  $('wrInfo').textContent = gate.mod && !gate.ok ? gate.reason : '';
   syncCopyButtons();
-}
-
-function downloadPayloadBackup(index, payload) {
-  const bytes = buildDumpMessage(device.identity.family, DUMP.PATTERN_KIT, index, payload);
-  const stamp = new Date().toISOString().slice(0, 19).replaceAll(':', '-');
-  const name = `${device.identity.slug}-${bankName(index)}-backup-${stamp}.syx`;
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));
-  const a = Object.assign(document.createElement('a'), { href: url, download: name });
-  a.click();
-  URL.revokeObjectURL(url);
-  return name;
 }
 
 $('wrGo').onclick = async () => {
@@ -381,42 +388,59 @@ $('wrGo').onclick = async () => {
   const slot = +$('wrSlot').value;
   const index = +$('wrPattern').value;
   const t = +$('wrTrack').value;
-  const rollPattern = loadState().patterns[slot];
+  const p = loadState().patterns[slot];
+  const gate = writeGate(device.identity);
+  if (!gate.ok) { setStatus(gate.reason, true); return; }
 
   $('wrGo').disabled = true;
   try {
-    setStatus(`Fetching ${bankName(index)} for backup…`);
-    const original = await device.fetchPatternKit(index);
-    const target = DECODERS[device.identity.slug].decodePatternKit(original);
-    const existing = trackTrigCount(target, t);
+    // Lanes belonging to the other box's parameter numbering can't be written
+    // here — this row writes a roll slot as-is, and translating across devices is
+    // the Copy track row's job. Reported rather than aimed at a guess.
+    const { lanes, warnings: laneWarnings } = rollPLocksToDevice(p.plocks, gate.mod.SPEC.device);
+    for (const w of laneWarnings) logError(`P-lock lane not written — ${w}`);
 
-    const named = target.name ? ` “${target.name}”` : '';
-    if (!confirm(
-      `Write ${rollPattern.notes.length} notes from “${rollPattern.name}” to ${bankName(index)}${named} track ${t + 1} ` +
-      `on the ${device.identity.name}?\n\n` +
-      (existing ? `This replaces the ${existing} trig${existing === 1 ? '' : 's'} on that track. ` : 'That track is currently empty. ') +
-      `A backup of the whole pattern downloads first.`
-    )) { setStatus('Write cancelled'); return; }
+    const result = await safeWriteTrack(device, {
+      index, trackIndex: t, notes: rollNotesToDevice(p.notes),
+      trackProb: p.trackProb ?? 100,
+      plocks: lanes,
+      swing: p.swing ?? SWING_MIN,
+      onStatus: setStatus,
+      onLog: logNote,
+      onBackup: b => downloadBytes(b.name, b.bytes),
+      confirm: ({ label, existingTrigs, patternKit, swing: boxSwing, boxPLocks, freeLanes }) => {
+        const lines = [
+          `Write ${p.notes.length} note${p.notes.length === 1 ? '' : 's'} from “${p.name}” to `
+          + `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${t + 1} on the ${device.identity.name}?`,
+          '',
+          existingTrigs
+            ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track.`
+            : 'That track is currently empty.',
+          ...writeImpactLines({
+            label, trackIndex: t, lanes, boxPLocks, freeLanes,
+            trackProb: p.trackProb ?? 100, swing: p.swing ?? SWING_MIN, boxSwing,
+          }),
+        ];
+        for (const w of laneWarnings) lines.push(`Note: ${w}`);
+        lines.push('', BACKUP_LINE);
+        return confirm(lines.join('\n'));
+      },
+    });
 
-    const backupName = downloadPayloadBackup(index, original);
-    lastBackup = { index, payload: original };
-    logNote(`Pre-write backup saved: ${backupName}`);
-
-    const { payload, dropped } = DECODERS[device.identity.slug].encodeTrackNotes(original, t, rollPattern.notes);
-    setStatus(`Writing ${bankName(index)} T${t + 1}…`);
-    await device.sendPatternKit(index, payload);
-
-    setStatus('Verifying — reading the pattern back…');
-    const reread = await device.fetchPatternKit(index);
-    const diffs = diffPayloads(payload, reread);
-    if (diffs.length === 0) {
-      setStatus(`✓ Wrote ${rollPattern.notes.length - dropped} notes to ${bankName(index)} T${t + 1} — verified byte-identical` +
-        (dropped ? ` (${dropped} notes didn't fit and were dropped)` : ''));
-      logNote(`Write verified: ${bankName(index)} T${t + 1}, ${rollPattern.notes.length - dropped} notes`);
-    } else {
-      setStatus(`⚠ Write verify FAILED for ${bankName(index)}: ${diffs.length}+ bytes differ — check the log, backup is ready to restore`, true);
-      logError(`Verify mismatch (sent vs re-read): ` +
-        diffs.slice(0, 16).map(d => `@${d.offset} ${d.sent?.toString(16)}→${d.read?.toString(16)}`).join('  '));
+    if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload };
+    const { text, isError } = writeResultMessage({
+      ...result, warnings: [...(result.warnings ?? []), ...(result.cancelled ? [] : laneWarnings)],
+    });
+    setStatus(text, isError);
+    // `isError` also covers "wrote it, but not all of it" — a lane that didn't
+    // fit — so the byte-level report is gated on there actually being diffs.
+    if (result.diffs.length) {
+      logError('Verify mismatch (sent vs re-read): '
+        + result.diffs.slice(0, 16).map(d => `@${d.offset} ${d.sent?.toString(16)}→${d.read?.toString(16)}`).join('  '));
+    } else if (!result.cancelled) {
+      logNote(`Write ${isError ? 'verified with warnings' : 'verified'}: ${result.label} T${t + 1}, `
+        + `${result.written} note${result.written === 1 ? '' : 's'}`
+        + (lanes.length ? `, ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}` : ''));
     }
   } catch (err) {
     setStatus(`Write failed: ${err.message}`, true);
@@ -468,26 +492,59 @@ function syncCopyButtons() {
   const fromFile = $('copySrcWhere').value === 'file';
   const gate = writeGate(device?.identity);
   $('copySrcLoad').disabled = !fromFile && !DECODERS[device?.identity?.slug];
+  $('copySrcSave').disabled = !copySource;
   $('copyGo').disabled = !copySource || !gate.ok;
+  // The destination is always the connected box — there is no target picker, and
+  // that used to be invisible: the Connect button *is* the target selector. So
+  // the row names whatever is plugged in, and says so when nothing is.
+  $('copyDstBox').textContent = device?.identity?.name ?? 'no box connected';
+  $('copyDstBox').classList.toggle('warn', !device?.identity);
   // Only the gate message is owned here — a chord-truncation warning from the
-  // last copy must survive the button re-sync that follows it.
-  if (copySource && !gate.ok) {
+  // last copy must survive the button re-sync that follows it. "No box" isn't
+  // worth saying: the destination label a few pixels away already says it.
+  if (copySource && !gate.ok && device?.identity) {
     $('copyInfo').textContent = `Can't copy into this box: ${gate.reason}`;
     $('copyInfo').classList.remove('warn');
   }
+  syncCopyHint();
+}
+
+// The hint under the row, from `copy-hint.js` — the state it describes lives
+// here, the wording lives there where it can be tested.
+function syncCopyHint() {
+  const targetName = device?.identity?.name ?? null;
+  $('copyHint').innerHTML = copyHintHtml({
+    source: copySource,
+    targetName,
+    // Module identity: a source loaded off a DN2 and a connected DT2 resolve to
+    // different pattern modules, which is exactly when lanes get translated.
+    crossing: !!copySource && !!targetName && copySource.mod !== DECODERS[device.identity.slug],
+  });
 }
 
 // `payload` comes along because the per-trig conditions live in per-step lanes
 // that decodePatternKit doesn't surface — they are read from the raw bytes.
-function setCopySource(patternKit, payload, mod, label, deviceName) {
-  copySource = { patternKit, payload, mod, label, deviceName };
+// `identity` ({ slug, family }) is what Save .syx needs to re-wrap the payload.
+function setCopySource(patternKit, payload, mod, label, deviceName, identity, index) {
+  copySource = { patternKit, payload, mod, label, deviceName, identity, index };
   $('copyInfo').textContent = '';
   $('copyInfo').classList.remove('warn');
   $('copySrcInfo').textContent = `${deviceName} · ${patternSummary(patternKit, label)}`;
   fillTrackOptions($('copySrcTrack'), patternKit, mod.SPEC.trackKindFallback, true);
   syncCopyButtons();
-  setStatus(`Copy source: ${deviceName} ${label} — pick the track to copy`);
+  setStatus(`Copy source: ${deviceName} ${label} — held in memory, so you can switch boxes before copying`);
 }
+
+// Save the held source, for the copy you'll want next week rather than next
+// minute. In the row that has the source, so the flow never sends you to the
+// import bar for a file.
+$('copySrcSave').onclick = () => {
+  if (!copySource) return;
+  const file = patternKitFile(copySource.identity, copySource.index, copySource.payload, { kind: 'pattern' });
+  downloadBytes(file.name, file.bytes);
+  setStatus(`Saved copy source ${copySource.label} as ${file.name}`);
+  logNote(`Saved copy source: ${file.name}`);
+};
 
 $('copySrcWhere').onchange = syncCopyButtons;
 
@@ -500,7 +557,10 @@ $('copySrcLoad').onclick = async () => {
   try {
     logNote(`Copy source: requesting pattern-kit ${bankName(index)}…`);
     const payload = await device.fetchPatternKit(index);
-    setCopySource(decoder.decodePatternKit(payload), payload, decoder, bankName(index), device.identity.name);
+    setCopySource(
+      decoder.decodePatternKit(payload), payload, decoder, bankName(index), device.identity.name,
+      { slug: device.identity.slug, family: device.identity.family }, index,
+    );
   } catch (err) {
     setStatus(`Couldn't load copy source: ${err.message}`, true);
     logError(`Copy source fetch failed: ${err.message}`);
@@ -521,7 +581,10 @@ $('copySrcFileInput').onchange = async () => {
     if (!msg.checksumOk || !msg.countOk) throw new Error(`pattern ${bankName(msg.index)} is corrupt in this file`);
     const { mod, label } = DECODER_BY_FAMILY[msg.family];
     $('copySrcPattern').value = msg.index;
-    setCopySource(mod.decodePatternKit(msg.payload), msg.payload, mod, bankName(msg.index), label);
+    setCopySource(
+      mod.decodePatternKit(msg.payload), msg.payload, mod, bankName(msg.index), label,
+      { slug: PRODUCT_BY_FAMILY[msg.family].slug, family: msg.family }, msg.index,
+    );
   } catch (err) {
     setStatus(`Couldn't read ${file.name}: ${err.message}`, true);
     logError(`Copy source decode failed: ${err.message}`);
@@ -560,31 +623,46 @@ $('copyGo').onclick = async () => {
       $('copyInfo').classList.add('warn');
     }
 
+    // The source track's PROB default is what its unlocked trigs run at, so it
+    // travels with them rather than leaving them at the target's odds.
+    const srcProb = readTrackProb(copySource.mod.SPEC, copySource.payload, srcTrack);
+
     const result = await safeWriteTrack(device, {
       index, trackIndex: dstTrack, notes,
-      // The source track's PROB default is what its unlocked trigs run at, so
-      // it travels with them rather than leaving them at the target's odds.
-      trackProb: readTrackProb(copySource.mod.SPEC, copySource.payload, srcTrack),
+      trackProb: srcProb,
       plocks: lanes,
+      // Swing belongs to the whole destination pattern, not the track being
+      // copied into it, so a track copy deliberately leaves the box's own feel
+      // alone — hence no `swing` here and none in the confirm text.
       onStatus: setStatus,
       onLog: logNote,
       onBackup: b => downloadBytes(b.name, b.bytes),
-      confirm: ({ label, existingTrigs, patternKit, boxPLocks }) => confirm(
-        `Copy ${notes.length} note${notes.length === 1 ? '' : 's'} from ${from} to ` +
-        `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${dstTrack + 1} on the ${device.identity.name}?\n\n` +
-        (existingTrigs ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track. ` : 'That track is currently empty. ') +
-        'Notes, trig conditions and p-lock lanes are copied — sounds, kit and the pattern\'s own settings stay exactly as they are.\n' +
-        (lanes.length ? `\n${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'} come${lanes.length === 1 ? 's' : ''} across.` : '') +
-        (boxPLocks.length ? `\nThat track's ${boxPLocks.length} existing p-lock lane${boxPLocks.length === 1 ? '' : 's'} on the box will be cleared.` : '') +
-        (warnings.length ? `\n\nWhat won't copy:\n${warnings.join('\n')}\n` : '') +
-        '\nA backup of the whole pattern downloads first.'
-      ),
+      confirm: ({ label, existingTrigs, patternKit, boxPLocks, freeLanes }) => {
+        const lines = [
+          `Copy ${notes.length} note${notes.length === 1 ? '' : 's'} from ${from} to `
+          + `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${dstTrack + 1} on the ${device.identity.name}?`,
+          '',
+          existingTrigs
+            ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track.`
+            : 'That track is currently empty.',
+          'Notes, trig conditions and p-lock lanes are copied — sounds, kit and the '
+          + 'pattern\'s own settings (including its swing) stay exactly as they are.',
+          ...writeImpactLines({
+            label, trackIndex: dstTrack, lanes, boxPLocks, freeLanes, trackProb: srcProb,
+          }),
+        ];
+        if (warnings.length) lines.push('', 'What won\'t copy:', ...warnings);
+        lines.push('', BACKUP_LINE);
+        return confirm(lines.join('\n'));
+      },
     });
 
     if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload };
     const { text, isError } = writeResultMessage(result);
     setStatus(text, isError);
-    if (isError) {
+    // Same gate as the write row: a warning can raise `isError` with nothing
+    // having mismatched.
+    if (result.diffs.length) {
       logError('Verify mismatch (sent vs re-read): ' +
         result.diffs.slice(0, 16).map(d => `@${d.offset} ${d.sent?.toString(16)}→${d.read?.toString(16)}`).join('  '));
     } else if (!result.cancelled) {

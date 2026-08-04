@@ -106,7 +106,23 @@ h1 .sub {
 #importBar .dim, #writeBar .dim, #copyBar .dim { color: #7d8590; }
 #importBar button, #writeBar button, #copyBar button { padding: 2px 8px; font-size: 12px; }
 #impPatternInfo, #wrInfo, #copySrcInfo, #copyInfo { color: #9aa0ab; }
-#copyInfo.warn { color: #e8b339; }
+#copyInfo.warn, #copyDstBox.warn { color: #e8b339; }
+#copyDstBox { color: #d8dae0; }
+
+/* The one thing the copy row can't show by itself: that Connect is the target
+   picker, and how a track gets from one box to the other. */
+.barhint {
+  flex: none;
+  padding: 5px 14px;
+  border-bottom: 1px solid #2a2e38;
+  background: #14161b;
+  color: #7d8590;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.barhint b { color: #d8dae0; font-weight: 600; }
+.barhint em { color: #9aa0ab; font-style: italic; }
+.barhint code { font-family: inherit; color: #9aa0ab; }
 
 #consoleWrap {
   flex: 1;

@@ -6,8 +6,8 @@ import { readSwing } from '../js/elektron/pattern-settings.js';
 import { readTrackPLocks, applyTrackPLocks } from '../js/elektron/plocks.js';
 import * as dt2 from '../js/elektron/dt2/pattern.js';
 import {
-  safeWriteTrack, writeGate, writeResultMessage, patternKitBackup,
-  decoderFor, PRODUCT_BY_FAMILY, WRITE_ALLOWED_BUILDS,
+  safeWriteTrack, writeGate, writeResultMessage, patternKitBackup, patternKitFile,
+  writeImpactLines, BACKUP_LINE, decoderFor, PRODUCT_BY_FAMILY, WRITE_ALLOWED_BUILDS,
 } from '../js/elektron/safe-write.js';
 
 // js/elektron/safe-write.js is the one write path every write feature shares,
@@ -274,6 +274,72 @@ describe.skipIf(!have)('safeWriteTrack', () => {
     expect(msg.index).toBe(0);
     expect(msg.checksumOk && msg.countOk).toBe(true);
     expect(msg.payload).toEqual(original);
+  });
+});
+
+describe('patternKitFile', () => {
+  it.skipIf(!have)('saves one pattern as a file the box would take back', () => {
+    const payload = kits().find(m => m.index === 2).payload;
+    const file = patternKitFile(DT2_IDENTITY, 2, payload, { kind: 'pattern', now: new Date('2026-08-04T09:00:00Z') });
+    expect(file.name).toBe('digitakt2-A03-pattern-2026-08-04T09-00-00.syx');
+    const [msg] = splitSysExStream(file.bytes);
+    expect(msg.type).toBe(DUMP.PATTERN_KIT);
+    expect(msg.index).toBe(2);
+    expect(msg.checksumOk && msg.countOk).toBe(true);
+    expect(msg.payload).toEqual(payload);
+  });
+
+  it.skipIf(!have)('needs nothing but a slug and a family — a file-decoded pattern has no handshake', () => {
+    const payload = kits().find(m => m.index === 0).payload;
+    const file = patternKitFile({ slug: 'digitakt2', family: FAMILY.DIGITAKT_2 }, 0, payload,
+      { kind: 'pattern', now: new Date('2026-08-04T09:00:00Z') });
+    expect(splitSysExStream(file.bytes)[0].payload).toEqual(payload);
+  });
+});
+
+// The console's "Write to box" row once had its own inline copy of the write
+// sequence and so silently dropped conditions, PROB, p-locks and swing. These
+// sentences are the shared wording that stops any write path doing that again.
+describe('writeImpactLines', () => {
+  const base = { label: 'A02', trackIndex: 1 };
+  const lines = over => writeImpactLines({ ...base, ...over });
+
+  it('says nothing when a write only replaces the track\'s trigs', () => {
+    expect(lines({ trackProb: 100, swing: 50, boxSwing: 50 })).toEqual([]);
+  });
+
+  it('names the p-lock lanes going on and the ones being cleared', () => {
+    const text = lines({
+      lanes: [{ paramId: 74, values: [] }],
+      boxPLocks: [{ paramId: 74, values: [] }, { paramId: 12, values: [] }],
+      freeLanes: 40,
+    }).join('\n');
+    expect(text).toMatch(/writes 1 p-lock lane and clears 1 p-lock lane that track has on the box/);
+  });
+
+  it('warns before the write when the pool hasn\'t room for every lane', () => {
+    const text = lines({
+      lanes: Array.from({ length: 5 }, (_, i) => ({ paramId: i, values: [] })),
+      boxPLocks: [], freeLanes: 2,
+    }).join('\n');
+    expect(text).toMatch(/only has 2 spare p-lock lanes/);
+  });
+
+  it('names a PROB default that isn\'t 100, and stays quiet when it is', () => {
+    expect(lines({ trackProb: 40 }).join('\n')).toMatch(/PROB default is also set to 40%/);
+    expect(lines({ trackProb: 100 })).toEqual([]);
+  });
+
+  it('spells out that swing reaches all 16 tracks, only when it would change', () => {
+    const text = lines({ swing: 62, boxSwing: 50 }).join('\n');
+    expect(text).toMatch(/Swing goes from 50 to 62/);
+    expect(text).toMatch(/all 16 tracks in A02, not just track 2/);
+    expect(lines({ swing: 62, boxSwing: 62 })).toEqual([]);
+    expect(lines({ swing: null, boxSwing: 50 })).toEqual([]); // a caller not touching swing
+  });
+
+  it('offers the backup line every confirm ends with', () => {
+    expect(BACKUP_LINE).toMatch(/backup .* downloads first/);
   });
 });
 
