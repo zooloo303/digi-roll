@@ -86,6 +86,14 @@
         </div>
       </div>
       <div class="grp">
+        <div class="cap">P-locks</div>
+        <div class="row" title="Add a parameter-lock lane — per-step automation of one parameter, drawn as bars under the grid. Shows the parameters of the box this pattern came from, or of the one picked in the MIDI output menu: the two use different numbers for the same knob, so a lane belongs to one box. Press Play and lanes are sent to the box as live parameter changes so you can hear them (which moves the track's real parameters and leaves them there).">
+          <select id="plockAdd" class="push"></select><button id="plockAddGo">Add lane</button>
+        </div>
+        <div id="plockList"></div>
+        <p class="hint" id="plockHint"></p>
+      </div>
+      <div class="grp">
         <div class="cap">File</div>
         <div class="btns">
           <button id="export" title="Download this pattern as a Standard MIDI File. Trig conditions (PROB/COND/FILL) are not exported — a MIDI file has no such concept">Export .mid</button>
@@ -93,7 +101,7 @@
         </div>
         <input id="importFile" type="file" accept=".mid,.midi,audio/midi" hidden>
       </div>
-      <p class="hint">Drag a note's right edge to resize (hold shift for fine lengths); with a selection, they all move by the same amount · <b>Length</b> above makes them all equal instead · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · alt+drag a note to duplicate it · right-click to delete. Paste lands where you last clicked. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid.</p>
+      <p class="hint">Drag a note's right edge to resize (hold shift for fine lengths); with a selection, they all move by the same amount · <b>Length</b> above makes them all equal instead · shift+drag for velocity · cmd/ctrl+drag sideways for micro-timing · alt+drag a note to duplicate it · right-click to delete. Paste lands where you last clicked. Trig conditions live in the <b>PROB/COND/FILL</b> lane under the grid, and p-lock automation in the lanes below that.</p>
     </aside>
 
     <!-- ===== Harmony ===== -->
@@ -228,6 +236,17 @@
       <p>The <b>Probability</b> slider in the <b>Edit</b> panel sits under Velocity and Length, the way the box keeps the three together, but it works differently from those two: it is the track's own probability default rather than anything applied to the notes you've selected — the same byte the box holds: every trig runs at those odds <i>unless</i> it carries a PROB lock of its own, which wins. So "30% across the track, but these three trigs always" is a 30% slider plus three trigs locked at 100 — not a value stamped onto every step. Unlocked steps show the inherited number dimmed in the PROB row so you can see what they'll actually do. It's per pattern, it travels with write-back, cross-device copy and Library saves, and it's honoured in the browser preview.</p>
       <p>Drag sideways to paint a value across steps · right-click (or alt-click) clears a cell · and if the step you click holds selected notes, the edit reaches <b>every selected step at once</b>. A conditioned trig is marked in the grid too: a dark corner flag on the note, plus the values written inside it once the note is two steps or wider. Conditions survive write-back, cross-device copy and Library saves; they are not in exported .mid files, which have no such concept.</p>
       <p><b>Playing them here is a partial preview.</b> Probability and the loop-counting conditions (<code>1ST</code> and every <code>A:B</code> ratio) are evaluated for real, so a <code>2:4</code> trig really does play every fourth loop. <code>PRE</code>, <code>NEI</code>, <code>LST</code> and <code>FILL</code> always play, because the browser has no neighbour track, no idea a pattern change is coming and no FILL button — the preview is never quieter than the box. Send it to the hardware to hear those properly.</p>
+      <h3>Parameter locks (p-locks)</h3>
+      <p>A p-lock is a parameter value stored on one step — a filter that opens across four steps, a decay that shortens on the last hit. On the box you hold a trig and turn a knob; digi-roll shows them as <b>automation lanes</b> stacked under the trig lane, one row per parameter, drawn as bars.</p>
+      <p>Add one in the <b>Edit</b> panel's <b>P-locks</b> group. The picker offers <b>one box's</b> parameters — the box this pattern came from, or the one you've picked in the MIDI output menu — because the two use different numbers for the same knob and a lane belongs to one of them. Then <b>click in a lane</b> to set a step's value from where you clicked, drag up and down to keep setting it, drag sideways to paint the same value across steps, and right-click or alt-click to clear. With notes selected, a click reaches every selected step. Values only land on steps that have a trig, because that's what a p-lock is.</p>
+      <p>Eleven parameters, the ones both boxes share: <b>filter cutoff</b>, <b>resonance</b>, <b>filter env depth</b>, <b>pan</b>, <b>overdrive</b>, <b>delay</b>/<b>reverb</b>/<b>chorus send</b> and <b>LFO 1–3 depth</b>.</p>
+      <h4>You can hear them, and you can send them</h4>
+      <p><b>Press Play and the box really does sweep.</b> Lanes are sent as live parameter changes (NRPN, on the pattern's channel, just ahead of each step's trig), so you can draw a filter sweep and audition it against the notes without transferring anything. Those numbers come from Elektron's own published MIDI charts, so this part is solid.</p>
+      <p><b>And all eleven now transfer into the pattern itself.</b> The internal numbers the pattern data uses aren't published anywhere — they were measured from real hardware, one knob at a time, on both boxes (they do differ: the same number means <i>overdrive</i> on a Digitakt II and <i>filter frequency</i> on a Digitone II, which is why lanes never translate by number). A lane whose parameter digi-roll <em>hasn't</em> measured still refuses to send, says <i>preview only</i>, and tells you why. The write path is hardware-tested on both boxes: lanes drawn here landed byte-identical and showed the right values on the boxes' own TRIG pages.</p>
+      <p><b>One thing to know before you press Play:</b> auditioning moves the track's <i>actual</i> parameters on the box, and leaves them where the last step put them — exactly as if you'd turned the knob yourself. Reload the kit on the box to put them back.</p>
+      <h4>Lanes already on the box</h4>
+      <p>Import a track that has p-locks and you'll see every lane it carries. Lanes automating one of the eleven measured parameters come in <b>named and editable</b>, exactly as if you'd drawn them. A lane whose parameter isn't one of the eleven is listed and drawn in grey, <b>read-only</b> — digi-roll can see that lane 3 automates parameter <code>0x2B</code> without knowing which knob that is — but it <b>survives the round trip</b>: edit the notes, send it back, and that automation lands exactly as the box had it. Library saves keep them, and a copy between two slots on the same box carries them. (One subtlety on measured lanes: the box stores locks slightly finer than one MIDI step, and digi-roll edits on the MIDI grid, so re-sending an imported lane rounds each lock to the nearest step.)</p>
+      <p>Two more things. <b>Sending replaces that track's automation:</b> lanes the box has and your pattern doesn't are cleared, the same way the trigs and their conditions are replaced — the confirmation names it before anything is written, and the usual backup downloads first. And a lock on a step with <b>no trig</b> (the box allows those) stays read-only rather than being edited, because digi-roll doesn't author them yet.</p>
       <h3>Chords</h3>
       <p>In the <b>Harmony</b> panel, turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes: that's exactly one trig's worth on the Digitakt II, whose trigs hold four note slots. The Digitone II can hold more, but digi-roll keeps the same cap so a pattern means the same thing on either box. Copying a fat chord onto a box that can't hold it keeps the four loudest notes and tells you what it dropped — never silently.</p>
       <h3>Fallback: capture by live recording</h3>
@@ -266,6 +285,13 @@
 PROB: drag up or down (top = no lock) · COND: click for the picker · FILL: click cycles none/ON/OFF
 Drag sideways to paint across steps · right-click clears · edits reach every selected step">
         <canvas id="trigLane"></canvas>
+      </div>
+      <!-- Parameter-lock lanes, one row per automated parameter. Hidden until
+           the pattern has a lane; see js/plocklane.js. -->
+      <div id="plockLaneWrap" class="hidden" title="Parameter locks — per-step automation, one row per parameter.
+Click in a cell to set that step's value, drag up/down to keep setting it, sideways to paint across steps, right-click to clear.
+Press Play to hear them on the box. Lanes marked read-only came off the box and are carried back untouched.">
+        <canvas id="plockLane"></canvas>
       </div>
     </div>
   </div>

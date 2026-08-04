@@ -21,6 +21,11 @@ Provenance key — every field below is tagged:
   FILL and COND with one variable per capture — the log is at the end of this
   file and the end state is the fixture
   `dumps/fixtures/digitakt2-A01-conditions-2026-08-02.syx`.
+- **[V3]** confirmed by the **p-lock Phase 0 experiments** (2026-08-04, OS
+  1.15B build 0070): all eleven curated parameters locked one knob per trig
+  across six captures, read by difflab's p-lock lane report — the log is at the
+  end of this file and the fixtures are
+  `dumps/fixtures/digitakt2-A01-plock-*-2026-08-04.syx`.
 - **[AR]** inferred from the Analog Rytm's publicly documented layout
   (libanalogrytm `pattern.h`, © bsp).
 
@@ -42,7 +47,7 @@ has a completely different track size and is not decoded.
 | 0 | 4 | struct version, uint32be (3 or 4) [E][F] |
 | 4 | 16 × 1184 | tracks 1–16 (track struct below) [E] |
 | 18948 | 8192 × 6 | **trig-record pool** (below) — where per-trig note/velocity/length/micro actually live [V] |
-| 68100 | 80 × 258 | p-locks: paramId u8, track u8, 128 × uint16be per-step values, `FFFF`/paramId `FF` = unused [E][F] |
+| 68100 | 80 × 258 | p-locks: paramId u8, track u8, 128 × uint16be per-step values. A **free lane is `FF FF` followed by 256 `00` bytes** — not `FFFF` values as this table said until 2026-08-04 [F, see below] |
 | 88740 | 16 | pattern name, NUL-padded [E][F] |
 | 88756 | 4 | pattern tempo, uint32be, **BPM × 120** (14400 = 120 BPM default; 20040 = 167.0 [F]) |
 | 88760 | 2 | uint16be `0x0010` = 16 — likely master pattern length in steps (matches, unconfirmed against other lengths) |
@@ -194,6 +199,136 @@ trig-creation, **it has to do that scrub itself** — clear all three lanes
 across all 128 steps of the track before writing the new values, or a fresh
 trig inherits a dead one's probability.
 
+## The p-lock pool (pattern offset 68100) — hardware-mapped [V3]
+
+80 lanes × 258 bytes, filling the space between the trig-record pool and the
+pattern name exactly (68100 + 80 × 258 = 88740, the name offset — same on the
+DN2 at its own offsets). Layout, paramId numbering, value scaling and the
+allocation/free semantics were all measured by the [V3] Phase 0 experiments
+(2026-08-04, OS 1.15B build 0070, log below); fixtures in `dumps/fixtures/`.
+
+| lane offset | size | field |
+|-------------|------|-------|
+| 0 | 1 | **paramId** — which parameter this lane automates; `FF` = lane free [V3] |
+| 1 | 1 | **track** — 0-based, `FF` = lane free [V3] |
+| 2 | 128 × 2 | one **uint16be per step**; `FFFF` = step not locked [V3] |
+
+A lane is keyed by **(paramId, track)**: one lane automates one parameter on one
+track, and all sixteen tracks share the same pool of 80. Confirmed directly: the
+same paramId (44) was observed allocated once per track when the same knob was
+locked on two tracks, and a new lock on an already-locked parameter joins its
+existing lane rather than allocating a second one.
+
+**paramId numbering [V3].** *Not* the NRPN LSB (the old hypothesis — cutoff's
+NRPN is 1/20 but its paramId is 44) and not the CC either. It is the box's own
+internal parameter index, page-ordered, and it differs per box for the same
+knob — see the measured table below and note that 74 here is overdrive while 74
+on the DN2 is filter frequency. **Never translate a lane by paramId; translate
+by canonical name.** The measured DT2 paramIds:
+
+| parameter | paramId | parameter | paramId |
+|-----------|---------|-----------|---------|
+| LFO1 depth | 29 (0x1D) | delay send | 63 (0x3F) |
+| LFO2 depth | 30 (0x1E) | reverb send | 64 (0x40) |
+| LFO3 depth | 31 (0x1F) | pan | 65 (0x41) |
+| filter frequency | 44 (0x2C) | overdrive | 74 (0x4A) |
+| filter resonance | 45 (0x2D) | | |
+| filter env depth | 46 (0x2E) | | |
+| chorus send | 62 (0x3E) | | |
+
+The blocks mirror the box's own pages: FREQ/RESO/ENV DEPTH contiguous at
+44/45/46, CHO/DEL/REV/PAN contiguous at 62–65 in AMP-page knob order, the three
+LFO depths at 29/30/31.
+
+**Value scaling [V3].** One law for every parameter measured: the stored uint16
+is the display value normalised onto 15 bits,
+
+```
+stored = (display − min) / range × 32768
+```
+
+where `range` is the parameter's display span (128 for 0–127 knobs and ±64
+knobs, 256 for the ±128 LFO depths). On the MIDI 0–127 axis that digi-roll's
+lanes use, this is simply **value × 256**: cutoff 127 → `0x7F00`, pan hard left
+→ `0x0000`, ENV DEPTH −32 → `0x2000`, LFO depth +16 (MIDI 72) → `0x4800`. The
+low byte carries the box's own sub-MIDI fine resolution (a knob nudge leaves
+residues like `0x4002` for a displayed 64), so a box-authored lock can hold
+finer values than digi-roll's integer display axis; re-sending such a lane
+quantises to the nearest MIDI step. Values are **not** the 14-bit NRPN number —
+the 15-bit axis is twice that, and observed words (`0x7F00` = 32512) exceed the
+14-bit ceiling.
+
+**Allocation and free semantics [V3].**
+
+- A free lane is `FF FF` followed by **256 zero bytes** (confirmed across every
+  committed dump — exactly 160 `FF`s and 20 480 zeros in an empty pool — and by
+  watching the box free one).
+- Inside an allocated lane, `FFFF` marks a step with no lock.
+- A new parameter's lock claims the **lowest free lane**, including a hole left
+  mid-pool by an earlier free — observed directly when the lane freed in the
+  removal experiment was reclaimed by the next lock.
+- Removing the last lock of a parameter frees its lane **in place**: paramId and
+  track return to `FF`, the value area to zeros, and the neighbouring lanes do
+  **not** compact. A hole in the middle of the pool is a legal, box-authored
+  state.
+- Locks are **per step, not per note**: a lock on a trig carrying a chord stores
+  one value word (confirmed on the DN2's NOTE EDIT chords).
+
+digi-roll's write path **rewrites a lane where it already sits** and frees to
+the `FF FF` + zeros form — which the removal experiment showed is byte-for-byte
+what the box itself does.
+
+The DT2's *other* lock surface — the per-step **sound**-pool slot at track
+offset 1024 — is a different structure and is not part of this pool.
+
+### The curated parameters, and their MIDI numbers [E-manual]
+
+Not reverse engineering — this is Elektron's own published chart, and it is here
+because it is what lets digi-roll *play* a lane before it can store one. DT2
+Appendix B and DN2 Appendix C, extracted from the OS 1.15A and OS 1.10D manual
+PDFs. The eleven were chosen because they exist on both boxes.
+
+| parameter | DT2 CC | DN2 CC | NRPN DT2 | NRPN DN2 |
+|-----------|--------|--------|----------|----------|
+| filter cutoff / frequency | 74 | 16 | 1/20 | 1/20 |
+| filter resonance (knob F) | 75 | 17 | 1/21 | 1/21 |
+| filter env depth | 77 | 24 | 1/26 † | 1/26 |
+| pan | 90 | 89 | 1/38 | 1/38 |
+| overdrive | 57 | 81 | — ‡ | 1/8 |
+| delay send | 84 | 30 | 1/36 | 1/36 |
+| reverb send | 85 | 31 | 1/37 | 1/37 |
+| chorus send | 12 | 29 | 1/35 | 1/35 |
+| LFO 1 depth | 109 (+LSB 59) | 109 | 1/49 | 1/49 |
+| LFO 2 depth | 119 (+LSB 61) | 118 | 1/57 | 1/57 |
+| LFO 3 depth | 86 (+LSB 63) | **none** | 1/72 | 1/72 |
+
+† **This one row is not what the manual prints.** The DT2 appendix gives `1/23`
+for *both* Env. Depth and Env. Delay, which cannot both be right; the DN2 lists
+depth at 1/26 and delay at 1/23, so digi-roll uses 1/26 on both boxes and the
+table above shows what it actually sends. Worth confirming on the box — it is the
+one number here taken from inference rather than from the chart.
+‡ The DT2 appendix gives no NRPN for any FX-page parameter (bit reduction,
+overdrive, SRR) — most likely an omission, but CC is what we have.
+
+Two traps in that table, both real:
+
+- **Pan is 90 on a DT2 and 89 on a DN2 — and 89 is *Volume* on the DT2.** One
+  table shared between the boxes would ride the wrong fader. Hence one curated
+  table per device, keyed by a shared canonical name.
+- **The DN2 has no CC at all for any LFO 3 parameter.** Its appendix says
+  outright that high-resolution parameters can't be reached over CC and NRPN must
+  be used, which is why digi-roll auditions over NRPN by default.
+
+The DN2 appendix also lists **Decay and Sustain both at CC 86** in its AMP
+section, which is plainly a typo. Take the charts as a strong starting point, not
+as gospel: every mapping is confirmable in seconds by sending a value and watching
+the box's screen.
+
+**Retrig is deliberately absent.** It has no CC and no NRPN on either box, and it
+isn't a single knob (RATE/LEN/VEL/on-off on TRIG page 2), so there is nothing to
+audition and no reason to assume it is one lane. It joins the list once a capture
+shows its shape.
+
 ## Length byte scale
 
 Piecewise-linear, doubling every 16 values ([AR], default value confirmed [F]):
@@ -289,3 +424,38 @@ lab's fetch path. Every diff was surgical — only the predicted region moved.
 End state saved as `dumps/fixtures/digitakt2-A01-conditions-2026-08-02.syx` —
 15 live trigs, all three fields in varied combinations, all three "none"
 cases, an explicit `0x64`, and a dead step 16 still holding leftovers.
+
+## The [V3] p-lock Phase 0 experiment log (2026-08-04, OS 1.15B build 0070)
+
+Throwaway project, pattern A01, four trigs on track 1 at steps 1/5/9/13
+(0-based 0/4/8/12). One capture per numbered round, diffed by difflab with the
+p-lock lane report; every capture's diff was confined to the regions named.
+
+1. **FLTR FREQ 0/64/127 on trigs 1/5/9** → lane 0 allocated, paramId 44
+   (0x2C), track 0, values `0x0000`/`0x4002`/`0x7F00`. Killed the NRPN-LSB
+   hypothesis (FREQ's NRPN is 1/20) and gave the scaling in one capture:
+   display × 256, low byte = sub-display fine resolution. All 255 changed bytes
+   inside the lane.
+2. **RESO 100 / PAN hard-left / ENV DEPTH −32 / OVERDRIVE 127, one per trig**
+   → paramIds 45/65/46/74, values 25600/0/8192/32512. Bipolar parameters store
+   offset-from-minimum, not signed. Lanes allocate lowest-free in the order the
+   locks were made.
+3. **DELAY 127 / REVERB 64 / CHORUS 32 / LFO1 DEPTH +16** → paramIds
+   63/64/62/29, values 32512/16384/8192/18433. The LFO value pinned the general
+   law: stored = (display − min) / range × 32768, range 256 for the ±128 LFO
+   depths (→ ×128), 128 for everything else (→ ×256).
+4. **LFO2 +16 / LFO3 +16** → paramIds 30/31, both 18433 — encoding identical
+   to LFO1's, completing all eleven curated parameters.
+5. **Removed the single RESO lock** (hold trig + click encoder) → lane 1 freed
+   **in place**: paramId `2D`→`FF`, track→`FF`, values→zeros — byte-identical
+   to the `FF FF` + 256-zeros free form, no compaction of lanes 2–10. 257
+   changed bytes, all inside lane 1.
+6. **New trig on track 2, FLTR FREQ 100.00** → new lane with paramId 44 again
+   and track byte 1: the lane key is (paramId, track). The lane **reclaimed the
+   hole** freed in round 5 — allocation is lowest-free including holes. Value
+   25601 ≈ 100 × 256 (+1 fine).
+
+End state saved as `dumps/fixtures/digitakt2-A01-plock-final-2026-08-04.syx` —
+11 allocated lanes including the same paramId on two tracks. Intermediate
+states: `…-plock-fltrfreq-…` (round 1), `…-plock-4params-…` (round 2),
+`…-plock-8params-…` (round 3), `…-plock-11params-…` (round 4).

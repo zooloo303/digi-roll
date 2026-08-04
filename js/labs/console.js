@@ -21,11 +21,14 @@ const DECODER_BY_FAMILY = {
   [FAMILY.DIGITONE_2]: { mod: dn2, label: 'Digitone II' },
 };
 import { loadState, saveState, NUM_SLOTS } from '../state.js';
-import { deviceNotesToRoll, rollLengthForTrack, makeSource, attachTrigSettings } from '../roll-bridge.js';
+import {
+  deviceNotesToRoll, rollLengthForTrack, makeSource, attachTrigSettings, devicePLocksToRoll,
+} from '../roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from '../elektron/trig-cond.js';
+import { readTrackPLocks } from '../elektron/plocks.js';
 import { readSwing } from '../elektron/pattern-settings.js';
 import { PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage } from '../elektron/safe-write.js';
-import { trackNotesForTarget, describeChordDrops } from '../elektron/copy-track.js';
+import { trackNotesForTarget, describeChordDrops, plockLanesForTarget } from '../elektron/copy-track.js';
 import { downloadBytes } from '../download.js';
 
 const $ = id => document.getElementById(id);
@@ -286,12 +289,19 @@ $('impGo').onclick = () => {
     readTrackTrigSettings(imported.spec, imported.payload, t),
   );
 
+  // p-lock lanes, off the raw payload like the condition lanes. `live` is every
+  // step with a trig on the whole track, so a lane isn't called trigless merely
+  // because the roll shows fewer bars than the track holds.
+  const live = new Set(track.steps.flatMap((w, s) => (w & 1 ? [s] : [])));
+  const lanes = devicePLocksToRoll(readTrackPLocks(imported.spec, imported.payload, t), imported.spec.device, live);
+
   const st = loadState(); // fresh — the piano-roll tab may have written since we loaded
   const p = st.patterns[slot];
   p.name = `${imported.label} T${t + 1}`;
   p.lengthSteps = lengthSteps;
   p.trackProb = readTrackProb(imported.spec, imported.payload, t);
   p.swing = readSwing(imported.spec, imported.payload); // per pattern, like the roll models it
+  p.plocks = lanes;
   p.notes = deviceNotesToRoll(notes, lengthSteps);
   // Provenance: the roll's "Send to box" button starts aimed at exactly this
   // pattern and track, and refuses if a different box is plugged in.
@@ -303,8 +313,9 @@ $('impGo').onclick = () => {
     : null;
   saveState(st);
 
-  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'} from ${imported.label} T${t + 1} into Pattern ${slot + 1} — open the piano roll`);
-  logNote(`Imported ${imported.label} T${t + 1} → piano-roll slot ${slot + 1} (${notes.length} notes)`);
+  const laneNote = lanes.length ? ` and ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}` : '';
+  setStatus(`Imported ${notes.length} note${notes.length === 1 ? '' : 's'}${laneNote} from ${imported.label} T${t + 1} into Pattern ${slot + 1} — open the piano roll`);
+  logNote(`Imported ${imported.label} T${t + 1} → piano-roll slot ${slot + 1} (${notes.length} notes${laneNote})`);
 };
 
 // --- Write to box: piano-roll pattern → DT2 track --------------------------------
@@ -531,10 +542,21 @@ $('copyGo').onclick = async () => {
   try {
     // Chord policy first, so the user is told what won't fit *before* deciding.
     const { notes, drops } = trackNotesForTarget(copySource.mod, copySource.patternKit, srcTrack, gate.mod, copySource.payload);
-    const warnings = describeChordDrops(drops, device.identity.name);
-    for (const w of warnings) logError(`Chord truncated — ${w}`);
+    const chordWarnings = describeChordDrops(drops, device.identity.name);
+    for (const w of chordWarnings) logError(`Chord truncated — ${w}`);
+
+    // p-lock lanes travel too, translated by parameter name when the boxes
+    // differ. Anything untranslatable is dropped and said out loud — before the
+    // decision, like the chord policy above it.
+    const { lanes, warnings: laneWarnings } = plockLanesForTarget(
+      readTrackPLocks(copySource.mod.SPEC, copySource.payload, srcTrack),
+      copySource.mod.SPEC.device, gate.mod.SPEC.device,
+    );
+    for (const w of laneWarnings) logError(`P-lock lane dropped — ${w}`);
+
+    const warnings = [...chordWarnings, ...laneWarnings];
     if (warnings.length) {
-      $('copyInfo').textContent = `${warnings.length} chord${warnings.length === 1 ? '' : 's'} truncated — see the log`;
+      $('copyInfo').textContent = `${warnings.length} thing${warnings.length === 1 ? '' : 's'} didn't copy — see the log`;
       $('copyInfo').classList.add('warn');
     }
 
@@ -543,15 +565,18 @@ $('copyGo').onclick = async () => {
       // The source track's PROB default is what its unlocked trigs run at, so
       // it travels with them rather than leaving them at the target's odds.
       trackProb: readTrackProb(copySource.mod.SPEC, copySource.payload, srcTrack),
+      plocks: lanes,
       onStatus: setStatus,
       onLog: logNote,
       onBackup: b => downloadBytes(b.name, b.bytes),
-      confirm: ({ label, existingTrigs, patternKit }) => confirm(
+      confirm: ({ label, existingTrigs, patternKit, boxPLocks }) => confirm(
         `Copy ${notes.length} note${notes.length === 1 ? '' : 's'} from ${from} to ` +
         `${label}${patternKit.name ? ` “${patternKit.name}”` : ''} track ${dstTrack + 1} on the ${device.identity.name}?\n\n` +
         (existingTrigs ? `This replaces the ${existingTrigs} trig${existingTrigs === 1 ? '' : 's'} on that track. ` : 'That track is currently empty. ') +
-        'Only notes are copied — sounds, p-locks and pattern settings stay exactly as they are.\n' +
-        (warnings.length ? `\nToo many notes on a trig for this box:\n${warnings.join('\n')}\n` : '') +
+        'Notes, trig conditions and p-lock lanes are copied — sounds, kit and the pattern\'s own settings stay exactly as they are.\n' +
+        (lanes.length ? `\n${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'} come${lanes.length === 1 ? 's' : ''} across.` : '') +
+        (boxPLocks.length ? `\nThat track's ${boxPLocks.length} existing p-lock lane${boxPLocks.length === 1 ? '' : 's'} on the box will be cleared.` : '') +
+        (warnings.length ? `\n\nWhat won't copy:\n${warnings.join('\n')}\n` : '') +
         '\nA backup of the whole pattern downloads first.'
       ),
     });
@@ -564,7 +589,8 @@ $('copyGo').onclick = async () => {
         result.diffs.slice(0, 16).map(d => `@${d.offset} ${d.sent?.toString(16)}→${d.read?.toString(16)}`).join('  '));
     } else if (!result.cancelled) {
       logNote(`Copy verified: ${from} → ${result.label} T${dstTrack + 1}, ${result.written} notes` +
-        (warnings.length ? ` (${warnings.length} chord truncated)` : ''));
+        (lanes.length ? `, ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}` : '') +
+        (warnings.length ? ` (${warnings.length} thing${warnings.length === 1 ? '' : 's'} didn't copy — see above)` : ''));
     }
   } catch (err) {
     setStatus(`Copy failed: ${err.message}`, true);

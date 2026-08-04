@@ -20,6 +20,15 @@
     background: #171a20; font-size: 12px; }
   .region { margin-bottom: 10px; }
   .region .label { color: #f0913a; }
+  /* The p-lock report sits above the byte ranges: lanes first, bytes second. */
+  .plockReport { margin: 0 0 14px; padding: 8px 10px; border: 1px solid #3a3050;
+    border-radius: 6px; background: #191622; }
+  .plockReport h4 { margin: 0 0 6px; font-size: 12px; color: #b79df0; }
+  .plockReport ul { margin: 0; padding-left: 18px; color: #b7bdc8; }
+  .plockReport li { margin-bottom: 3px; }
+  .plockReport code { color: #6db2f0; }
+  .plockReport .new { color: #6aa84f; }
+  .plockReport .gone { color: #d0704f; }
   .region .bytes { color: #b7bdc8; white-space: pre-wrap; word-break: break-all; }
   .region .bytes b { color: #6db2f0; font-weight: 400; }
   .entry { border: 1px solid #2a2e38; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
@@ -50,6 +59,9 @@
     <input id="labNote" type="text" placeholder="what did you change? e.g. “added trig, track 1, step 1”">
     <button id="labSave" title="Save this diff to the lab notebook" disabled>Save to notebook</button>
     <button id="labChain" title="Use the latest capture as the next baseline" disabled>Chain: B → baseline</button>
+    <label class="field" title="Read the 80-lane p-lock pool as lanes rather than as raw byte ranges: which lane a lock claimed, its paramId and track, and every per-step value that moved. This is the readout the p-lock mapping experiments are for.">
+      <input id="labPLocks" type="checkbox" checked> p-lock lane report
+    </label>
     <span id="captureInfo"></span>
   </div>
 

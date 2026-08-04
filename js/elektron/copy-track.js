@@ -7,12 +7,17 @@
 // converter, because the two pattern structs only look alike; the note model
 // is the thing both boxes genuinely agree on.
 //
-// Only note data crosses: trig bits, note, velocity, length, micro-timing, the
-// three per-trig conditions (PROB/FILL/COND) and the track's own PROB default,
-// which is what unlocked trigs run at. Sounds, p-locks, kit and other
-// pattern settings belong to the target and are left exactly as they were —
-// this is the same read-modify-write of one track as Phase 2/3, just with the
+// What crosses: trig bits, note, velocity, length, micro-timing, the three
+// per-trig conditions (PROB/FILL/COND), the track's own PROB default (what
+// unlocked trigs run at) and the track's p-lock lanes. Sounds, kit and the
+// pattern's own settings belong to the target and are left exactly as they were
+// — this is the same read-modify-write of one track as Phase 2/3, just with the
 // notes coming from somewhere else.
+//
+// p-lock lanes are the one thing here that can fail to cross: see
+// plockLanesForTarget below. Between two slots on one box they carry unchanged;
+// between boxes they are translated by parameter name, and anything with no
+// equivalent is dropped into `warnings` rather than aimed at a guess.
 //
 // Conditions need no cross-device policy: the DT2 and DN2 store them
 // identically and share one 76-value COND list (hardware-verified 2026-08-02),
@@ -24,6 +29,9 @@ import {
   readTrackTrigSettings, applyTrackTrigSettings, attachTrigSettings, trigSettingsFromNotes,
   readTrackProb, applyTrackProb,
 } from './trig-cond.js';
+import { readTrackPLocks, applyTrackPLocks } from './plocks.js';
+import { paramTableFor } from './param-tables.js';
+import { paramByPlockId, paramByName, displayFromStored, storedFromDisplay } from './params.js';
 
 // Decoded notes (trackNotes: lenSteps) → the encoder's shape (len), with none
 // of the piano roll's clamping: clamping a pitch into the roll's drawable rows
@@ -78,6 +86,65 @@ export function describeChordDrops(drops, targetName = 'the target') {
     `${d.dropped.length === 1 ? 'was' : 'were'} dropped`);
 }
 
+// --- p-lock lanes across devices ------------------------------------------------
+//
+// A paramId is a number in one box's own numbering, so lanes cannot be copied
+// byte-for-byte between boxes the way notes and conditions can. They are
+// translated by *canonical parameter name*: find what the source paramId means
+// in the source's curated table, look that name up in the target's, and rescale
+// the values through both descriptors — the two boxes may store the same knob
+// differently.
+//
+// A lane that can't be translated is **dropped and reported**, never guessed at.
+// That covers the ordinary case today: both curated tables are empty pending the
+// hardware experiments, so every lane is untranslatable and every cross-device
+// copy says so. It also covers the case that matters after they are filled — a
+// parameter one box has and the other doesn't — which is the same policy as
+// chord truncation, and for the same reason: silently moving a lock onto the
+// wrong knob is worse than not moving it.
+//
+// Copying between two slots on the *same* box needs no translation at all, and
+// `sourceKind === targetKind` short-circuits to a straight carry.
+//
+// Returns { lanes, warnings }, lanes in applyTrackPLocks's shape.
+export function plockLanesForTarget(lanes, sourceKind, targetKind) {
+  if (!lanes?.length) return { lanes: [], warnings: [] };
+  if (sourceKind === targetKind) {
+    return { lanes: lanes.map(l => ({ paramId: l.paramId, values: l.values })), warnings: [] };
+  }
+
+  const fromTable = paramTableFor(sourceKind);
+  const toTable = paramTableFor(targetKind);
+  const out = [];
+  const warnings = [];
+  for (const lane of lanes) {
+    const hex = `0x${lane.paramId.toString(16).padStart(2, '0')}`;
+    // The source paramId has to resolve to a parameter we know, or there is
+    // nothing to translate *by*. That is the ordinary case today: no paramId has
+    // been measured on either box, so every cross-device lane copy says so.
+    const from = paramByPlockId(fromTable, lane.paramId);
+    if (!from) {
+      warnings.push(`p-lock lane on ${sourceKind} parameter ${hex} wasn't copied — `
+        + `digi-roll doesn't know which parameter that is yet, so it can't say what it would be on a ${targetKind}`);
+      continue;
+    }
+    const to = paramByName(toTable, from.name);
+    if (!to?.writable) {
+      warnings.push(`p-lock lane “${from.label}” wasn't copied — `
+        + (to ? `digi-roll hasn't measured where a ${targetKind} stores it` : `the ${targetKind} has no equivalent parameter`));
+      continue;
+    }
+    out.push({
+      paramId: to.plock.id,
+      // Out of the source's stored words, onto the shared display axis, then into
+      // the target's stored words — so a difference in either box's scaling is
+      // handled rather than assumed away.
+      values: lane.values.map(v => (v == null ? null : storedFromDisplay(to, displayFromStored(from, v)))),
+    });
+  }
+  return { lanes: out, warnings };
+}
+
 // Read one track's notes out of an already-decoded source pattern, in the
 // shape encodeTrackNotes wants, truncated to what the target device can hold.
 // `sourceMod` / `targetMod` are the per-device modules (dt2/pattern.js etc.).
@@ -116,16 +183,30 @@ export function copyTrack({
   // Conditions ride on the payload encodeTrackNotes just returned — a fresh
   // copy, so this is the only mutation of an already-cloned buffer.
   applyTrackTrigSettings(targetMod.SPEC, payload, targetTrack, trigSettingsFromNotes(notes));
+  const laneWarnings = [];
   // The track's PROB default is part of how the copied trigs sound, so it
   // travels with them — but only when we have the source bytes to read it from.
   if (sourcePayload) {
     applyTrackProb(targetMod.SPEC, payload, targetTrack,
       readTrackProb(sourceMod.SPEC, sourcePayload, sourceTrack));
+    // p-lock lanes likewise: they're part of how the track sounds, and they live
+    // in bytes decodePatternKit doesn't surface. Translation happens before the
+    // write so an untranslatable lane is reported instead of aimed at a guess,
+    // and applyTrackPLocks adds its own warning if the target's 80 lanes are
+    // already full.
+    const source = readTrackPLocks(sourceMod.SPEC, sourcePayload, sourceTrack);
+    const { lanes, warnings } = plockLanesForTarget(source, sourceMod.SPEC.device, targetMod.SPEC.device);
+    laneWarnings.push(...warnings);
+    const applied = applyTrackPLocks(targetMod.SPEC, payload, targetTrack, lanes);
+    laneWarnings.push(...applied.warnings);
   }
   // Swing deliberately does NOT travel. It belongs to the whole pattern, so
   // carrying it would let a one-track copy silently re-time the fifteen tracks
   // already in the target slot — the opposite of what this function promises.
   // The main "Send to box" path does write it, because there the roll's pattern
   // is the pattern; here the target is somebody else's.
-  return { payload, notes, dropped, drops, warnings: describeChordDrops(drops, targetName) };
+  return {
+    payload, notes, dropped, drops,
+    warnings: [...describeChordDrops(drops, targetName), ...laneWarnings],
+  };
 }

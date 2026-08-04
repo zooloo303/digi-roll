@@ -21,6 +21,45 @@ export function makeNote(step, pitch, len = 1, velocity = 100, micro = 0, trig =
   };
 }
 
+// A p-lock lane on a roll pattern: one device parameter automated across the
+// 128 steps the hardware holds (not the roll's current length — shortening a
+// pattern must not destroy the tail of a lane we are only passing through).
+//
+//   name        canonical parameter key ('filter.cutoff') when digi-roll
+//               authored the lane, so it knows exactly which knob this is.
+//               null on a lane that came off a box.
+//   paramId     the box's own parameter byte, when the lane came off a box.
+//               null on a lane digi-roll authored, because which byte the
+//               hardware uses for a given parameter has not been measured yet
+//               (see js/elektron/params.js). One of `name` / `paramId` is always
+//               set; both, once Phase 0 lands.
+//   deviceKind  which box this lane is for, 'DT2' / 'DN2'. The two boxes both
+//               number their parameters differently *and* use different CCs for
+//               the same knob, so a lane without this is meaningless.
+//   values      one value per step, null where the step has no lock, on the
+//               parameter's display axis (js/elektron/params.js: MIDI 0–127 for
+//               a curated parameter, the raw uint16 for a lane off a box whose
+//               parameter we can't identify). Display rather than stored,
+//               because a lane can be authored and auditioned before anyone
+//               knows what its uint16 would be.
+//   trigless    the box's own lane held a value on a step with no trig. digi-roll
+//               v1 doesn't model trigless locks, so such a lane is shown
+//               read-only and passed through untouched rather than edited into
+//               something that isn't what the box has.
+export const PLOCK_STEPS = 128;
+
+export function makePLockLane({
+  name = null, paramId = null, deviceKind = null, values = [], trigless = false,
+} = {}) {
+  if (name == null && paramId == null) {
+    throw new Error('a p-lock lane needs either a parameter name or a paramId');
+  }
+  return {
+    name, paramId, deviceKind, trigless,
+    values: Array.from({ length: PLOCK_STEPS }, (_, s) => values[s] ?? null),
+  };
+}
+
 export function defaultPattern(index) {
   return {
     name: `Pattern ${index + 1}`,
@@ -33,6 +72,12 @@ export function defaultPattern(index) {
     // the per-trig lane.
     trackProb: 100,
     notes: [],
+    // Parameter-lock lanes: per-step automation of one device parameter each.
+    // See makePLockLane() below for the shape. Empty on a pattern that has never
+    // met a box, because there is nothing to automate until you know which knob
+    // — the curated parameter tables are what turn a paramId into a knob, and
+    // they are filled from hardware experiments (js/elektron/params.js).
+    plocks: [],
     // Provenance: the box/pattern/track this slot was imported from — or was
     // last sent to. null on patterns that have never met a box; see
     // makeSource() in js/roll-bridge.js for the shape.
@@ -84,6 +129,12 @@ export function loadState() {
     for (const p of state.patterns) {
       if (typeof p.swing !== 'number') p.swing = 50;
       if (typeof p.trackProb !== 'number') p.trackProb = 100;
+      // p-lock lanes arrived after the rest; older saves simply have none. A
+      // lane loaded from storage is re-normalised through makePLockLane so a
+      // hand-edited or truncated `values` array can't leave short lanes about.
+      p.plocks = Array.isArray(p.plocks)
+        ? p.plocks.filter(l => l?.name != null || l?.paramId != null).map(makePLockLane)
+        : [];
       if (p.source === undefined) p.source = null;
       if (p.dest === undefined) p.dest = null;
       for (const n of p.notes) {

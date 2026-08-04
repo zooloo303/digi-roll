@@ -11,12 +11,20 @@
 
 import { ElektronDevice } from '../elektron/device.js';
 import { bankName, diffAnnotatedRanges } from '../elektron/pattern-core.js';
+import { readAllPLocks } from '../elektron/plocks.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
 
 const DESCRIBERS = {
   digitakt2: dt2.describeOffset,
   digitone2: dn2.describeOffset,
+};
+
+// Specs, for the readouts that need to know the struct rather than just how to
+// name an offset — the p-lock lane report below.
+const SPECS = {
+  digitakt2: dt2.SPEC,
+  digitone2: dn2.SPEC,
 };
 
 const $ = id => document.getElementById(id);
@@ -110,12 +118,117 @@ $('capA').onclick = async () => {
   syncButtons();
 };
 
+// --- P-lock lane report ----------------------------------------------------------
+//
+// The 80-lane p-lock pool is 20,640 bytes of uint16 words, so a raw byte diff of
+// it is unreadable — "[68100..68359] p-lock lane 0" tells you a lane changed and
+// nothing about what. This reads the pool as *lanes* on both sides and says what
+// happened in the terms the experiment is asking about: which lane got claimed,
+// what paramId and track it holds, and which steps hold which value words.
+//
+// That is exactly the readout PLAN.md's Phase 0 needs. What it cannot do is tell
+// you what a paramId *means* — that comes from you knowing which knob you just
+// turned, which is why the experiments are one edit at a time. Write the answer
+// into js/elektron/dt2/params.js or dn2/params.js and the lane stops being
+// read-only everywhere else in digi-roll.
+
+const laneKey = l => `${l.paramId}:${l.track}`;
+
+// Steps whose value word differs between two lanes, as { step, was, now }.
+function laneValueChanges(before, after) {
+  const out = [];
+  const n = Math.max(before?.values.length ?? 0, after?.values.length ?? 0);
+  for (let step = 0; step < n; step++) {
+    const was = before?.values[step] ?? null;
+    const now = after?.values[step] ?? null;
+    if (was !== now) out.push({ step, was, now });
+  }
+  return out;
+}
+
+const word = v => (v == null ? '—' : `0x${v.toString(16).padStart(4, '0')} (${v})`);
+
+// A lane's non-empty steps, short enough to read at a glance.
+function laneSummary(lane) {
+  const set = lane.values.flatMap((v, step) => (v == null ? [] : [`${step + 1}:${word(v)}`]));
+  return set.length ? set.slice(0, 12).join(', ') + (set.length > 12 ? ` … (${set.length} steps)` : '') : 'no values';
+}
+
+// Compare the pools of two payloads. Returns null when the box has no spec here
+// (nothing to read the pool with) or when nothing about the pool changed.
+export function plockReport(spec, a, b) {
+  if (!spec) return null;
+  const before = readAllPLocks(spec, a);
+  const after = readAllPLocks(spec, b);
+  const byLaneBefore = new Map(before.map(l => [l.lane, l]));
+  const byLaneAfter = new Map(after.map(l => [l.lane, l]));
+
+  const lines = [];
+  for (let lane = 0; lane < spec.pattern.numPLocks; lane++) {
+    const wasLane = byLaneBefore.get(lane);
+    const nowLane = byLaneAfter.get(lane);
+    if (!wasLane && !nowLane) continue;
+
+    if (!wasLane) {
+      lines.push({ kind: 'new', lane, text:
+        `lane ${lane} <b>allocated</b>: paramId <code>0x${nowLane.paramId.toString(16).padStart(2, '0')}</code> `
+        + `(${nowLane.paramId}), track ${nowLane.track + 1} — ${laneSummary(nowLane)}` });
+      continue;
+    }
+    if (!nowLane) {
+      lines.push({ kind: 'gone', lane, text:
+        `lane ${lane} <b>freed</b>: was paramId <code>0x${wasLane.paramId.toString(16).padStart(2, '0')}</code>, `
+        + `track ${wasLane.track + 1}` });
+      continue;
+    }
+    const header = wasLane.paramId !== nowLane.paramId || wasLane.track !== nowLane.track
+      ? ` — header changed: paramId 0x${wasLane.paramId.toString(16)}→0x${nowLane.paramId.toString(16)}, `
+        + `track ${wasLane.track + 1}→${nowLane.track + 1}`
+      : '';
+    const changes = laneValueChanges(wasLane, nowLane);
+    if (!header && !changes.length) continue;
+    lines.push({ kind: 'changed', lane, text:
+      `lane ${lane} (paramId <code>0x${nowLane.paramId.toString(16).padStart(2, '0')}</code>, track ${nowLane.track + 1})${header}`
+      + (changes.length
+        ? `: ${changes.slice(0, 16).map(c => `step ${c.step + 1} ${word(c.was)} → ${word(c.now)}`).join(', ')}`
+          + (changes.length > 16 ? ` … (${changes.length} steps)` : '')
+        : '') });
+  }
+
+  return {
+    changed: lines,
+    // Standing state, so a capture with no p-lock change still says what the
+    // pool holds — "nothing was allocated" is itself a finding, and it is the one
+    // the conditions experiments recorded.
+    lanesBefore: before.map(l => ({ lane: l.lane, key: laneKey(l), text: `lane ${l.lane}: paramId 0x${l.paramId.toString(16)}, track ${l.track + 1} — ${laneSummary(l)}` })),
+    lanesAfter: after.map(l => ({ lane: l.lane, key: laneKey(l), text: `lane ${l.lane}: paramId 0x${l.paramId.toString(16)}, track ${l.track + 1} — ${laneSummary(l)}` })),
+    free: spec.pattern.numPLocks - after.length,
+  };
+}
+
+function renderPLockReport(report) {
+  if (!report) return '';
+  const body = report.changed.length
+    ? `<ul>${report.changed.map(l => `<li class="${l.kind}">${l.text}</li>`).join('')}</ul>`
+    : report.lanesAfter.length
+      ? `<ul><li>No lane changed. The pool currently holds:</li>${report.lanesAfter.map(l => `<li>${l.text}</li>`).join('')}</ul>`
+      : '<ul><li>No lane changed, and the pool is completely empty — whatever you edited, '
+        + 'the box did not use a p-lock lane for it.</li></ul>';
+  return `<div class="plockReport"><h4>P-lock lanes — ${report.free} of `
+    + `${report.free + report.lanesAfter.length} free</h4>${body}</div>`;
+}
+
 function renderDiff(diff, a, b) {
+  // The lane report goes first even when nothing else changed: on a p-lock
+  // experiment it is the answer, and the byte ranges below are the working.
+  const plocks = $('labPLocks').checked ? renderPLockReport(diff.plocks) : '';
   if (!diff.ranges.length) {
-    $('diffPane').innerHTML = '<span class="dim">No differences — the edit didn\'t reach this pattern (or there was no edit).</span>';
+    $('diffPane').innerHTML = plocks
+      + '<span class="dim">No byte differences — the edit didn\'t reach this pattern (or there was no edit).</span>';
     return;
   }
-  const parts = [`<div class="region"><span class="label">${diff.ranges.length} changed region${diff.ranges.length > 1 ? 's' : ''}, ${diff.ranges.reduce((n, r) => n + r.end - r.start + 1, 0)} bytes</span></div>`];
+  const parts = [plocks,
+    `<div class="region"><span class="label">${diff.ranges.length} changed region${diff.ranges.length > 1 ? 's' : ''}, ${diff.ranges.reduce((n, r) => n + r.end - r.start + 1, 0)} bytes</span></div>`];
   for (const r of diff.ranges) {
     const width = r.end - r.start + 1;
     const shown = Math.min(width, 64);
@@ -138,11 +251,15 @@ $('capB').onclick = async () => {
       device: id.name, slug: id.slug, build: id.build, version: id.version,
       index: cap.index, at: cap.at,
       ranges: diffAnnotatedRanges(baseline.payload, cap.payload, DESCRIBERS[id.slug]),
+      plocks: plockReport(SPECS[id.slug], baseline.payload, cap.payload),
       a: baseline.payload, b: cap.payload,
     };
     renderDiff(lastDiff, baseline.payload, cap.payload);
+    const laneChanges = lastDiff.plocks?.changed.length ?? 0;
     setStatus(lastDiff.ranges.length
-      ? `${lastDiff.ranges.length} region(s) changed — describe the edit and save it to the notebook`
+      ? `${lastDiff.ranges.length} region(s) changed`
+        + (laneChanges ? `, including ${laneChanges} p-lock lane(s)` : '')
+        + ' — describe the edit and save it to the notebook'
       : 'No differences found');
   } catch (err) {
     setStatus(`Capture failed: ${err.message}`, true);
@@ -176,6 +293,7 @@ function renderNotebook() {
       `<button data-del="${i}">✕</button>` +
       `<h3>${esc(e.note || '(unlabelled experiment)')}</h3>` +
       `<span class="meta">${esc(e.device)} OS ${esc(e.version)} (build ${esc(e.build)}) · ${bankName(e.index)} · ${esc(e.at.slice(0, 19).replace('T', ' '))}</span>` +
+      (e.plocks?.length ? `<ul>${e.plocks.map(l => `<li>p-lock: ${esc(l)}</li>`).join('')}</ul>` : '') +
       `<ul>${e.ranges.map(r => `<li>[${r.start}..${r.end}] ${esc(r.label)}: <code>${esc(r.was)}</code> → <code>${esc(r.now)}</code></li>`).join('')}</ul>`;
     $('notebook').appendChild(div);
   });
@@ -196,6 +314,9 @@ $('labSave').onclick = () => {
     note: $('labNote').value.trim(),
     device: lastDiff.device, build: lastDiff.build, version: lastDiff.version,
     index: lastDiff.index, at: lastDiff.at,
+    // Lane findings, tags stripped: these go straight into the format docs, and
+    // they're the whole point of a p-lock capture.
+    plocks: (lastDiff.plocks?.changed ?? []).map(l => l.text.replace(/<[^>]+>/g, '')),
     ranges: lastDiff.ranges.map(r => ({
       start: r.start, end: r.end, label: r.label,
       was: [...lastDiff.a.subarray(r.start, Math.min(r.end + 1, r.start + 16))].map(hex2).join(' ') + (r.end - r.start >= 16 ? ' …' : ''),
@@ -219,6 +340,7 @@ $('labExport').onclick = () => {
       '',
       `${e.device} OS ${e.version} (build ${e.build}), pattern ${bankName(e.index)}, ${e.at}`,
       '',
+      ...(e.plocks?.length ? [...e.plocks.map(l => `- **p-lock** ${l}`), ''] : []),
       ...e.ranges.map(r => `- \`[${r.start}..${r.end}]\` ${r.label}: \`${r.was}\` → \`${r.now}\``),
       '',
     ]),

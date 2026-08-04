@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { splitSysExStream, DUMP, FAMILY } from '../js/elektron/protocol.js';
 import { readSwing } from '../js/elektron/pattern-settings.js';
+import { readTrackPLocks, applyTrackPLocks } from '../js/elektron/plocks.js';
 import * as dt2 from '../js/elektron/dt2/pattern.js';
 import {
   safeWriteTrack, writeGate, writeResultMessage, patternKitBackup,
@@ -84,6 +85,67 @@ describe.skipIf(!have)('safeWriteTrack', () => {
     });
     expect(sawSwing).toBe(50); // the fixture pattern is straight
     expect(readSwing(dt2.SPEC, box.slots.get(1))).toBe(66);
+  });
+
+  it('writes p-lock lanes, and shows the confirm hook what the track already has', async () => {
+    const box = boxWithFixture();
+    const values = Array.from({ length: 128 }, (_, s) => (s === 6 ? 4096 : null));
+    let args = null;
+    const result = await safeWriteTrack(box, {
+      index: 1, trackIndex: 2, notes: bassline, plocks: [{ paramId: 0x2a, values }],
+      onBackup: () => {},
+      confirm: a => { args = a; return true; },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toEqual([]);
+    // Nothing was locked on the box, and there is room for all 80 lanes.
+    expect(args.boxPLocks).toEqual([]);
+    expect(args.freeLanes).toBe(80);
+    const [lane] = readTrackPLocks(dt2.SPEC, box.slots.get(1), 2);
+    expect(lane.paramId).toBe(0x2a);
+    expect(lane.values[6]).toBe(4096);
+  });
+
+  it('leaves the lane pool completely alone when the caller passes null', async () => {
+    // A caller that doesn't model p-locks must not have an opinion about them:
+    // `null` is different from `[]`, which means "this track has no lanes".
+    const box = boxWithFixture();
+    const before = Uint8Array.from(box.slots.get(1));
+    // Put a lane on the track first, so "left alone" is a claim with teeth.
+    applyTrackPLocks(dt2.SPEC, box.slots.get(1), 2,
+      [{ paramId: 0x2a, values: Array.from({ length: 128 }, (_, s) => (s === 0 ? 7 : null)) }]);
+    const seeded = Uint8Array.from(box.slots.get(1));
+
+    await safeWriteTrack(box, {
+      index: 1, trackIndex: 2, notes: bassline, plocks: null, onBackup: () => {},
+    });
+    expect(readTrackPLocks(dt2.SPEC, box.slots.get(1), 2)).toEqual(
+      readTrackPLocks(dt2.SPEC, seeded, 2));
+
+    // …whereas an empty array frees it, which is what replacing a track means.
+    box.slots.set(1, Uint8Array.from(seeded));
+    await safeWriteTrack(box, {
+      index: 1, trackIndex: 2, notes: bassline, plocks: [], onBackup: () => {},
+    });
+    expect(readTrackPLocks(dt2.SPEC, box.slots.get(1), 2)).toEqual([]);
+    expect(before[dt2.SPEC.pattern.pLocksIndex]).toBe(0xff);
+  });
+
+  it('reports a full lane pool as a warning on an otherwise good write', async () => {
+    const box = boxWithFixture();
+    const lanes = Array.from({ length: 81 }, (_, k) => ({
+      paramId: k, values: Array.from({ length: 128 }, (_, s) => (s === 0 ? k : null)),
+    }));
+    const result = await safeWriteTrack(box, {
+      index: 1, trackIndex: 2, notes: bassline, plocks: lanes, onBackup: () => {},
+    });
+    // The notes landed and the bytes verified, but not everything was written —
+    // so the result line has to shout rather than say "verified" and stop.
+    expect(result.ok).toBe(true);
+    expect(result.warnings).toHaveLength(1);
+    const { text, isError } = writeResultMessage(result);
+    expect(isError).toBe(true);
+    expect(text).toMatch(/all in use/);
   });
 
   it('leaves swing alone when the caller does not model it', async () => {

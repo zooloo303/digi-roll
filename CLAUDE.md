@@ -57,13 +57,15 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 ## Orientation
 
 - `js/state.js` pattern model (notes + micro-timing + swing + track PROB +
-  provenance) · `js/pianoroll.js` canvas editor, knows nothing about devices ·
-  `js/edit-ops.js` paste placement and selection resize, canvas-free ·
-  `js/main.js` UI wiring ·
-  `js/midi.js` realtime engine
+  p-lock lanes + provenance) · `js/pianoroll.js` canvas editor, knows nothing
+  about devices · `js/edit-ops.js` paste placement and selection resize,
+  canvas-free · `js/main.js` UI wiring · `js/midi.js` realtime engine
 - `js/elektron/` protocol + pattern structs · `safe-write.js` the write flow ·
   `copy-track.js` cross-device copy · `pattern-settings.js` pattern-level bytes
-  (swing) · `js/roll-bridge.js` roll ↔ device notes
+  (swing) · `plocks.js` the p-lock lane pool · `params.js` + `param-tables.js` +
+  `dt2|dn2/params.js` the curated p-lock parameter tables ·
+  `js/roll-bridge.js` roll ↔ device notes and lanes
+- `js/plocklane.js` the p-lock automation strip · `js/triglane.js` the trig strip
 - `js/bank.js` named saves · `js/labs/` device console + diffing lab pages
 - `docs/elektron-sysex-protocol.md`, `docs/dt2-pattern-format.md`,
   `docs/dn2-pattern-format.md` — the byte-level truth, including the first
@@ -71,8 +73,63 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
 - Protocol work is ported from [elk-herd](https://github.com/mzero/elk-herd)
   (BSD-2-Clause, by mzero) — keep the attribution.
 
-`PLAN.md` is the roadmap — what's shipped and what's next. Next up is p-lock
-lanes, planned there in detail.
+`PLAN.md` is the roadmap — what's shipped and what's next.
+
+**P-lock lanes: a parameter has two independent mappings, and the split is the
+whole design** (built 2026-08-04; Phase 0 measured the same day; **write path
+hardware-verified the same day on both boxes** — lanes drawn in digi-roll,
+sent, byte-identical verify, right values on the box UI. The two residuals
+were also verified 2026-08-04: emptying an existing lane via a send, and a
+cross-device copy carrying name-translated lanes, DN2 → DT2 through the
+console's Copy track row. The reverse direction is untested but runs the same
+name-keyed path).
+
+- `midi` — CC and NRPN numbers, from the boxes' own published charts (DT2
+  Appendix B, DN2 Appendix C). This is what lets a lane be *heard*.
+- `plock` — the `paramId` byte and its uint16 scaling, **measured 2026-08-04**
+  by the Phase 0 captures (logs in both format docs, fixtures in
+  `dumps/fixtures/`). All 22 entries are `scaledPlock(id, 256)`: the stored
+  word is the MIDI display value × 256, one law on both boxes.
+
+Facts the captures fixed, worth not re-deriving: paramId is each box's internal
+page-ordered index, **not** the NRPN LSB and **not shared between boxes** — 74
+is overdrive on a DT2 and filter frequency on a DN2, so lanes translate by
+canonical name only. The box frees a lane in place (`FF FF` + 256 zeros, no
+compaction), claims the lowest free lane including holes, keys lanes by
+(paramId, track), and stores one value per step even under a chord — all
+matching what `applyTrackPLocks` already did. The old "first real lane"
+mystery (DN2 paramId 74 = 16169) is identified: FLTR FREQ ≈ 63.16 — the box
+keeps sub-MIDI fine resolution in the low byte, which digi-roll's integer
+display axis quantises if such a lane is re-sent.
+
+Layers: `js/elektron/plocks.js` the byte-level 80-lane pool · `params.js` the
+descriptor + scaling · `dt2|dn2/params.js` the eleven curated parameters ·
+`roll-bridge.js` the seam (display axis ↔ uint16, and the audition messages) ·
+`js/plocklane.js` the strip. A lane is keyed by canonical **name** when digi-roll
+authored it and by raw **paramId** when it came off a box; values live on the
+parameter's **display axis** rather than the lane's uint16, so a lane works before
+any scaling is known (MIDI 0–127 for a curated parameter; for a lane whose
+parameter we can't identify the axis *is* the raw word, via an identity mapping,
+which is what keeps it byte-exact on the way back out).
+
+(The "leading hypothesis" this paragraph used to carry — paramId == NRPN LSB —
+was tested by Phase 0's first capture and is **wrong**; the facts above
+replaced it.)
+
+Auditioning sends real parameter changes and nothing puts them back — accepted
+deliberately, and said in the panel, on Play and in the help page.
+
+Two things to know before touching it:
+
+- **Sending replaces the destination track's lanes**, freeing any the roll
+  doesn't carry — the same bargain `applyTrackTrigSettings` already strikes with
+  the condition lanes. `plocks: null` means "I have no opinion", `[]` means "this
+  track has no lanes". The send confirmation names the change.
+- Both format docs used to claim `FFFF` marked an unused lane value. The
+  fixtures say a free lane is `FF FF` + **256 zero bytes** (160 FFs and 20,480
+  zeros across the region, every pattern, both boxes); the docs are corrected and
+  `applyTrackPLocks` writes what was measured. The per-step `FFFF` sentinel
+  *inside* an allocated lane is still an inference, flagged as such in the code.
 
 Per-trig conditions shipped 2026-08-02: `js/elektron/conditions.js` is the
 canonical PROB/FILL/COND table, `js/elektron/trig-cond.js` reads and writes the

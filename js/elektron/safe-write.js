@@ -10,11 +10,12 @@
 //                     the write aborts if that hook throws. The hook is
 //                     mandatory: no backup, no write.
 //   2. minimal diff   only encodeTrackNotes, applyTrackTrigSettings,
-//                     applyTrackProb and applySwing touch the payload, so every
-//                     byte outside the track's step words, the trig-record
-//                     pool, that track's three trig-condition lanes, its one
-//                     track-PROB byte and the pattern's one swing byte
-//                     round-trips identically.
+//                     applyTrackProb, applyTrackPLocks and applySwing touch the
+//                     payload, so every byte outside the track's step words, the
+//                     trig-record pool, that track's three trig-condition lanes,
+//                     its one track-PROB byte, the p-lock lanes belonging to
+//                     that track and the pattern's one swing byte round-trips
+//                     identically.
 //   3. allowlist      writeGate() refuses any OS build the format hasn't been
 //                     verified against.
 //   4. verify         the pattern is read back and byte-compared; the caller
@@ -33,6 +34,7 @@
 import { buildDumpMessage, DUMP, FAMILY } from './protocol.js';
 import { bankName, diffPayloads, trackTrigCount } from './pattern-core.js';
 import { applyTrackTrigSettings, applyTrackProb, trigSettingsFromNotes } from './trig-cond.js';
+import { applyTrackPLocks, readTrackPLocks, freeLaneCount } from './plocks.js';
 import { applySwing, readSwing } from './pattern-settings.js';
 import * as dt2 from './dt2/pattern.js';
 import * as dn2 from './dn2/pattern.js';
@@ -95,6 +97,16 @@ export function patternKitBackup(identity, index, payload, now = new Date()) {
 //   notes       encoder-shaped notes: { step, pitch, velocity, len, micro }
 //   trackProb   optional 0–100 track-level PROB default; null leaves the byte
 //               alone, which is what a caller with nothing to say should do
+//   plocks      optional array of this track's p-lock lanes, { paramId, values }
+//               with values as stored uint16 / null per step. `null` leaves the
+//               lane pool completely alone; an array — **including an empty
+//               one** — means "these are the track's lanes", so the track's
+//               existing lanes on the box are freed. That is deliberate and
+//               matches the conditions scrub: the notes are being replaced, and
+//               automation left behind would belong to trigs that no longer
+//               exist. A caller passing an array is expected to have said so in
+//               its confirm text; `confirm` receives `boxPLocks` for exactly
+//               that
 //   swing       optional 50–80 pattern swing; null leaves the byte alone. This
 //               one is per *pattern*, so it changes every track in the slot —
 //               the confirm hook is where a caller says so
@@ -104,11 +116,13 @@ export function patternKitBackup(identity, index, payload, now = new Date()) {
 //               overwritten, return falsy to cancel.
 //   onStatus / onLog   progress strings for the UI.
 //
-// Resolves to { ok, cancelled, diffs, dropped, written, label, backup, payload }.
-// `ok` false with an empty `diffs` never happens: a false `ok` always carries
-// the offsets that mismatched, for a loud report.
+// Resolves to { ok, cancelled, diffs, dropped, written, warnings, label, backup,
+// payload }. `ok` false with an empty `diffs` never happens: a false `ok` always
+// carries the offsets that mismatched, for a loud report. `warnings` is what
+// landed differently from what was asked for while still being a successful
+// write — a full lane pool, say — and callers show it alongside the result.
 export async function safeWriteTrack(device, {
-  index, trackIndex, notes, trackProb = null, swing = null,
+  index, trackIndex, notes, trackProb = null, plocks = null, swing = null,
   onBackup, confirm = null, onStatus = () => {}, onLog = () => {},
 }) {
   const gate = writeGate(device?.identity);
@@ -133,9 +147,14 @@ export async function safeWriteTrack(device, {
   const confirmArgs = {
     patternKit: target, label, index, trackIndex, existingTrigs,
     noteCount: notes.length, swing: readSwing(mod.SPEC, original),
+    // What the box currently has on this track, and how much room the pool has
+    // left — both only knowable here, after the re-fetch, and both things a
+    // caller may need to warn about before anything is overwritten.
+    boxPLocks: readTrackPLocks(mod.SPEC, original, trackIndex),
+    freeLanes: freeLaneCount(mod.SPEC, original),
   };
   if (confirm && !await confirm(confirmArgs)) {
-    return { ok: false, cancelled: true, diffs: [], dropped: 0, written: 0, label, index, trackIndex, backup: null, payload: null };
+    return { ok: false, cancelled: true, diffs: [], dropped: 0, written: 0, warnings: [], label, index, trackIndex, backup: null, payload: null };
   }
 
   const backup = patternKitBackup(device.identity, index, original);
@@ -153,6 +172,14 @@ export async function safeWriteTrack(device, {
   // when the caller has a value; a caller that doesn't model it leaves whatever
   // the box was already holding.
   if (trackProb != null) applyTrackProb(mod.SPEC, payload, trackIndex, trackProb);
+  // p-lock lanes live in the pattern-wide pool of 80, shared with the other
+  // fifteen tracks — so unlike the condition lanes this one scrubs per lane
+  // rather than wholesale, and it can run out of room. When it does, the notes
+  // still land and the shortfall comes back as a warning.
+  const warnings = [];
+  if (plocks != null) {
+    warnings.push(...applyTrackPLocks(mod.SPEC, payload, trackIndex, plocks).warnings);
+  }
   // Swing is one byte in the pattern's settings tail, and it belongs to the
   // whole slot rather than this track — so it only moves when the caller has a
   // value, and callers are expected to have warned about the reach.
@@ -171,6 +198,7 @@ export async function safeWriteTrack(device, {
     diffs,
     dropped,
     written: notes.length - dropped,
+    warnings,
     label, index, trackIndex, backup, payload,
   };
 }
@@ -181,10 +209,15 @@ export function writeResultMessage(result) {
   const where = `${result.label} T${result.trackIndex + 1}`;
   if (result.cancelled) return { text: 'Write cancelled', isError: false };
   if (result.ok) {
+    // A warning means the write succeeded but not entirely as asked — a lane
+    // that didn't fit, say. Flagged as an error so the UI shouts, because
+    // "verified byte-identical" on its own would read as "all of it went".
+    const warnings = result.warnings ?? [];
     return {
       text: `✓ Wrote ${result.written} note${result.written === 1 ? '' : 's'} to ${where} — verified byte-identical`
-        + (result.dropped ? ` (${result.dropped} note${result.dropped === 1 ? '' : 's'} didn't fit and ${result.dropped === 1 ? 'was' : 'were'} dropped)` : ''),
-      isError: false,
+        + (result.dropped ? ` (${result.dropped} note${result.dropped === 1 ? '' : 's'} didn't fit and ${result.dropped === 1 ? 'was' : 'were'} dropped)` : '')
+        + (warnings.length ? ` — but ${warnings.join('; ')}` : ''),
+      isError: warnings.length > 0,
     };
   }
   return {

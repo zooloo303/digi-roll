@@ -165,9 +165,13 @@ export function midiFileToNotes(bytes, maxSteps = 128) {
 }
 
 export class MidiEngine {
-  constructor(getState, { rng = Math.random } = {}) {
+  constructor(getState, { rng = Math.random, plockMessages = null } = {}) {
     this.getState = getState; // () => { pattern, bpm, sendClock }
     this.rng = rng;           // injectable so trig probability is testable
+    // (plocks, step) => wire-ready parameter messages, injected so this module
+    // stays device-agnostic like js/pianoroll.js — js/roll-bridge.js is what
+    // knows the CC and NRPN numbers. Null = don't audition parameters at all.
+    this.plockMessages = plockMessages;
     this.access = null;
     this.output = null;
     this.playing = false;
@@ -205,6 +209,32 @@ export class MidiEngine {
   noteOff(ch, pitch, time) {
     this._send([0x80 | ch, pitch, 0], time);
     this._activeNotes.delete(`${ch}:${pitch}`);
+  }
+
+  // --- Parameter changes (the p-lock audition path) -------------------------
+  //
+  // NRPN rather than plain CC, for three reasons, all from the boxes' own MIDI
+  // appendices: it reaches parameters that have no CC at all (every one of the
+  // Digitone II's LFO 3 controls), it carries the full 14 bits that the
+  // high-resolution parameters want, and its numbering is largely shared between
+  // the two boxes where the CC numbering very much isn't (pan is CC 90 on a DT2
+  // and CC 89 on a DN2, where 89 is Volume — a mix-up that would ride the wrong
+  // fader). The DN2 manual says it outright: use NRPN for high-resolution
+  // parameters.
+  //
+  // The wire format is the MIDI standard's: select the parameter with CC 99
+  // (MSB) and CC 98 (LSB), then send the value as CC 6 (MSB) and CC 38 (LSB).
+  nrpn(ch, msb, lsb, value14, time) {
+    const v = Math.max(0, Math.min(0x3fff, Math.round(value14)));
+    this._send([0xb0 | ch, 99, msb & 0x7f], time);
+    this._send([0xb0 | ch, 98, lsb & 0x7f], time);
+    this._send([0xb0 | ch, 6, (v >> 7) & 0x7f], time);
+    this._send([0xb0 | ch, 38, v & 0x7f], time);
+  }
+
+  // A 7-bit control change, for a parameter that only has a CC.
+  cc(ch, controller, value, time) {
+    this._send([0xb0 | ch, controller & 0x7f, Math.max(0, Math.min(127, Math.round(value)))], time);
   }
 
   // Short immediate note for auditioning edits in the piano roll.
@@ -275,9 +305,26 @@ export class MidiEngine {
       const stepInPattern = this._step >= 0 ? this._step % pattern.lengthSteps : -1;
       const loop = this._step >= 0 ? Math.floor(this._step / pattern.lengthSteps) : 0;
       const swingMs = stepInPattern % 2 === 1 ? ((swing - 50) / 50) * (stepMs / 3) : 0;
-      for (const n of pattern.notes) {
-        if (n.step !== stepInPattern) continue;
-        if (!shouldPlay(n, loop, this.rng, pattern.trackProb)) continue;
+      const playing = pattern.notes.filter(n =>
+        n.step === stepInPattern && shouldPlay(n, loop, this.rng, pattern.trackProb));
+
+      // p-lock lanes go out just ahead of the step's notes, so the parameter is
+      // already where the lane says by the time the trig sounds — which is what a
+      // real p-lock does. Only when something on the step is actually playing: a
+      // trig silenced by probability doesn't apply its locks on the box either.
+      //
+      // This genuinely moves the destination track's parameters, and nothing puts
+      // them back afterwards — the same as turning the knob by hand. The UI says
+      // so; see the help page.
+      if (playing.length && this.plockMessages) {
+        const t = Math.max(performance.now(), this._nextStepTime + swingMs - 2);
+        for (const m of this.plockMessages(pattern.plocks, stepInPattern)) {
+          if (m.nrpn) this.nrpn(pattern.channel, m.nrpn[0], m.nrpn[1], m.value14, t);
+          else if (m.cc != null) this.cc(pattern.channel, m.cc, m.value7, t);
+        }
+      }
+
+      for (const n of playing) {
         const t = this._nextStepTime + swingMs + (n.micro ?? 0) * stepMs;
         this.noteOn(pattern.channel, n.pitch, n.velocity, t);
         // End slightly early so back-to-back notes retrigger cleanly — but

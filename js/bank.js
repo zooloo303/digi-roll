@@ -9,11 +9,36 @@
 // Everything is written against a Storage-shaped object (getItem/setItem/
 // removeItem/key/length) rather than localStorage directly, which is what
 // makes the serialize/deserialize pair unit-testable in Node.
+//
+// `makeNote` is injected rather than imported so this module stays clear of
+// state.js's note-id counter; `makePLockLane` is imported, because it is a plain
+// normaliser with no session identity in it and duplicating the lane width here
+// would be a second place to get it wrong.
+
+import { makePLockLane } from './state.js';
 
 export const BANK_PREFIX = 'digiroll.bank.';
 export const BANK_SCHEMA = 1;
 
 const defaultStorage = () => globalThis.localStorage;
+
+// p-lock lanes are 128 steps wide and usually nearly empty, so they are stored
+// step-keyed rather than as an array of 128 nulls: `{ "3": 8192, "7": 4096 }`.
+// Compact, and readable in an exported bank file, which is half of what that
+// file is for.
+const packPLockValues = values => {
+  const out = {};
+  values.forEach((v, step) => { if (v != null) out[step] = v; });
+  return out;
+};
+
+const unpackPLockValues = packed => {
+  const values = [];
+  for (const [step, v] of Object.entries(packed ?? {})) {
+    if (typeof v === 'number') values[Number(step)] = v;
+  }
+  return values;
+};
 
 // The stored shape. Notes are stripped to their model fields — ids are
 // per-session identity, meaningless once saved, and are reissued on load.
@@ -29,6 +54,16 @@ export function serializePattern(pattern, savedAt = new Date().toISOString()) {
       // Track-level PROB rides along the same way prob/fill/cond did: older
       // saves simply lack it and load at 100, older digi-rolls ignore it.
       trackProb: pattern.trackProb ?? 100,
+      // p-lock lanes ride along like trackProb did: older saves lack the key and
+      // load with no lanes, older digi-rolls ignore it. `deviceKind` travels
+      // with each lane because a paramId means nothing without it.
+      plocks: (pattern.plocks ?? []).map(l => ({
+        name: l.name ?? null,
+        paramId: l.paramId ?? null,
+        deviceKind: l.deviceKind ?? null,
+        trigless: !!l.trigless,
+        values: packPLockValues(l.values ?? []),
+      })),
       source: pattern.source ?? null,
       // prob/fill/cond ride along without a schema bump: older saves simply
       // lack them and load unlocked, and older digi-rolls ignore the extra
@@ -63,6 +98,9 @@ export function deserializePattern(entry, makeNote) {
     channel: Number(p.channel) || 0,
     swing: typeof p.swing === 'number' ? p.swing : 50,
     trackProb: typeof p.trackProb === 'number' ? p.trackProb : 100,
+    plocks: (Array.isArray(p.plocks) ? p.plocks : [])
+      .filter(l => l?.name != null || l?.paramId != null)
+      .map(l => makePLockLane({ ...l, values: unpackPLockValues(l.values) })),
     source: p.source ?? null,
     notes: p.notes.map(n => makeNote(n.step, n.pitch, n.len, n.velocity, n.micro ?? 0, n)),
   };

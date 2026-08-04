@@ -47,6 +47,11 @@ Provenance key:
   (blank) and `dumps/dn2-swing-65.syx` (65); pinned by `test/swing.test.js`.
   The write was verified the same day by a write-back to the box, which landed
   and played — so swing is read *and* written against real DN2 hardware.
+- **[V5]** confirmed by the **p-lock Phase 0 experiments** (2026-08-04, same
+  OS build): all eleven curated parameters locked one knob per trig across
+  five captures on a blank A01, read by difflab's p-lock lane report — the log
+  is at the end of this file and the end state is the fixture
+  `dumps/fixtures/digitone2-A01-plock-final-2026-08-04.syx`.
 
 Applies to **pattern struct version 3** (what OS 1.10D emits [F]). Any other
 version is refused rather than guessed at.
@@ -79,7 +84,7 @@ consistent with the DN2 having no sample pool) [F].
 | 0 | 4 | struct version, uint32be (3) [F] |
 | 4 | 16 × 1187 | tracks 1–16 (track struct below) [F] |
 | 18996 | 8192 × 6 | **trig-record pool** (below) — per-trig note/velocity/length/micro [F] |
-| 68148 | 80 × 258 | p-locks: paramId u8, track u8, 128 × uint16be per-step values, `FF` = unused [S — all-`FF` in the fixture, layout inherited from DT2] |
+| 68148 | 80 × 258 | p-locks: paramId u8, track u8, 128 × uint16be per-step values. A **free lane is `FF FF` followed by 256 `00` bytes**, identical to the DT2 [V5]. Fully mapped — see the p-lock section below for the measured paramId table, and the DT2 doc for the shared scaling law and allocation/free semantics. The paramId numbering **differs between the boxes** (74 = FLTR FREQ here, overdrive there) |
 | 88788 | 16 | pattern name, NUL-padded [F — blank in fixture, position implied by the +48 shift] |
 | 88804 | 4 | pattern tempo, uint32be, **BPM × 120** (14400 = 120 BPM observed) [F] |
 | 88808 | 2 | uint16be `0x0010` = 16 — likely master pattern length in steps [S] |
@@ -168,6 +173,64 @@ with the plain control trig all-`FF` [V2].
 Lifecycle (creation scrubs the lanes, deletion clears COND but leaves FILL
 and PROB) was mapped in detail on the DT2; the DN2's clear-a-lock behaviour
 matches (all three go to `FF`).
+
+## The p-lock pool (pattern offset 68148) — hardware-mapped [V5]
+
+Structurally identical to the DT2's, at the DN2's own offset: 80 lanes × 258
+bytes (paramId u8, track u8, 128 × uint16be), filling the space up to the
+pattern name exactly (68148 + 80 × 258 = 88788). A free lane is `FF FF` plus 256
+zero bytes; inside an allocated lane `FFFF` marks a step with no lock; a lane is
+keyed by (paramId, track). All of it, plus the paramId numbering and value
+scaling below, measured by the [V5] p-lock Phase 0 experiments (2026-08-04, OS 1.10D
+build 0049) — the log is at the end of this file, the end state is
+`dumps/fixtures/digitone2-A01-plock-final-2026-08-04.syx`, and the general
+discussion (scaling law, allocation/free semantics — identical on both boxes)
+is in `dt2-pattern-format.md`'s p-lock section.
+
+The measured DN2 paramIds:
+
+| parameter | paramId | parameter | paramId |
+|-----------|---------|-----------|---------|
+| LFO1 depth | 29 (0x1D) | delay send | 93 (0x5D) |
+| LFO2 depth | 30 (0x1E) | reverb send | 94 (0x5E) |
+| LFO3 depth | 31 (0x1F) | pan | 95 (0x5F) |
+| filter frequency | 74 (0x4A) | overdrive | 104 (0x68) |
+| filter resonance | 75 (0x4B) | | |
+| filter env depth | 76 (0x4C) | | |
+| chorus send | 92 (0x5C) | | |
+
+The numbering is the box's internal parameter index, **not** the NRPN LSB (the
+old hypothesis — FREQ's NRPN is 1/20, its paramId is 74) and **not shared with
+the DT2**: the same knob sits 30 higher here for the filter and amp blocks
+(74/75/76 vs 44/45/46, 92–95 vs 62–65 — presumably the SYN pages occupy the
+difference), while the three LFO depths are 29/30/31 on both boxes. And the
+collision is real: 74 is filter frequency here and **overdrive on the DT2** —
+translating a lane by paramId instead of canonical name would move the wrong
+knob. The value scaling is the same one law as the DT2's: stored =
+(display − min) / range × 32768, i.e. **value × 256** on the MIDI 0–127 axis.
+
+### The first real lane ever observed (2026-08-04) [F] — identified
+
+One p-lock made on a DN2 and read back through digi-roll's import path — the
+first allocated lane in any capture this project held:
+
+```
+pattern A01, track 1, one p-locked trig on step 1
+  paramId  74 = 0x4A
+  track    0
+  step 1   value 16169 = 0x3F29
+  every other step  FFFF
+```
+
+It confirmed the layout and the `FFFF`-no-value sentinel, and with the measured
+table it is now fully identified: **a FLTR FREQ lock at ≈ 63.16** (0x3F29 / 256
+— the low bits are the box's sub-display fine resolution). The guess this
+section previously recorded — "SYN page 1 knob B", from the NRPN-LSB
+hypothesis — was wrong, and so was the reading of 16169 as "just under the
+14-bit NRPN ceiling": the axis is 15-bit, display × 256.
+
+The DN2 has no sound pool, so the DT2's per-step sound-slot lane at track offset
+1024 has no counterpart; that byte array is `FF`-filled and unmapped.
 
 ## Step word bits
 
@@ -287,3 +350,28 @@ written down before each capture.
    wrote `FF` in all three lanes — exactly 3 bytes changed.
 
 End state saved as `dumps/fixtures/digitone2-A01-conditions-2026-08-02.syx`.
+
+## The [V5] p-lock Phase 0 log (2026-08-04, blank throwaway A01, OS 1.10D)
+
+The DT2's Phase 0 script repeated on the DN2 (the DT2 log has the full method):
+four trigs on track 1 at steps 1/5/9/13, one capture per round, each diff
+confined to the lanes named.
+
+1. **FLTR FREQ 0/64/127 on trigs 1/5/9** → lane 0, paramId 74 (0x4A), values
+   `0x0000`/`0x4001`/`0x7F00` — same scaling law as the DT2, and the
+   identification of the first-real-lane capture above.
+2. **RESO 100 / PAN hard-left / ENV DEPTH −32 / OVERDRIVE 127** → paramIds
+   75/95/76/104, values 25600/0/8192/32512.
+3. **DELAY 127 / REVERB 64 / CHORUS 32 / LFO1 DEPTH +16** → paramIds
+   93/94/92/29, values 32512/16384/8192/18433.
+4. **LFO2 +16 / LFO3 +16, plus a chord + FREQ 32 lock on trig 13** → paramIds
+   30/31 (values 18433/18432), and the FREQ lane gained **one** value word at
+   step 13 (8192 = 32 × 256): locks are per step even on a chord, and a new
+   lock joins the parameter's existing lane.
+5. **Removed the single RESO lock** → lane 1 freed **in place** (paramId
+   `4B`→`FF`, track→`FF`, values→zeros), no compaction — identical to the
+   DT2's behaviour and to the form digi-roll's write path emits.
+
+End state: 10 allocated lanes with a free hole at lane 1, saved as
+`dumps/fixtures/digitone2-A01-plock-final-2026-08-04.syx` and pinned by
+`test/plocks.test.js`.

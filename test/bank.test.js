@@ -4,7 +4,7 @@ import {
   listBank, bankEntry, saveToBank, loadFromBank, deleteFromBank, renameInBank,
   exportBank, parseBankFile, importBank,
 } from '../js/bank.js';
-import { makeNote, defaultPattern } from '../js/state.js';
+import { makeNote, defaultPattern, makePLockLane } from '../js/state.js';
 import { makeSource } from '../js/roll-bridge.js';
 
 // Phase 4 feature 2: the pattern bank. A localStorage-shaped fake stands in
@@ -78,6 +78,55 @@ describe('serialize / deserialize', () => {
   it('carries no provenance for a locally drawn pattern', () => {
     const back = deserializePattern(serializePattern(defaultPattern(3)), makeNote);
     expect(back.source).toBe(null);
+  });
+
+  it('round-trips p-lock lanes, both authored and off a box', () => {
+    const p = {
+      ...richPattern(),
+      plocks: [
+        // Authored in the roll: known by name, no paramId yet.
+        makePLockLane({
+          name: 'filter.cutoff', deviceKind: 'DT2',
+          values: Array.from({ length: 128 }, (_, s) => (s === 3 ? 96 : null)),
+        }),
+        // Off a box, parameter unidentified, and trigless so read-only.
+        makePLockLane({
+          paramId: 0x31, deviceKind: 'DT2', trigless: true,
+          values: Array.from({ length: 128 }, (_, s) => (s === 0 ? 0 : null)),
+        }),
+      ],
+    };
+    const back = deserializePattern(serializePattern(p), makeNote);
+    expect(back.plocks).toEqual(p.plocks);
+    expect(back.plocks[0].name).toBe('filter.cutoff');
+    expect(back.plocks[0].paramId).toBe(null);
+    // A stored zero is a real lock, not an absent one — the sparse form has to
+    // keep that difference or a lock at the bottom of a range would vanish.
+    expect(back.plocks[1].values[0]).toBe(0);
+    expect(back.plocks[1].trigless).toBe(true);
+  });
+
+  it('stores lanes step-keyed rather than as 128 nulls', () => {
+    const p = {
+      ...defaultPattern(0),
+      plocks: [makePLockLane({ name: 'amp.pan', deviceKind: 'DT2', values: [null, null, 7] })],
+    };
+    const entry = serializePattern(p);
+    expect(entry.pattern.plocks[0].values).toEqual({ 2: 7 });
+  });
+
+  it('drops a stored lane that identifies nothing', () => {
+    // Neither a name nor a paramId: there is no parameter it could refer to, so
+    // it can't be drawn, heard or written. Better dropped than carried as a stub.
+    const entry = serializePattern(richPattern());
+    entry.pattern.plocks = [{ deviceKind: 'DT2', values: { 1: 5 } }];
+    expect(deserializePattern(entry, makeNote).plocks).toEqual([]);
+  });
+
+  it('loads an older save that has no lanes', () => {
+    const entry = serializePattern(richPattern());
+    delete entry.pattern.plocks;
+    expect(deserializePattern(entry, makeNote).plocks).toEqual([]);
   });
 });
 
