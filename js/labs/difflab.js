@@ -42,7 +42,10 @@ const specFor = (family, requestType) =>
   (requestType === 0x60 ? SPECS[slugForFamily(family)] ?? null : null);
 
 const $ = id => document.getElementById(id);
-const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+// Tolerant of anything: notebook entries and imported donations are user data,
+// and an undefined reaching a bare .replace() here once kept the whole page
+// from booting.
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
 const hex2 = b => b.toString(16).padStart(2, '0');
 
 function setStatus(msg, isError = false) {
@@ -462,7 +465,14 @@ $('labImportPairInput').onchange = async () => {
 // --- Notebook --------------------------------------------------------------------
 
 const NOTEBOOK_KEY = 'digiroll-difflab-v1';
-const loadNotebook = () => JSON.parse(localStorage.getItem(NOTEBOOK_KEY) ?? '[]');
+const loadNotebook = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(NOTEBOOK_KEY) ?? '[]');
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return []; // unreadable storage shows an empty notebook rather than no page
+  }
+};
 const saveNotebook = nb => localStorage.setItem(NOTEBOOK_KEY, JSON.stringify(nb));
 
 function renderNotebook() {
@@ -471,12 +481,29 @@ function renderNotebook() {
   nb.forEach((e, i) => {
     const div = document.createElement('div');
     div.className = 'entry';
-    div.innerHTML =
-      `<button data-del="${i}">✕</button>` +
-      `<h3>${esc(e.note || '(unlabelled experiment)')}</h3>` +
-      `<span class="meta">${esc(e.device)} OS ${esc(e.version)} (build ${esc(e.build)}) · ${bankName(e.index)}${e.target ? ` · ${esc(e.target)}` : ''} · ${esc(e.at.slice(0, 19).replace('T', ' '))}</span>` +
-      (e.plocks?.length ? `<ul>${e.plocks.map(l => `<li>p-lock: ${esc(l)}</li>`).join('')}</ul>` : '') +
-      `<ul>${e.ranges.map(r => `<li>[${r.start}..${r.end}] ${esc(r.label)}: <code>${esc(r.was)}</code> → <code>${esc(r.now)}</code></li>`).join('')}</ul>`;
+    // An entry can be missing anything — saved from a hand-edited donation, or
+    // by an older version of this page — and this renderer runs before MIDI
+    // init at boot. A bad entry becomes a deletable stub; it never takes the
+    // page down with it.
+    let body;
+    try {
+      const meta = [
+        esc(e.device || 'unknown device'),
+        e.version ? `OS ${esc(e.version)}` : '',
+        e.build ? `(build ${esc(e.build)})` : '',
+        Number.isInteger(e.index) ? bankName(e.index) : '',
+        e.target ? esc(e.target) : '',
+        esc(String(e.at ?? '').slice(0, 19).replace('T', ' ')),
+      ].filter(Boolean).join(' · ');
+      body =
+        `<h3>${esc(e.note || '(unlabelled experiment)')}</h3>` +
+        `<span class="meta">${meta}</span>` +
+        (e.plocks?.length ? `<ul>${e.plocks.map(l => `<li>p-lock: ${esc(l)}</li>`).join('')}</ul>` : '') +
+        `<ul>${(e.ranges ?? []).map(r => `<li>[${esc(r.start)}..${esc(r.end)}] ${esc(r.label)}: <code>${esc(r.was)}</code> → <code>${esc(r.now)}</code></li>`).join('')}</ul>`;
+    } catch (err) {
+      body = `<h3>(unreadable notebook entry)</h3><span class="meta">${esc(err.message)} — the ✕ removes it</span>`;
+    }
+    div.innerHTML = `<button data-del="${i}">✕</button>` + body;
     $('notebook').appendChild(div);
   });
   $('notebook').querySelectorAll('button[data-del]').forEach(btn => {
@@ -539,7 +566,15 @@ $('labExport').onclick = () => {
 // --- Boot -------------------------------------------------------------------------
 
 (async () => {
-  renderNotebook();
+  // The notebook must never keep MIDI from coming up: renderNotebook is already
+  // defensive per entry, but if it still throws, the lab has to stay usable —
+  // this is the contributor-facing page, and "clear your localStorage" is not a
+  // first impression.
+  try {
+    renderNotebook();
+  } catch (err) {
+    setStatus(`The notebook couldn't render (${err.message}) — captures still work`, true);
+  }
   if (!navigator.requestMIDIAccess) {
     setStatus('Web MIDI not supported — use Chrome, Edge, or Brave', true);
     return;

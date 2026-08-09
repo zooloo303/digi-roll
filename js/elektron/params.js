@@ -10,22 +10,23 @@
 //
 //   `plock`  how to *store* it — the `paramId` byte in the pattern's p-lock lane
 //            pool, plus the scaling between a display value and the lane's
-//            uint16. **Not published anywhere** and different on each box. Exactly
-//            one real lane has ever been captured (a DN2's, paramId 74 —
-//            docs/dn2-pattern-format.md), which is enough to know the value is
-//            14-bit and not enough to know which knob 74 is. The rest comes from
-//            the controlled hardware experiments in PLAN.md's Phase 0, and it is
-//            `null` on every parameter until then.
+//            uint16. **Not published anywhere** and different on each box — 74
+//            is overdrive on a DT2 and filter frequency on a DN2. Measured on
+//            hardware by the Phase 0 captures of 2026-08-04 (fixtures in
+//            dumps/fixtures/, experiment logs in both format docs): paramId is
+//            the box's own page-ordered parameter index, not the NRPN LSB, and
+//            every parameter measured so far stores the MIDI display value ×
+//            256, sub-MIDI fine resolution in the low byte.
 //
-// The consequence is the useful part: a parameter with `midi` but no `plock` can
-// be **drawn and auditioned** but not written to a pattern. That is exactly
-// where digi-roll stands today, and it is why the lane UI works now rather than
-// waiting on the byte mapping.
+// The split still earns its keep after Phase 0: a parameter with `midi` but no
+// `plock` can be **drawn and auditioned** but not written to a pattern — how
+// the whole lane UI ran before the measurements, and now the safety net that
+// keeps a missing measurement from ever becoming a wrong byte.
 //
 // A lane is identified by this table's canonical `name` when digi-roll authored
-// it, and by the raw `paramId` byte when it came off a box whose numbering we
-// can't read yet. Both, once Phase 0 lands. `name` is also what cross-device
-// copy translates by — two parameters sharing a name are the same knob.
+// it, and by the raw `paramId` byte when it came off a box. `name` is also what
+// cross-device copy translates by — two parameters sharing a name are the same
+// knob, and their paramIds never agree between boxes.
 //
 // ## The value axis
 //
@@ -33,8 +34,8 @@
 // receives, and what NRPN's high byte carries. That is a deliberate choice over
 // the labels the box prints on screen (`L32`, `-8.00`): those labels differ per
 // parameter and per machine, and none of them is documented in a form worth
-// trusting. 0–127 is honest about what is being sent, and it is what a p-lock
-// lane's own resolution will be compared against once Phase 0 measures it.
+// trusting. 0–127 is honest about what is being sent, and it is the axis every
+// measured p-lock scaling maps from (stored word = display × 256).
 // `bipolar` marks the parameters whose 64 is the box's centre, so their bars can
 // be drawn from the middle rather than the floor.
 
@@ -110,10 +111,11 @@ export function displayFromStored(p, w) {
   return clampParamValue(p, p.plock.fromStored(w));
 }
 
-// The two shapes a measured `plock` scaling is likely to take. Both are here
-// ready to use; which one a given parameter needs is what Phase 0 step 4
-// determines, by locking known min/centre/max values and reading the words back.
-// Do not assume; capture.
+// The two shapes a measured `plock` scaling takes. Phase 0 measured every
+// curated parameter on both boxes as scaledPlock(id, 256); plainPlock stays for
+// the next parameter that turns out differently. For a new entry the method
+// stands: lock known min/centre/max values and read the words back. Do not
+// assume; capture.
 
 // The display value *is* the stored word.
 export const plainPlock = id => ({

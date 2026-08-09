@@ -4,19 +4,17 @@ import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianor
 import { TrigLane } from './triglane.js';
 import { PLockLane, describeLane, laneIsEditable, laneParam, laneColor } from './plocklane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
-import { placeClipboard, setSelectionLength } from './edit-ops.js';
+import { placeClipboard, setSelectionLength, adoptStepTrig } from './edit-ops.js';
 import { ElektronDevice, slugFromPortName } from './elektron/device.js';
 import {
-  safeWriteTrack, writeGate, writeResultMessage, writeImpactLines, BACKUP_LINE,
+  safeWriteTrack, writeGate, writeResultMessage, writeImpactLines, BACKUP_LINE, DECODERS,
 } from './elektron/safe-write.js';
 import { trackNotes, trackTrigCount, bankName } from './elektron/pattern-core.js';
-import * as dt2 from './elektron/dt2/pattern.js';
-import * as dn2 from './elektron/dn2/pattern.js';
 import {
   rollNotesToDevice, deviceNotesToRoll, rollLengthForTrack, snapLenFine,
   lenByteToSteps, lenStepsToByte,
   makeSource, sourceLabel, sourceMatchesIdentity, attachTrigSettings,
-  devicePLocksToRoll, rollPLocksToDevice, pruneLanesToTrigs,
+  devicePLocksToRoll, rollPLocksToDevice, pruneLanesToTrigs, followMovedNotes,
   plockMessagesForStep, hasAuditableLanes,
 } from './roll-bridge.js';
 import { readTrackTrigSettings, readTrackProb } from './elektron/trig-cond.js';
@@ -118,11 +116,18 @@ function chordSpecs(rootPitch, velocity, taper = true) {
 let trigLane = null;
 let plockLane = null;
 
-// The v1 rule for p-locks: a lock rides on a trig. Deleting a note takes its
-// locks with it — the same scrub the box does to a deleted trig's condition
-// bytes — but only on lanes digi-roll is actually authoring. Read-only lanes are
-// being carried back to the box byte-exact and are not ours to prune.
+// The v1 rule for p-locks: a lock rides on a trig. When a gesture moves the
+// trig's notes the lock travels with them where it can (followMovedNotes);
+// deleting a note — or moving one onto a step whose trig already holds a lock —
+// takes its locks with it, the same scrub the box does to a deleted trig's
+// condition bytes. Both only on lanes digi-roll is actually authoring:
+// read-only lanes are being carried back to the box byte-exact and are not
+// ours to touch.
 const pruneLanes = () => pruneLanesToTrigs(pattern().plocks, pattern().notes, laneIsEditable);
+
+// Note steps as they stood when the gesture began, so onChange can tell a
+// moved note from a deleted one and walk its p-locks after it.
+let stepsBeforeGesture = new Map();
 
 const roll = new PianoRoll($('roll'), {
   getPattern: pattern,
@@ -130,8 +135,31 @@ const roll = new PianoRoll($('roll'), {
   // Shift+resize snaps to what the boxes can actually store; the roll itself
   // knows nothing about devices, so the scale is handed to it.
   snapLen: snapLenFine,
-  onChange: () => { pruneLanes(); dropUnchangedUndo(); persist(); plockLane?.draw(); },
-  onBeforeEdit: pushUndo,
+  onChange: () => {
+    // The gesture's notes are the selection when it ends. Any that landed on an
+    // occupied step join that trig and take its conditions (the step-uniformity
+    // rule — see adoptStepTrig); locks travel after the notes that moved where
+    // they can, and any lock left on a step that lost its trig is scrubbed.
+    // All three are announced: a `2:4` or a cutoff sweep vanishing — or moving —
+    // silently reads as data loss.
+    const adopted = adoptStepTrig(pattern().notes, roll.selectedNotes());
+    const followed = followMovedNotes(pattern().plocks, stepsBeforeGesture, pattern().notes, laneIsEditable);
+    const dropped = pruneLanes();
+    dropUnchangedUndo();
+    persist();
+    plockLane?.draw();
+    if (adopted || followed || dropped) {
+      setStatus([
+        adopted ? `${adopted} note${adopted === 1 ? '' : 's'} joined an existing trig and took its conditions` : '',
+        followed ? `${followed} p-lock value${followed === 1 ? '' : 's'} moved with ${followed === 1 ? 'its' : 'their'} note${followed === 1 ? '' : 's'}` : '',
+        dropped ? `${dropped} p-lock value${dropped === 1 ? '' : 's'} cleared from steps that lost their trig` : '',
+      ].filter(Boolean).join(' · '));
+    }
+  },
+  onBeforeEdit: () => {
+    pushUndo();
+    stepsBeforeGesture = new Map(pattern().notes.map(n => [n.id, n.step]));
+  },
   getScale: () => state.scale === 'off' ? null : { root: state.scaleRoot, set: new Set(SCALES[state.scale]) },
   getChord: pitch => state.chord.on ? chordSpecs(pitch, state.defaultVelocity) : null,
   onChordWheel: dir => {
@@ -440,10 +468,11 @@ $('trackProb').onchange = () => { trackProbGesture = false; dropUnchangedUndo();
 //   4. nothing known: fall back to showing both, grouped by box, rather than
 //      leaving the feature dead.
 //
-// Every parameter here can be **heard**: the CC/NRPN numbers come from the boxes'
-// own MIDI charts. Not every one can yet be **sent** — that needs the p-lock
-// paramId, measured on hardware (PLAN.md Phase 0). The panel says which is which
-// rather than pretending they're the same thing.
+// Every parameter here can be **heard** (the CC/NRPN numbers come from the
+// boxes' own MIDI charts) and, since Phase 0 measured the paramIds
+// (2026-08-04), **sent** too. The preview-only wording below survives as the
+// safety net for a parameter whose p-lock slot ever stops resolving — the
+// panel would say so rather than silently not sending it.
 
 const plockAddSel = $('plockAdd');
 
@@ -465,7 +494,7 @@ function fillPLockPicker() {
       const o = new Option(p.label, `${k}:${p.name}`);
       o.title = `${p.label} on the ${k} — `
         + (p.midi.nrpn ? `NRPN ${p.midi.nrpn[0]}/${p.midi.nrpn[1]}` : `CC ${p.midi.cc}`)
-        + (p.writable ? '' : ' · preview only until its p-lock slot is mapped');
+        + (p.writable ? '' : ' · preview only — no measured p-lock slot');
       group.appendChild(o);
     }
     if (group.children.length) plockAddSel.appendChild(group);
@@ -616,11 +645,15 @@ function paste() {
   pushUndo();
   const added = notes.map(c => makeNote(c.step, c.pitch, c.len, c.velocity, c.micro, c));
   p.notes.push(...added);
+  // A note pasted onto an occupied step joins that trig, conditions and all —
+  // the same step-uniformity rule the roll's own gestures apply on release.
+  const adopted = adoptStepTrig(p.notes, added);
   roll.setSelection(added.map(n => n.id));
   roll.draw();
   persist();
   setStatus(`Pasted ${added.length} note${added.length > 1 ? 's' : ''}`
-    + (dropped ? ` (${dropped} landed off the grid and ${dropped === 1 ? 'was' : 'were'} dropped)` : ''));
+    + (dropped ? ` (${dropped} landed off the grid and ${dropped === 1 ? 'was' : 'were'} dropped)` : '')
+    + (adopted ? ` — ${adopted} joined an existing trig and took its conditions` : ''));
 }
 
 $('export').onclick = () => {
@@ -821,9 +854,6 @@ let sending = false;
 // filled once, and the real track names/kinds are reported in the confirm
 // dialog after the pattern is re-fetched.
 const NUM_DEVICE_TRACKS = 16;
-
-// Patterns digi-roll can decode, by identity slug.
-const DECODERS = { digitakt2: dt2, digitone2: dn2 };
 
 // Connect to whatever box the MIDI output menu points at and identify it.
 // Shared by import and write-back; each caller adds its own checks on top.

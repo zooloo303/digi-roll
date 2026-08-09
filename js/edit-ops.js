@@ -54,6 +54,40 @@ export function clipboardAnchor(clip) {
     !best || n.step < best.step || (n.step === best.step && n.pitch > best.pitch) ? n : best, null);
 }
 
+// Notes joining an occupied step take that trig's conditions.
+//
+// PROB/FILL/COND are per *trig* on the box, so every note sharing a step has to
+// agree — the step-uniformity rule the encoder resolves by lowest pitch when
+// it's broken (js/elektron/trig-cond.js). The chord tools keep it by stamping
+// chord-mates from their root; this is the same adoption for the ways notes
+// land on a step later — paste, a move, an alt-drag copy, a plain click. The
+// incumbent wins: the trig already exists, the arriving note is joining it. On
+// an empty step an arriving note keeps its own conditions.
+//
+//   notes     every note in the pattern (incumbents and arrivals alike)
+//   arriving  the notes that just landed; conditions are copied *onto* these
+//
+// Returns how many arriving notes changed, so the caller can say so — a note
+// silently shedding its `2:4` is the surprise this exists to prevent.
+export function adoptStepTrig(notes, arriving) {
+  const ids = new Set(arriving.map(n => n.id));
+  let changed = 0;
+  for (const n of arriving) {
+    // Lowest-pitch incumbent, to match the note the encoder would believe.
+    const host = notes.reduce((best, x) =>
+      ids.has(x.id) || x.step !== n.step ? best
+        : !best || x.pitch < best.pitch ? x : best, null);
+    if (!host) continue;
+    if (n.prob !== host.prob || n.fill !== host.fill || n.cond !== host.cond) {
+      n.prob = host.prob;
+      n.fill = host.fill;
+      n.cond = host.cond;
+      changed++;
+    }
+  }
+  return changed;
+}
+
 // Where a clipboard's notes go on paste.
 //
 //   clip    notes as copySelection stored them: { step, pitch, len, velocity,

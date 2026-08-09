@@ -17,7 +17,8 @@ import {
 } from '../js/elektron/param-tables.js';
 import { plockLanesForTarget, copyTrack } from '../js/elektron/copy-track.js';
 import {
-  devicePLocksToRoll, rollPLocksToDevice, pruneLanesToTrigs, plockMessagesForStep, hasAuditableLanes,
+  devicePLocksToRoll, rollPLocksToDevice, pruneLanesToTrigs, followMovedNotes,
+  plockMessagesForStep, hasAuditableLanes,
 } from '../js/roll-bridge.js';
 import { makePLockLane, PLOCK_STEPS } from '../js/state.js';
 import { MidiEngine } from '../js/midi.js';
@@ -676,16 +677,125 @@ describe('the roll seam', () => {
     const editable = makePLockLane({ name: 'filter.cutoff', deviceKind: 'DT2', values: sparse({ 1: 10, 9: 20 }) });
     const readOnly = makePLockLane({ paramId: 0x31, deviceKind: 'DT2', values: sparse({ 1: 10, 9: 20 }) });
     const notes = [{ step: 1 }];
-    pruneLanesToTrigs([editable, readOnly], notes, lane => lane === editable);
+    const dropped = pruneLanesToTrigs([editable, readOnly], notes, lane => lane === editable);
     expect(editable.values[1]).toBe(10);
     expect(editable.values[9]).toBe(null);
     // A read-only lane is being passed back to the box byte-exact; pruning it
     // would change bytes we promised not to touch.
     expect(readOnly.values[9]).toBe(20);
+    // The one scrubbed value is reported, so the UI can say the lock went —
+    // read-only lanes never count, they were never touched.
+    expect(dropped).toBe(1);
   });
 
   it('needs a name or a paramId to make a lane at all', () => {
     expect(() => makePLockLane({ deviceKind: 'DT2' })).toThrow(/name or a paramId/);
+  });
+});
+
+describe('p-locks follow a moved note', () => {
+  // followMovedNotes runs on the gesture's onChange, before pruneLanesToTrigs:
+  // values travel where they can, the prune scrubs what couldn't. The tests
+  // here pair the two wherever a value is left behind, because "left for the
+  // prune" is the contract.
+  const cutoff = byStep => makePLockLane({ name: 'filter.cutoff', deviceKind: 'DT2', values: sparse(byStep) });
+  const editable = () => true;
+
+  it('a value travels with its note to an empty step, one per lane', () => {
+    const lanes = [cutoff({ 1: 10 }), cutoff({ 1: 40 })];
+    const notes = [{ id: 1, step: 5, pitch: 60 }];
+    const followed = followMovedNotes(lanes, new Map([[1, 1]]), notes, editable);
+    expect(followed).toBe(2);
+    for (const [lane, v] of [[lanes[0], 10], [lanes[1], 40]]) {
+      expect(lane.values[1]).toBe(null);
+      expect(lane.values[5]).toBe(v);
+    }
+    // Nothing left on a trigless step, so the prune has nothing to announce.
+    expect(pruneLanesToTrigs(lanes, notes, editable)).toBe(0);
+  });
+
+  it('never touches a read-only lane', () => {
+    const lane = cutoff({ 1: 10 });
+    const followed = followMovedNotes([lane], new Map([[1, 1]]), [{ id: 1, step: 5, pitch: 60 }], () => false);
+    expect(followed).toBe(0);
+    expect(lane.values[1]).toBe(10);
+    expect(lane.values[5]).toBe(null);
+  });
+
+  it('stays with the trig when part of a chord remains on the step', () => {
+    const lane = cutoff({ 1: 10 });
+    const notes = [{ id: 1, step: 5, pitch: 64 }, { id: 2, step: 1, pitch: 60 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1], [2, 1]]), notes, editable);
+    expect(followed).toBe(0);
+    expect(lane.values[1]).toBe(10); // the remaining trig still plays it
+    expect(lane.values[5]).toBe(null); // the leaving note went bare
+  });
+
+  it('a fully vacated chord sends its value with the lowest-pitch note', () => {
+    const lane = cutoff({ 1: 10 });
+    const notes = [{ id: 1, step: 5, pitch: 64 }, { id: 2, step: 9, pitch: 60 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1], [2, 1]]), notes, editable);
+    expect(followed).toBe(1);
+    expect(lane.values[9]).toBe(10); // the encoder's tie-break: lowest pitch
+    expect(lane.values[1]).toBe(null);
+    expect(lane.values[5]).toBe(null);
+  });
+
+  it('an incumbent lock at the destination wins; the traveler is left for the prune', () => {
+    const lane = cutoff({ 1: 10, 5: 99 });
+    const notes = [{ id: 1, step: 5, pitch: 60 }, { id: 2, step: 5, pitch: 64 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1], [2, 5]]), notes, editable);
+    expect(followed).toBe(0);
+    expect(lane.values[5]).toBe(99); // the trig being joined keeps its own lock
+    expect(lane.values[1]).toBe(10); // back on the vacated step…
+    expect(pruneLanesToTrigs([lane], notes, editable)).toBe(1); // …announced as lost
+    expect(lane.values[1]).toBe(null);
+  });
+
+  it('joining a trig that has no lock brings the value along', () => {
+    const lane = cutoff({ 1: 10 });
+    const notes = [{ id: 1, step: 5, pitch: 60 }, { id: 2, step: 5, pitch: 64 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1], [2, 5]]), notes, editable);
+    expect(followed).toBe(1);
+    expect(lane.values[5]).toBe(10);
+    expect(lane.values[1]).toBe(null);
+  });
+
+  it('two notes that swap steps swap their values', () => {
+    const lane = cutoff({ 1: 10, 2: 20 });
+    const notes = [{ id: 1, step: 2, pitch: 60 }, { id: 2, step: 1, pitch: 64 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1], [2, 2]]), notes, editable);
+    expect(followed).toBe(2);
+    expect(lane.values[1]).toBe(20);
+    expect(lane.values[2]).toBe(10);
+  });
+
+  it('two vacated steps merging onto one: the lower pitch lands, the other is left for the prune', () => {
+    const lane = cutoff({ 1: 10, 3: 30 });
+    const notes = [{ id: 1, step: 5, pitch: 60 }, { id: 2, step: 5, pitch: 64 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1], [2, 3]]), notes, editable);
+    expect(followed).toBe(1);
+    expect(lane.values[5]).toBe(10);
+    expect(lane.values[3]).toBe(30); // back on its vacated step…
+    expect(pruneLanesToTrigs([lane], notes, editable)).toBe(1); // …announced as lost
+  });
+
+  it('notes created during the gesture carry nothing (an alt-drag copy)', () => {
+    // The clone has no entry in the gesture-start snapshot; the original never
+    // moved, so its lock is already where it belongs.
+    const lane = cutoff({ 1: 10 });
+    const notes = [{ id: 1, step: 1, pitch: 60 }, { id: 2, step: 5, pitch: 60 }];
+    const followed = followMovedNotes([lane], new Map([[1, 1]]), notes, editable);
+    expect(followed).toBe(0);
+    expect(lane.values[1]).toBe(10);
+    expect(lane.values[5]).toBe(null);
+  });
+
+  it('a deleted note is not a moved note', () => {
+    const lane = cutoff({ 1: 10 });
+    const followed = followMovedNotes([lane], new Map([[1, 1]]), [], editable);
+    expect(followed).toBe(0);
+    expect(lane.values[1]).toBe(10); // the prune owns this loss, not the follow
   });
 });
 

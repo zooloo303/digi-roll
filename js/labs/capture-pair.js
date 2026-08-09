@@ -79,8 +79,21 @@ export function parseCapturePair(text) {
     throw new Error('the two captures are not of the same slot — a pair must watch one pattern');
   }
 
+  // A donation is often hand-edited, so the device block can be missing or
+  // partial. Normalise it to strings here: everything downstream — the diff
+  // record, the notebook entry it gets saved as, the notebook renderer at the
+  // next page load — assumes these fields exist, and an undefined smuggled into
+  // localStorage once kept the page from booting until storage was cleared.
+  const id = obj.device ?? {};
+  const str = v => (typeof v === 'string' ? v : '');
   return {
-    device: obj.device ?? {},
+    device: {
+      name: str(id.name) || 'unknown device',
+      build: str(id.build),
+      version: str(id.version),
+      slug: str(id.slug),
+      productId: id.productId ?? null,
+    },
     family: obj.family ?? baseline.msg.family,
     requestType: obj.requestType ?? baseline.msg.type + 0x10,
     index: obj.index ?? baseline.msg.index,

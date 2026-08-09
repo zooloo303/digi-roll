@@ -6,16 +6,12 @@
 
 import { ElektronDevice } from '../elektron/device.js';
 import { splitSysExStream, DUMP, FAMILY } from '../elektron/protocol.js';
-import { trackNotes, trackTrigCount, bankName, diffPayloads } from '../elektron/pattern-core.js';
+import { trackNotes, trackTrigCount, bankName } from '../elektron/pattern-core.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
 
-// Devices whose pattern structs digi-roll can decode. Write stays a separate,
-// stricter gate below — the DN2 format is read-verified but not write-verified.
-const DECODERS = {
-  digitakt2: dt2,
-  digitone2: dn2,
-};
+// DECODERS (which boxes we can decode) comes from safe-write.js with the rest
+// of the write flow; writing keeps its separate, stricter allowlist gate.
 const DECODER_BY_FAMILY = {
   [FAMILY.DIGITAKT_2]: { mod: dt2, label: 'Digitakt II' },
   [FAMILY.DIGITONE_2]: { mod: dn2, label: 'Digitone II' },
@@ -29,9 +25,10 @@ import { readTrackTrigSettings, readTrackProb } from '../elektron/trig-cond.js';
 import { readTrackPLocks } from '../elektron/plocks.js';
 import { readSwing, SWING_MIN } from '../elektron/pattern-settings.js';
 import {
-  PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, writeResultMessage, writeImpactLines,
-  patternKitFile, BACKUP_LINE,
+  DECODERS, PRODUCT_BY_FAMILY, writeGate, safeWriteTrack, safeRestorePatternKit,
+  writeResultMessage, writeImpactLines, patternKitFile, BACKUP_LINE,
 } from '../elektron/safe-write.js';
+import { stashedBackups } from '../elektron/backup-stash.js';
 import { trackNotesForTarget, describeChordDrops, plockLanesForTarget } from '../elektron/copy-track.js';
 import { downloadBytes } from '../download.js';
 import { copyHintHtml } from './copy-hint.js';
@@ -353,7 +350,16 @@ $('impGo').onclick = () => {
 // dropped, so the same slot sent from the roll and sent from here landed
 // differently. One flow, one set of surfaces, one confirm wording.
 
-let lastBackup = null; // { index, payload } of the last pattern we overwrote
+let lastBackup = null; // { index, payload, name } of the last pattern we overwrote
+
+// What Restore would send: this session's last pre-write backup, or — after a
+// reload, or a backup download that never reached disk — the newest backup
+// stashed in the browser for the connected box (any page's writes land there).
+function restoreCandidate() {
+  if (lastBackup) return lastBackup;
+  const slug = device?.identity?.slug;
+  return slug ? stashedBackups(slug)[0] ?? null : null;
+}
 
 for (let i = 0; i < NUM_SLOTS; i++) $('wrSlot').add(new Option(`Pattern ${i + 1}`, i));
 for (let i = 0; i < 128; i++) $('wrPattern').add(new Option(bankName(i), i));
@@ -376,7 +382,7 @@ refreshWriteSlots();
 function syncWriteButtons() {
   const gate = writeGate(device?.identity);
   $('wrGo').disabled = !gate.ok;
-  $('wrRestore').disabled = !gate.ok || !lastBackup;
+  $('wrRestore').disabled = !gate.ok || !restoreCandidate();
   // Only worth saying when we can decode the box but not write to it: "no device
   // connected" is already obvious from the toolbar.
   $('wrInfo').textContent = gate.mod && !gate.ok ? gate.reason : '';
@@ -427,7 +433,7 @@ $('wrGo').onclick = async () => {
       },
     });
 
-    if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload };
+    if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload, name: result.backup.name };
     const { text, isError } = writeResultMessage({
       ...result, warnings: [...(result.warnings ?? []), ...(result.cancelled ? [] : laneWarnings)],
     });
@@ -451,16 +457,32 @@ $('wrGo').onclick = async () => {
 };
 
 $('wrRestore').onclick = async () => {
-  if (!device || !lastBackup) return;
-  const { index, payload } = lastBackup;
-  if (!confirm(`Restore the pre-write backup of ${bankName(index)}?`)) return;
+  const entry = restoreCandidate();
+  if (!device || !entry) return;
   $('wrRestore').disabled = true;
   try {
-    await device.sendPatternKit(index, payload);
-    const reread = await device.fetchPatternKit(index);
-    const ok = diffPayloads(payload, reread).length === 0;
-    setStatus(ok ? `✓ ${bankName(index)} restored from backup — verified` : `⚠ Restore verify failed for ${bankName(index)} — check the log`, !ok);
-    logNote(`Restore ${ok ? 'verified' : 'MISMATCH'}: ${bankName(index)}`);
+    // safe-write's restore flow: allowlist gate at send time, the slot's
+    // current contents backed up first (it may be the evidence of what went
+    // wrong), then send and byte-compare — not a bare sendPatternKit.
+    const result = await safeRestorePatternKit(device, {
+      index: entry.index,
+      payload: entry.payload,
+      onBackup: b => downloadBytes(b.name, b.bytes),
+      onStatus: setStatus,
+      onLog: logNote,
+      confirm: ({ label }) => confirm(
+        `Restore ${label} from ${entry.name ?? 'the pre-write backup'}`
+        + (entry.at ? ` (stashed ${entry.at.slice(0, 19).replace('T', ' ')})` : '')
+        + '?\n\nWhat the slot holds right now downloads first.'),
+    });
+    if (result.cancelled) {
+      setStatus('Restore cancelled');
+    } else {
+      setStatus(result.ok
+        ? `✓ ${result.label} restored from backup — verified`
+        : `⚠ Restore verify failed for ${result.label} — check the log`, !result.ok);
+      logNote(`Restore ${result.ok ? 'verified' : 'MISMATCH'}: ${result.label}`);
+    }
   } catch (err) {
     setStatus(`Restore failed: ${err.message}`, true);
     logError(`Restore failed: ${err.message}`);
@@ -657,7 +679,7 @@ $('copyGo').onclick = async () => {
       },
     });
 
-    if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload };
+    if (result.backup) lastBackup = { index: result.backup.index, payload: result.backup.payload, name: result.backup.name };
     const { text, isError } = writeResultMessage(result);
     setStatus(text, isError);
     // Same gate as the write row: a warning can raise `isError` with nothing

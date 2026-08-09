@@ -40,6 +40,7 @@ import { bankName, diffPayloads, trackTrigCount } from './pattern-core.js';
 import { applyTrackTrigSettings, applyTrackProb, trigSettingsFromNotes } from './trig-cond.js';
 import { applyTrackPLocks, readTrackPLocks, freeLaneCount } from './plocks.js';
 import { applySwing, readSwing } from './pattern-settings.js';
+import { stashBackup } from './backup-stash.js';
 import * as dt2 from './dt2/pattern.js';
 import * as dn2 from './dn2/pattern.js';
 
@@ -169,9 +170,14 @@ export async function safeWriteTrack(device, {
     return { ok: false, cancelled: true, diffs: [], dropped: 0, written: 0, warnings: [], label, index, trackIndex, backup: null, payload: null };
   }
 
+  // The stash goes first: a download can be cancelled or blocked without JS
+  // ever knowing, so the copy the browser keeps is the one rule 1 can count on.
   const backup = patternKitBackup(device.identity, index, original);
+  const stashed = stashBackup(device.identity, backup);
   await onBackup(backup);
-  onLog(`Pre-write backup saved: ${backup.name}`);
+  onLog(`Pre-write backup saved: ${backup.name}`
+    + (stashed ? ' (a copy is stashed in this browser — the console can restore it)'
+               : ' — stashing in the browser failed, the download is the only copy'));
 
   const { payload, dropped } = mod.encodeTrackNotes(original, trackIndex, notes);
   // Per-trig conditions live in three per-step lanes the encoder doesn't know
@@ -213,6 +219,52 @@ export async function safeWriteTrack(device, {
     warnings,
     label, index, trackIndex, backup, payload,
   };
+}
+
+// Send a previously taken backup back to its slot, safely — the counterpart to
+// safeWriteTrack for the one write whose payload must NOT come from a re-fetch:
+// the whole point of a restore is reverting the slot to bytes captured earlier,
+// and the caller's confirm text says which capture. The safety rules still
+// apply everywhere they can: the allowlist gate runs at send time (not just
+// when a button was enabled), what the slot holds *now* is backed up first
+// (stash + onBackup — the state being reverted may be the evidence of what went
+// wrong), and the result is read back and byte-compared.
+//
+//   index / payload   the backup being restored, as safeWriteTrack returned it
+//   onBackup          required, exactly as in safeWriteTrack
+//   confirm           optional; receives { label, index }, return falsy to cancel
+//
+// Resolves to { ok, cancelled, diffs, label, index, backup }.
+export async function safeRestorePatternKit(device, {
+  index, payload, onBackup, confirm = null, onStatus = () => {}, onLog = () => {},
+}) {
+  const gate = writeGate(device?.identity);
+  if (!gate.ok) throw new Error(gate.reason);
+  if (typeof onBackup !== 'function') {
+    throw new Error('refusing to write without a backup hook');
+  }
+  const label = bankName(index);
+
+  onStatus(`Fetching ${label} — backing up what it holds now…`);
+  const current = await device.fetchPatternKit(index);
+
+  if (confirm && !await confirm({ label, index })) {
+    return { ok: false, cancelled: true, diffs: [], label, index, backup: null };
+  }
+
+  const backup = patternKitFile(device.identity, index, current, { kind: 'pre-restore' });
+  stashBackup(device.identity, backup);
+  await onBackup(backup);
+  onLog(`Pre-restore backup saved: ${backup.name}`);
+
+  onStatus(`Restoring ${label}…`);
+  await device.sendPatternKit(index, payload);
+
+  onStatus('Verifying — reading the pattern back…');
+  const reread = await device.fetchPatternKit(index);
+  const diffs = diffPayloads(payload, reread);
+
+  return { ok: diffs.length === 0, cancelled: false, diffs, label, index, backup };
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;

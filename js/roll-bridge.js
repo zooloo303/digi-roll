@@ -211,18 +211,87 @@ export function plockMessagesForStep(plocks, step) {
 export const hasAuditableLanes = plocks =>
   (plocks ?? []).some(l => l.values?.some(v => v != null) && laneDescriptor(l).auditable);
 
+// P-locks follow a moved note. Runs before pruneLanesToTrigs on the same
+// gesture: values travel where they can, and a value that can't is left on its
+// vacated step for the prune to scrub and announce as lost.
+//
+// `stepsBefore` maps note id → step as they stood when the gesture began.
+// Notes absent from it were created during the gesture (a paste, an alt-drag
+// copy) and carry nothing — the original kept its step, so the lock is where it
+// belongs. The rules, per editable lane (read-only lanes are never touched, as
+// ever):
+//
+//   * a value leaves its step only when no note *stayed* on it — if part of a
+//     chord remains, that trig still plays the lock, so the leaving notes go
+//     bare rather than duplicating a sweep across two steps;
+//   * when a step is vacated by several notes at once, the lowest-pitch one
+//     carries the value — the note the encoder would believe, the same
+//     tie-break adoptStepTrig uses for conditions;
+//   * a value lands only where the lane is empty. A destination trig that
+//     already holds its own lock keeps it — the incumbent wins, again as
+//     adoptStepTrig rules for conditions — and the traveling value goes back
+//     to its vacated source step for the prune to report.
+//
+// Every traveling value is lifted before any lands, which is what lets two
+// notes that swap steps swap their locks instead of colliding.
+//
+// Returns how many values landed, so the caller can say the locks moved.
+export function followMovedNotes(plocks, stepsBefore, notes, isEditable) {
+  const moved = notes.filter(n => stepsBefore.has(n.id) && stepsBefore.get(n.id) !== n.step);
+  if (!moved.length) return 0;
+  const stayed = new Set(notes.filter(n => stepsBefore.get(n.id) === n.step).map(n => n.step));
+  const carriers = new Map(); // vacated source step → the note carrying its value
+  for (const n of moved) {
+    const src = stepsBefore.get(n.id);
+    if (stayed.has(src)) continue;
+    const cur = carriers.get(src);
+    if (!cur || n.pitch < cur.pitch) carriers.set(src, n);
+  }
+  // Low pitch lands first, so a contested destination resolves the same way
+  // the carrier pick did.
+  const rides = [...carriers.entries()].sort(([, a], [, b]) => a.pitch - b.pitch || a.step - b.step);
+  let followed = 0;
+  for (const lane of plocks ?? []) {
+    if (!isEditable(lane)) continue;
+    const lifted = [];
+    for (const [src, note] of rides) {
+      if (lane.values[src] == null) continue;
+      lifted.push({ src, note, v: lane.values[src] });
+      lane.values[src] = null;
+    }
+    for (const { src, note, v } of lifted) {
+      if (lane.values[note.step] == null) {
+        lane.values[note.step] = v;
+        followed++;
+      } else {
+        lane.values[src] = v; // couldn't land; the prune scrubs and reports it
+      }
+    }
+  }
+  return followed;
+}
+
 // Drop lane values from steps that no longer have a trig. The v1 rule, applied
 // on the way out: deleting a note deletes the locks that were riding on it,
 // exactly as the box scrubs a deleted trig's condition bytes. Read-only lanes
 // (uncurated, or trigless from the box) are exempt — those are being passed
 // through byte-exact and it is not our place to prune them.
+//
+// Returns how many values were scrubbed, so the caller can announce the loss —
+// once followMovedNotes has run, anything still sitting on a trigless step is
+// a lock that had nowhere to go, and losing it silently reads as data loss.
 export function pruneLanesToTrigs(plocks, notes, isEditable) {
   const live = stepsWithNotes(notes);
+  let dropped = 0;
   for (const lane of plocks ?? []) {
     if (!isEditable(lane)) continue;
-    lane.values = lane.values.map((v, step) => (live.has(step) ? v : null));
+    lane.values = lane.values.map((v, step) => {
+      if (live.has(step)) return v;
+      if (v != null) dropped++;
+      return null;
+    });
   }
-  return plocks;
+  return dropped;
 }
 
 export { laneHasTriglessValues };

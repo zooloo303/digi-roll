@@ -26,13 +26,22 @@ five as one function so a caller can't skip one — new write paths go through i
 rather than reimplementing the sequence. Since 2026-08-04 **every** path does,
 including the console's "Write to pattern" row, which was the last holdout and
 whose inline copy of the flow had quietly stopped keeping up (notes only — no
-conditions, PROB, lanes or swing). Don't add a sixth write path by hand.
+conditions, PROB, lanes or swing). The console's Restore row was the actual
+last holdout — a bare `sendPatternKit` until 2026-08-08; it now runs
+`safeRestorePatternKit` in the same file, the one write whose payload is
+deliberately **not** re-fetched (reverting is its point), with the gate,
+pre-overwrite backup and verify still applied. Don't add another write path by
+hand.
 `writeImpactLines` in the same file owns the confirm sentences about what a
 write touches *beyond* the track's trigs; a caller that needs a new one adds it
 there so all three dialogs get it.
 
 1. **Auto-backup** the target before writing (offered as a `.syx` download); no
-   backup, no write.
+   backup, no write. A browser download can be cancelled or blocked without JS
+   ever knowing, so since 2026-08-08 a copy is also stashed in localStorage
+   *before* the download is offered (`js/elektron/backup-stash.js`, newest
+   four); the console's Restore row reads the stash back, across pages and
+   reloads.
 2. **Minimal diff** — only touch bytes the decoder understands; everything else
    round-trips byte-identical.
 3. **Firmware allowlist** — unknown OS build ⇒ read-only. Current allowlist is

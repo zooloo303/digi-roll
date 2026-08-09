@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { splitSysExStream, DUMP, FAMILY } from '../js/elektron/protocol.js';
@@ -6,9 +6,11 @@ import { readSwing } from '../js/elektron/pattern-settings.js';
 import { readTrackPLocks, applyTrackPLocks } from '../js/elektron/plocks.js';
 import * as dt2 from '../js/elektron/dt2/pattern.js';
 import {
-  safeWriteTrack, writeGate, writeResultMessage, patternKitBackup, patternKitFile,
-  writeImpactLines, BACKUP_LINE, decoderFor, PRODUCT_BY_FAMILY, WRITE_ALLOWED_BUILDS,
+  safeWriteTrack, safeRestorePatternKit, writeGate, writeResultMessage, patternKitBackup,
+  patternKitFile, writeImpactLines, BACKUP_LINE, decoderFor, PRODUCT_BY_FAMILY,
+  WRITE_ALLOWED_BUILDS,
 } from '../js/elektron/safe-write.js';
+import { stashedBackups } from '../js/elektron/backup-stash.js';
 
 // js/elektron/safe-write.js is the one write path every write feature shares,
 // so CLAUDE.md's safety rules are provable here rather than only observable on
@@ -389,5 +391,142 @@ describe('writeResultMessage', () => {
   it('gets the singulars right', () => {
     expect(writeResultMessage({ ...base, ok: true, written: 1, dropped: 0 }).text)
       .toMatch(/Wrote 1 note to/);
+  });
+});
+
+describe.skipIf(!have)('safeRestorePatternKit', () => {
+  // The console's Restore row used to be a bare sendPatternKit — the sixth
+  // write path CLAUDE.md forbids. Now it's this: gate at send time, back up
+  // what the slot holds before overwriting it, verify by re-read.
+
+  const restoreArgs = (backup, extra = {}) => ({
+    index: backup.index, payload: backup.payload,
+    onBackup: () => {}, ...extra,
+  });
+
+  // A backup taken the way the UI takes one: safeWriteTrack's result.
+  async function writtenSlot(box) {
+    const result = await safeWriteTrack(box, {
+      index: 0, trackIndex: 0, notes: bassline, onBackup: () => {},
+    });
+    return result.backup; // the slot's pre-write bytes
+  }
+
+  it('puts the backed-up bytes back and verifies by re-read', async () => {
+    const box = boxWithFixture();
+    const before = Uint8Array.from(box.slots.get(0));
+    const backup = await writtenSlot(box); // slot 0 now differs from `before`
+    expect(box.slots.get(0)).not.toEqual(before);
+
+    box.log.length = 0;
+    const result = await safeRestorePatternKit(box, restoreArgs(backup));
+    expect(result.ok).toBe(true);
+    expect(result.diffs).toEqual([]);
+    expect(box.slots.get(0)).toEqual(before);
+    // Fetch-current (the pre-restore backup), send, fetch again (verify).
+    expect(box.log).toEqual(['fetch 0', 'send 0', 'fetch 0']);
+  });
+
+  it('backs up what the slot holds now before overwriting it', async () => {
+    const box = boxWithFixture();
+    const backup = await writtenSlot(box);
+    const current = Uint8Array.from(box.slots.get(0));
+    let saved = null;
+    await safeRestorePatternKit(box, restoreArgs(backup, { onBackup: b => { saved = b; } }));
+    // The pre-restore backup is the botched state — the evidence — not the
+    // bytes being restored.
+    expect(saved.payload).toEqual(current);
+    expect(saved.name).toContain('pre-restore');
+  });
+
+  it('refuses without a backup hook', async () => {
+    const box = boxWithFixture();
+    const backup = await writtenSlot(box);
+    await expect(safeRestorePatternKit(box, { index: 0, payload: backup.payload }))
+      .rejects.toThrow(/backup/);
+  });
+
+  it('re-checks the allowlist gate at send time', async () => {
+    const box = boxWithFixture();
+    const backup = await writtenSlot(box);
+    box.identity = { ...DT2_IDENTITY, build: '9999' }; // OS updated mid-session
+    box.log.length = 0;
+    await expect(safeRestorePatternKit(box, restoreArgs(backup)))
+      .rejects.toThrow(/isn't write-verified/);
+    expect(box.log).not.toContain('send 0');
+  });
+
+  it('cancelling the confirm sends nothing', async () => {
+    const box = boxWithFixture();
+    const backup = await writtenSlot(box);
+    const written = Uint8Array.from(box.slots.get(0));
+    box.log.length = 0;
+    const result = await safeRestorePatternKit(box, restoreArgs(backup, { confirm: () => false }));
+    expect(result.cancelled).toBe(true);
+    expect(box.log).not.toContain('send 0');
+    expect(box.slots.get(0)).toEqual(written);
+  });
+
+  it('reports a verify mismatch loudly', async () => {
+    const box = boxWithFixture();
+    const backup = await writtenSlot(box);
+    box.corruptOnStore = true;
+    const result = await safeRestorePatternKit(box, restoreArgs(backup));
+    expect(result.ok).toBe(false);
+    expect(result.diffs.length).toBeGreaterThan(0);
+  });
+});
+
+describe.skipIf(!have)('the backup stash inside the write flow', () => {
+  // Rule 1's teeth: the download hook can silently produce no file (a cancelled
+  // save dialog, a blocked multi-download), so the stash copy goes into
+  // localStorage *before* the download is offered — even a backup hook that
+  // throws (and so aborts the write) leaves the bytes recoverable.
+  let mem;
+  beforeEach(() => {
+    mem = new Map();
+    globalThis.localStorage = {
+      getItem: k => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: k => mem.delete(k),
+    };
+  });
+  afterEach(() => {
+    delete globalThis.localStorage;
+  });
+
+  it('stashes the pre-write bytes before the download hook runs', async () => {
+    const box = boxWithFixture();
+    const original = Uint8Array.from(box.slots.get(0));
+    let stashedWhenDownloadRan = null;
+    await safeWriteTrack(box, {
+      index: 0, trackIndex: 0, notes: bassline,
+      onBackup: () => { stashedWhenDownloadRan = stashedBackups('digitakt2')[0] ?? null; },
+    });
+    expect(stashedWhenDownloadRan).not.toBeNull();
+    expect(stashedWhenDownloadRan.payload).toEqual(original);
+  });
+
+  it('a backup hook that throws aborts the write but leaves the stash copy', async () => {
+    const box = boxWithFixture();
+    const original = Uint8Array.from(box.slots.get(0));
+    await expect(safeWriteTrack(box, {
+      index: 0, trackIndex: 0, notes: bassline,
+      onBackup: () => { throw new Error('download blocked'); },
+    })).rejects.toThrow('download blocked');
+    expect(box.log).not.toContain('send 0');
+    expect(stashedBackups('digitakt2')[0].payload).toEqual(original);
+  });
+
+  it('safeRestorePatternKit stashes the pre-restore state too', async () => {
+    const box = boxWithFixture();
+    const write = await safeWriteTrack(box, {
+      index: 0, trackIndex: 0, notes: bassline, onBackup: () => {},
+    });
+    const written = Uint8Array.from(box.slots.get(0));
+    await safeRestorePatternKit(box, {
+      index: write.backup.index, payload: write.backup.payload, onBackup: () => {},
+    });
+    expect(stashedBackups('digitakt2')[0].payload).toEqual(written);
   });
 });

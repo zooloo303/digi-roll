@@ -96,12 +96,11 @@ export function describeChordDrops(drops, targetName = 'the target') {
 // differently.
 //
 // A lane that can't be translated is **dropped and reported**, never guessed at.
-// That covers the ordinary case today: both curated tables are empty pending the
-// hardware experiments, so every lane is untranslatable and every cross-device
-// copy says so. It also covers the case that matters after they are filled — a
-// parameter one box has and the other doesn't — which is the same policy as
-// chord truncation, and for the same reason: silently moving a lock onto the
-// wrong knob is worse than not moving it.
+// Since Phase 0 filled both curated tables (2026-08-04) that means: a lane whose
+// paramId isn't among the eleven measured entries, or a parameter one box has
+// and the other doesn't — the same policy as chord truncation, and for the same
+// reason: silently moving a lock onto the wrong knob is worse than not moving
+// it.
 //
 // Copying between two slots on the *same* box needs no translation at all, and
 // `sourceKind === targetKind` short-circuits to a straight carry.

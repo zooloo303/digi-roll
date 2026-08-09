@@ -21,12 +21,12 @@
 // Two kinds of lane are **read-only**, drawn dimmed and hatched, and say why on
 // hover:
 //
-//   * a lane whose paramId isn't in the device's curated table — which is every
-//     lane today, because those tables are empty pending the hardware
-//     experiments in PLAN.md's Phase 0. digi-roll can see the lane, name the
-//     paramId and carry it through a write byte-exact; it cannot honestly draw
-//     "cutoff 64" or let you drag it, because it doesn't yet know that the
-//     parameter is cutoff or what 64 would store.
+//   * a lane whose paramId isn't in the device's curated table. Phase 0
+//     (2026-08-04) measured eleven parameters per box, but a box can p-lock far
+//     more knobs than that, so lanes captured off a box still land here.
+//     digi-roll can see such a lane, name the paramId and carry it through a
+//     write byte-exact; it cannot honestly draw "cutoff 64" or let you drag it,
+//     because it doesn't know which parameter it is or what 64 would store.
 //   * a lane the box filled on a step with no trig (a trigless lock). v1 doesn't
 //     model those; passing it through untouched keeps what the box has instead
 //     of editing it into something else.
@@ -152,9 +152,10 @@ export function clearLaneValue(lane, steps) {
 
 // A lane's one-line summary for the panel list: "FLTR CUTOFF · 6 steps".
 //
-// A lane that can be edited but not yet stored in a pattern says so, because
-// "preview only" is the single most surprising thing about this feature right now
-// and the place to say it is next to the lane itself.
+// A lane that can be edited but not stored in a pattern says so. Since Phase 0
+// measured every curated parameter this state shouldn't occur — it survives as
+// the honest label for a lane whose name ever stops resolving to a measured
+// slot, rather than letting that lane silently fail to travel.
 export function describeLane(lane) {
   const param = laneParam(lane);
   const n = lane.values.filter(v => v != null).length;

@@ -35,12 +35,16 @@
 //   [measured] A lane value is **wider than 7 bits**. That same lane held
 //     `0x3F29`, just under the 14-bit ceiling of 16383, which is what NRPN
 //     carries. So a lane is not storing the 0–127 number a CC would.
-//   [unknown] What paramId numbers mean on each box, what the u16 values scale
-//     to, and whether the box compacts lanes when it frees one. The first two are
-//     the `plock` half of the parameter tables in dt2/params.js and dn2/params.js
-//     (null on every entry, pending the hardware experiments in PLAN.md's Phase
-//     0 — the leading hypothesis is that paramId is the parameter's NRPN LSB);
-//     the third is why `applyTrackPLocks` keeps a lane at the index it already
+//   [measured] What paramId numbers mean and how the u16 values scale — the
+//     Phase 0 captures of 2026-08-04 (logs in both format docs, fixtures in
+//     dumps/fixtures/). paramId is each box's internal page-ordered parameter
+//     index — NOT the NRPN LSB, an early hypothesis Phase 0's first capture
+//     disproved, and not shared between boxes (74 is overdrive on a DT2, filter
+//     frequency on a DN2). The measured entries live in dt2/params.js and
+//     dn2/params.js, every one storing the MIDI display value × 256.
+//   [measured] The box does not compact the pool when it frees a lane — it
+//     clears it in place and claims the lowest free lane including holes —
+//     which is why `applyTrackPLocks` keeps a lane at the index it already
 //     occupies instead of repacking.
 
 const FREE = 0xff;

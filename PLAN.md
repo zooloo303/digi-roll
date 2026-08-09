@@ -606,6 +606,117 @@ Out of scope for v1, explicitly: trigless locks, the DT2 per-step *sound*
 p-lock lane (track `+1024`, a different structure), and previewing p-locked
 params in the browser.
 
+## Next level — the multi-track session sequencer (direction settled 2026-08-08)
+
+Ideas only — nothing here is built, and none of the experiments have run. This
+records the thinking and the decision so the next session doesn't re-derive it.
+
+The question: can digi-roll grow from "one track at a time" into a full
+16-track sequencer for the DT2/DN2 — piano roll per track, an Ableton-style
+clip launcher, pattern chaining, following the boxes live?
+
+### The architectural decision: the boxes stay the sequencer
+
+Two models were on the table, and the choice determines everything else:
+
+- **Model A — the Mac is the sequencer.** Live notes/CCs over MIDI in real
+  time; the boxes become sound modules. Buys unlimited length, true per-track
+  clips, polymeter — and throws away trig conditions, p-locks at sequencer
+  resolution, and the boxes' own timing, while competing head-on with every
+  DAW. Rejected.
+- **Model B — the boxes stay the playback engine, the Mac is the brain.**
+  digi-roll's current model scaled up: patterns are authored on the Mac, live
+  in pattern slots, and the boxes play them. The Mac orchestrates *which*
+  pattern plays *when* (program changes cued to pattern boundaries) and stays
+  in sync by following MIDI clock. Preserves everything Elektron, and nobody
+  has built it — elk-herd is a librarian, Transfer is backup, Overbridge is
+  audio. **Chosen 2026-08-08.**
+
+Model B is also where the existing codebase is the head start: the
+hardware-verified protocol layer is the expensive 80% and it's done.
+
+### How the features map onto Model B
+
+- **Full 16-track editing** is mostly UI, not protocol. `pattern-core.js`
+  already decodes/encodes whole patterns; the UI just shows one track. A
+  16-lane arrangement view (collapsed lanes, click to expand into the existing
+  roll) reuses the roll, the trig lane, the p-lock lanes and `safe-write.js`
+  unchanged.
+- **Following the boxes live**: the Mac follows MIDI clock, sweeps a playhead
+  across the tracks, highlights the playing pattern. MIDI-in note capture then
+  gives live *recording* from the boxes into the roll. This is the existing
+  "sync-to-external-clock" open item grown up.
+- **Pattern chaining** is nearly free: program changes cued to pattern
+  boundaries (the boxes queue a PC until the loop ends, subject to CH.LEN). A
+  song-mode timeline is plain MIDI — no SysEx, no risk.
+- **The clip launcher** is the novel piece, with one hard constraint:
+  **Elektron pattern changes are global per box** — all 16 tracks switch
+  together, so per-track launches can't be done directly. The workaround is
+  the killer feature: each grid column is a track, each cell a clip (a track's
+  notes + conditions + lanes — what the bank already stores). Launching a new
+  combination **composes the clips into a full pattern in memory**, writes it
+  to a *shadow slot* the box isn't playing, and cues a PC into it at the next
+  boundary. Double-buffer two shadow slots (A/B flip) so there's always a safe
+  write target. The physics: a pattern dump is ~114 KB on the wire, so a write
+  lands in roughly 1–3 s at typical USB-MIDI SysEx throughput — too slow to
+  rewrite the *playing* pattern, fine for boundary-quantized launches staged
+  during the current loop. Boundary-queued changes are already the Elektron
+  idiom. And since one grid can span the DT2 *and* DN2 (and an Octatrack via
+  plain PCs, no SysEx needed), scene launches flip all the boxes at once —
+  a live-set instrument, not just an editor.
+
+### Platform: browser, with an escalation path — not a Rust rewrite
+
+Under Model B the browser's one real weakness — timing — mostly evaporates,
+because the boxes do the sample-accurate work. The Mac only sends PCs near a
+boundary, follows clock for display, and streams SysEx writes; Web MIDI
+handles all three and digi-roll has proven the stack. Meanwhile a Rust port
+would mean re-verifying the byte-by-byte hardware work or trusting an
+unverified translation — exactly the risk the safety rules exist to prevent.
+**The verified JS core is the most valuable artifact in the repo; keeping it
+running unmodified is a design constraint.**
+
+1. **Browser first** (Chrome/Edge; Safari has no Web MIDI, already accepted).
+   One gotcha: background-tab throttling — a running AudioContext or a visible
+   window works around it, and it only matters once clock-following lands.
+2. **Electron if the tab is outgrown** — Chromium, so the entire codebase runs
+   unchanged; gains no-throttling, real file access, a menu-bar app. That is
+   the pragmatic "native app" answer: native shell, verified JS core.
+3. **Rust (Tauri + CoreMIDI) only if Model A is ever wanted after all** —
+   sub-ms scheduling from the Mac. Tauri's WebView has no Web MIDI, so MIDI
+   routes through the Rust side anyway; that's the point of going there, and
+   Model B shouldn't need it.
+
+### The unknowns that need hardware experiments before anything is built
+
+1. **Writing to a non-playing slot while the box plays another.** The whole
+   clip launcher rests on this being safe. Probably fine — "probably" isn't
+   the standard here; it needs a controlled experiment first.
+2. **Program change cueing behaviour** on both boxes: CH.LEN interaction,
+   receive-PC settings, timing tolerance near the boundary. Plain MIDI, low
+   risk, needs mapping.
+3. **Actual SysEx write duration** over USB per box — decides whether the A/B
+   shadow-slot flip feels instant-at-the-bar or needs a two-bar horizon.
+4. **The safety rules vs a live session.** Backup-before-every-write and
+   per-write confirms are right for an editor and impossible mid-performance.
+   The resolution is not relaxing the rules but a **session sandbox**: back up
+   the whole bank once at session start, declare explicit scratch slots, and
+   let writes inside that declared sandbox skip the per-write ceremony.
+   Throwaway-projects-only stays absolute.
+
+### Shape, if pursued
+
+A **new app in a new repo (or a sibling page) importing `js/elektron/` as its
+verified foundation** — not grown inside digi-roll. digi-roll's "one track,
+done brilliantly" focus and zero-dependency constraint are worth preserving
+as-is; a 16-track session UI is enough state that a light framework may be
+legitimate there without breaking digi-roll's rules.
+
+Rough phasing: 16-track pattern editor → clock-following playhead + pattern
+manager/chainer → session grid with shadow-slot compositing → live capture
+from the boxes. The hardware experiments above come before phase 1 is
+committed to, since #1 gates the launcher design.
+
 ## Also open
 
 - [x] **P-lock Phase 0** — ran 2026-08-04 on both boxes; see the Phase 0 section.
@@ -716,6 +827,37 @@ params in the browser.
 - [ ] **Trigless locks** — out of scope for p-lock v1; a lane the box filled on a
       step with no trig is carried read-only rather than authored. Needs a
       trig-type bit in the step words, which is why it waits.
+- [x] **P-locks follow a moved note** — asked for during the 2026-08-09 test
+      round (A4), built 2026-08-09. Locks stay step-scoped in the model (the box's
+      shape); what changed is the gesture: `followMovedNotes` in
+      `js/roll-bridge.js` runs on the roll's onChange *before*
+      `pruneLanesToTrigs`, walking values from vacated steps to where their
+      notes went, using a note-id → step snapshot main.js takes at
+      onBeforeEdit. The three design questions the deferral named, answered:
+
+  - **Chords.** A value leaves its step only when no note *stayed* there — if
+    part of a chord remains, that trig still plays the lock and the leaving
+    notes go bare (no duplicated sweeps). When a step is vacated by several
+    notes at once, the lowest-pitch one carries the value: the note the
+    encoder would believe, the same tie-break `adoptStepTrig` uses.
+  - **Landing on a step that already has a lock.** The incumbent wins, again
+    matching `adoptStepTrig` — the traveling value is put back on its vacated
+    source step, where the prune that follows scrubs it and the status line
+    announces it as cleared. Joining a trig whose lane value is *empty* fills
+    it: the note brings its sweep to the trig it joins.
+  - **Read-only lanes.** Never touched, same `laneIsEditable` gate as the
+    prune — they're being passed back to the box byte-exact.
+
+  Every traveling value is lifted before any lands, so two notes swapping
+  steps swap their locks. Notes created mid-gesture (paste, alt-drag copy)
+  have no snapshot entry and carry nothing — the original kept its step, so
+  the lock is already where it belongs. Follows are announced on the status
+  line (`N p-lock values moved with their notes`) alongside the existing
+  cleared message. Ten tests in `test/plocks.test.js` (travel, read-only,
+  partial/full chord vacate, incumbent-wins + prune pairing, empty-trig join,
+  swap, contested landing, alt-drag copy, delete). **Not hardware-verified**
+  — nothing here touches the wire; the send path sees the same step-scoped
+  lanes it always did.
 - [ ] **Pattern chaining preview** — play slots A→B→C to audition a sequence
       (pure frontend, no device risk; the last unfinished editor item)
 - [ ] **Firmware stability across an OS update.** The allowlist pins exactly one

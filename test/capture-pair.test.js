@@ -76,6 +76,25 @@ describe('buildCapturePair / parseCapturePair', () => {
     expect(pair.baseline.payload.length).toBe(111616);
   });
 
+  it('normalises a missing or hand-edited device block to safe strings', () => {
+    // Donations are hand-edited; a pair with no device block once put
+    // undefineds into the diff lab's notebook and kept the page from booting.
+    const { baselineRaw, afterRaw } = syntheticPair();
+    const text = buildCapturePair({
+      device: {}, family: 0x1a, requestType: 0x61, index: 7, baselineRaw, afterRaw,
+    });
+    const stripped = JSON.parse(text);
+    delete stripped.device;
+    const pair = parseCapturePair(JSON.stringify(stripped));
+    expect(pair.device).toEqual({
+      name: 'unknown device', build: '', version: '', slug: '', productId: null,
+    });
+    // Junk values coerce rather than smuggle non-strings downstream.
+    const junk = { ...JSON.parse(text), device: { name: 5, build: { odd: true } } };
+    expect(parseCapturePair(JSON.stringify(junk)).device)
+      .toMatchObject({ name: 'unknown device', build: '' });
+  });
+
   it('rejects a file that is not a pair, saying why', () => {
     expect(() => parseCapturePair('not json')).toThrow(/not a JSON file/);
     expect(() => parseCapturePair('{"kind":"something else"}')).toThrow(/not a digi-roll capture pair/);

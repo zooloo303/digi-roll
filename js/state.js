@@ -29,10 +29,10 @@ export function makeNote(step, pitch, len = 1, velocity = 100, micro = 0, trig =
 //               authored the lane, so it knows exactly which knob this is.
 //               null on a lane that came off a box.
 //   paramId     the box's own parameter byte, when the lane came off a box.
-//               null on a lane digi-roll authored, because which byte the
-//               hardware uses for a given parameter has not been measured yet
-//               (see js/elektron/params.js). One of `name` / `paramId` is always
-//               set; both, once Phase 0 lands.
+//               null on a lane digi-roll authored — those stay keyed by name,
+//               and the byte is resolved from the curated tables on the way
+//               out (see js/elektron/params.js). One of `name` / `paramId` is
+//               always set.
 //   deviceKind  which box this lane is for, 'DT2' / 'DN2'. The two boxes both
 //               number their parameters differently *and* use different CCs for
 //               the same knob, so a lane without this is meaningless.

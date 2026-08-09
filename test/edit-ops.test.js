@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  clipboardAnchor, placeClipboard, resizeSelectionBy, setSelectionLength,
+  clipboardAnchor, placeClipboard, resizeSelectionBy, setSelectionLength, adoptStepTrig,
 } from '../js/edit-ops.js';
 import { snapLenFine, LEN_MIN } from '../js/roll-bridge.js';
 import { PITCH_MIN, PITCH_MAX } from '../js/pianoroll.js';
@@ -160,5 +160,66 @@ describe('the LEN control over a selection', () => {
   it('snaps to the device scale and honours its floor', () => {
     expect(setSelectionLength(sel([0, 4]), 0.01,
       { lengthSteps: 16, snapLen: snapLenFine, minLen: LEN_MIN })).toEqual([LEN_MIN]);
+  });
+});
+
+describe('notes joining an occupied step (adoptStepTrig)', () => {
+  // PROB/FILL/COND are per trig on the box, so notes sharing a step must agree
+  // — and when they don't, the encoder silently believes the lowest pitch.
+  // adoptStepTrig is what keeps paste / move / alt-drag-copy from ever creating
+  // that disagreement: the arriving note takes the incumbent trig's conditions.
+  let nextId = 0;
+  const note = (step, pitch, trig = {}) => ({
+    id: `n${nextId++}`, step, pitch, len: 1, velocity: 100, micro: 0,
+    prob: null, fill: null, cond: null, ...trig,
+  });
+
+  it('an arriving note takes the incumbent trig\'s conditions', () => {
+    const incumbent = note(4, 48, { prob: 40, fill: true, cond: '2:4' });
+    const arriving = note(4, 60, { cond: 'PRE' });
+    const changed = adoptStepTrig([incumbent, arriving], [arriving]);
+    expect(changed).toBe(1);
+    expect(arriving).toMatchObject({ prob: 40, fill: true, cond: '2:4' });
+    // The incumbent is the trig; it never moves toward the arrival.
+    expect(incumbent).toMatchObject({ prob: 40, fill: true, cond: '2:4' });
+  });
+
+  it('keeps its own conditions on an empty step', () => {
+    const arriving = note(6, 60, { cond: '2:4' });
+    const other = note(3, 48, { cond: 'PRE' });
+    expect(adoptStepTrig([other, arriving], [arriving])).toBe(0);
+    expect(arriving.cond).toBe('2:4');
+  });
+
+  it('adopts from the lowest-pitch incumbent — the note the encoder believes', () => {
+    const low = note(4, 40, { prob: 75 });
+    const high = note(4, 70, { prob: 30 });
+    const arriving = note(4, 60);
+    adoptStepTrig([high, low, arriving], [arriving]);
+    expect(arriving.prob).toBe(75);
+  });
+
+  it('other arrivals are not incumbents — a pasted chord on an empty step keeps its conditions', () => {
+    const a = note(2, 60, { cond: '2:4' });
+    const b = note(2, 64, { cond: '2:4' });
+    expect(adoptStepTrig([a, b], [a, b])).toBe(0);
+    expect(a.cond).toBe('2:4');
+    expect(b.cond).toBe('2:4');
+  });
+
+  it('counts only notes that actually changed', () => {
+    const incumbent = note(4, 48, { cond: '2:4' });
+    const agrees = note(4, 60, { cond: '2:4' });
+    const differs = note(4, 64, { cond: null });
+    expect(adoptStepTrig([incumbent, agrees, differs], [agrees, differs])).toBe(1);
+  });
+
+  it('explicit defaults adopt too — an all-null incumbent strips an arriving lock', () => {
+    // Joining a trig means taking it as it is, including "no locks at all";
+    // anything else would leave the step non-uniform in the other direction.
+    const incumbent = note(4, 48);
+    const arriving = note(4, 60, { prob: 40, cond: '2:4' });
+    expect(adoptStepTrig([incumbent, arriving], [arriving])).toBe(1);
+    expect(arriving).toMatchObject({ prob: null, fill: null, cond: null });
   });
 });
