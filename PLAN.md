@@ -606,6 +606,38 @@ Out of scope for v1, explicitly: trigless locks, the DT2 per-step *sound*
 p-lock lane (track `+1024`, a different structure), and previewing p-locked
 params in the browser.
 
+## Pattern generator — planned 2026-08-09, branch `pattern-generator`
+
+Somewhere between a randomiser and a session musician: pick a genre and a key
+and digi-roll writes a **bassline, a chord part and a lead** that agree with
+each other, using the trig conditions and p-lock lanes it already knows how to
+send. Aimed at DnB, breaks, electro and house; primarily at the **Digitone II**,
+and working on a DT2 through the same canonical-name parameter translation
+cross-device copy uses.
+
+Full design in **`docs/pattern-generator.md`** — module layout, genre profiles,
+the phasing, and the four scope decisions taken with Neil. The three that shape
+everything: a **song context** (key, scale, bars, progression, genre, seed)
+sits above the eight slots and each part is generated into its own slot locked
+to the same harmony; **melodic only in v1** (a real breakbeat generator wants a
+whole DT2 kit, which is the session-sequencer work below); and generation
+**replaces** the target slot, with a visible lockable seed so a result is
+reproducible and survives tweaking one slider.
+
+Why a feature this size is low-risk: **it adds no write surface.** The generator
+is a pure producer of `js/state.js` pattern objects — notes, per-note
+velocity/length/micro, per-trig PROB/FILL/COND, p-lock lanes — which leave for
+the box through the existing hardware-verified `safeWriteTrack`. No file under
+`js/elektron/` changes; the curated parameter tables are only read. Two things
+it deliberately does **not** write: `swing`, because it re-times all sixteen
+tracks in the destination slot (genre groove comes out as per-note
+micro-timing instead), and `trackProb`, because chance belongs on per-trig PROB
+locks, which is the hardware's own model.
+
+The one edit to existing app code: an undo entry in `main.js` is a snapshot of a
+single slot, which can't express "three slots changed at once", so it becomes a
+list of slot snapshots — a single-slot entry being a list of one.
+
 ## Next level — the multi-track session sequencer (direction settled 2026-08-08)
 
 Ideas only — nothing here is built, and none of the experiments have run. This
