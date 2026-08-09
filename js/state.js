@@ -105,6 +105,13 @@ export function defaultState() {
     scaleRoot: 0,      // 0 = C
     scale: 'off',      // key into SCALES, or 'off'
     panel: 'editPanel', // side panel showing in the rail, or null for none
+    // The pattern generator's song context — key, bars, progression, genre, seed,
+    // feel and the per-part settings (js/gen/context.js). Declared here so the
+    // field is part of the saved shape and survives a round trip through the
+    // console page, but left null: the defaults and the backfill live with the
+    // generator, and importing them here would put a cycle through the module
+    // everything else depends on. The Generate panel normalizes it at start-up.
+    gen: null,
     chord: {           // chord-draw settings (js/chords.js)
       on: false,
       quality: 'auto', // 'auto' = diatonic when a scale is on; else a QUALITIES key

@@ -308,6 +308,18 @@ h1 .sub {
 .row.dest .lab { flex: none; }
 .row.dest select { flex: 1; width: auto; min-width: 0; }
 
+/* The Generate panel mixes a wide field with small buttons on one row — the
+   progression and the seed — which the panel's full-width inputs would break. Its
+   slot menus are narrow (one per part), and the readouts sit hard right. */
+#generatePanel .row input[type="text"],
+#generatePanel .row input[type="number"] { flex: 1; width: auto; min-width: 0; }
+#generatePanel .row button { flex: none; padding: 2px 7px; }
+#generatePanel .row .field { flex: 1; }
+#generatePanel .row select { width: 96px; }
+#generatePanel .row b { flex: none; color: #d8dae0; font-size: 12px; min-width: 34px; text-align: right; }
+#generatePanel input[type="range"] { margin-bottom: 8px; }
+#genProgHint.error, #genSlotHint.error { color: #d9635f; }
+
 .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .panel .wide { width: 100%; }
 .panel input[type="range"] { width: 100%; }

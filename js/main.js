@@ -4,6 +4,7 @@ import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianor
 import { TrigLane } from './triglane.js';
 import { PLockLane, describeLane, laneIsEditable, laneParam, laneColor } from './plocklane.js';
 import { chordPitches, voiceChord, QUALITIES } from './chords.js';
+import { GeneratePanel } from './genpanel.js';
 import { placeClipboard, setSelectionLength, adoptStepTrig } from './edit-ops.js';
 import { ElektronDevice, slugFromPortName } from './elektron/device.js';
 import {
@@ -34,15 +35,19 @@ const pattern = () => state.patterns[state.current];
 const persist = () => saveState(state);
 
 // --- Undo history -----------------------------------------------------------
-// Snapshot-based: each entry is a deep copy of one slot's pattern, taken before
-// a mutation (once per drag gesture, not per mousemove).
+// Snapshot-based: each entry is a deep copy of the affected slots' patterns,
+// taken before a mutation (once per drag gesture, not per mousemove).
+//
+// An entry is a **list** of slot snapshots rather than one, because generating an
+// arrangement changes three slots at once and that has to undo as a single step.
+// Everything else pushes a list of one, which behaves exactly as it always did.
 
 const HISTORY_MAX = 100;
 const undoStack = [], redoStack = [];
-const snapshot = slot => ({ slot, data: structuredClone(state.patterns[slot]) });
+const snapshot = slots => slots.map(slot => ({ slot, data: structuredClone(state.patterns[slot]) }));
 
-function pushUndo() {
-  undoStack.push(snapshot(state.current));
+function pushUndo(slots = [state.current]) {
+  undoStack.push(snapshot(slots));
   if (undoStack.length > HISTORY_MAX) undoStack.shift();
   redoStack.length = 0;
   syncHistory();
@@ -52,8 +57,7 @@ function pushUndo() {
 // shouldn't leave a dead undo step behind.
 function dropUnchangedUndo() {
   const top = undoStack[undoStack.length - 1];
-  if (top && top.slot === state.current &&
-      JSON.stringify(top.data) === JSON.stringify(pattern())) {
+  if (top && top.every(e => JSON.stringify(e.data) === JSON.stringify(state.patterns[e.slot]))) {
     undoStack.pop();
     syncHistory();
   }
@@ -62,9 +66,11 @@ function dropUnchangedUndo() {
 function step(from, to) {
   const entry = from.pop();
   if (!entry) return;
-  to.push(snapshot(entry.slot));
-  state.patterns[entry.slot] = entry.data;
-  state.current = entry.slot;
+  to.push(snapshot(entry.map(e => e.slot)));
+  for (const e of entry) state.patterns[e.slot] = e.data;
+  // Stay where you are if the step touched the slot you're looking at; otherwise
+  // follow it, so an undo you can't see never happens silently.
+  if (!entry.some(e => e.slot === state.current)) state.current = entry[0].slot;
   roll.clearSelection();
   syncToolbar();
   roll.resize();
@@ -242,12 +248,17 @@ const chordInvSel = $('chordInv');
 
 const railBtns = [...$('rail').querySelectorAll('button')];
 
+// Built further down, once the device-resolution helpers it needs exist. Declared
+// here because the panel bookkeeping below reaches for it.
+let genPanel = null;
+
 // Panels that need to catch up on state they don't otherwise track.
 const onPanelOpen = {
   bankPanel: () => {
     refreshBank();
     if (!$('bankName').value) $('bankName').value = pattern().name;
   },
+  generatePanel: () => genPanel?.sync(),
 };
 
 function showPanel(id) {
@@ -315,6 +326,9 @@ function syncToolbar() {
   // Per pattern too, and it changes the height of the lane strip, so it has to
   // be re-read on every slot switch rather than only when edited.
   syncPLockPanel();
+  // Which part "Generate this slot" would re-roll depends on the slot you're in,
+  // and the panel's slot menus show pattern names, so it re-syncs with the toolbar.
+  genPanel?.sync();
   railFlag('harmonyPanel', state.chord.on);
   syncSend();
 }
@@ -1138,6 +1152,37 @@ $('impGo').onclick = () => {
     + (lanes.length ? ` and ${lanes.length} p-lock lane${lanes.length === 1 ? '' : 's'}` : '')
     + ' — edit away, Send writes it home (undo to get the old slot back)');
 };
+
+// --- The pattern generator ---------------------------------------------------
+// Pick a genre and a key and it writes a bassline, a chord part and a lead into
+// three slots, locked to the same progression and aware of each other. All of the
+// musical work is in js/gen/ (pure, seeded, tested); js/genpanel.js is the panel.
+//
+// It produces nothing but ordinary pattern state — notes, per-note
+// velocity/length/micro, per-trig conditions, p-lock lanes — which leaves for the
+// box through the same Send path above. There is no new write surface, and the
+// generator never touches `swing` or `trackProb`.
+//
+// It is built here rather than with the other panels because it needs
+// `plockDeviceKind`: a p-lock lane belongs to one box's parameter numbering, so
+// the generator resolves the target box exactly as the add-lane picker does, and
+// draws no lanes at all when it can't.
+genPanel = new GeneratePanel({
+  state,
+  persist,
+  pushUndo,
+  setStatus,
+  deviceKind: plockDeviceKind,
+  onSlotsChanged: () => {
+    roll.clearSelection();
+    syncToolbar();
+    roll.resize();
+  },
+  onHarmonyChanged: () => {
+    roll.draw();
+    syncToolbar();
+  },
+});
 
 // --- Keyboard shortcuts --------------------------------------------------------
 

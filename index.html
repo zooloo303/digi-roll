@@ -42,6 +42,9 @@
       <button data-panel="harmonyPanel" title="Key, scale tinting and chord draw">
         <span class="ic">♬</span>Harmony
       </button>
+      <button data-panel="generatePanel" title="Generate a bassline, chords and a lead that agree with each other — pick a genre and a key">
+        <span class="ic">⚄</span>Generate
+      </button>
       <button data-panel="bankPanel" title="Your saved patterns — named saves kept in this browser">
         <span class="ic">▤</span>Library
       </button>
@@ -135,6 +138,84 @@
         </div>
         <input id="chordStrum" type="range" min="0" max="100">
         <button id="harmonize" class="wide" style="margin-top:10px" title="Build a chord under each selected note using the settings on this panel — the selected notes stay as they are, the added notes come in a touch softer">Harmonize selection</button>
+      </div>
+    </aside>
+
+    <!-- ===== Generate ===== -->
+    <aside id="generatePanel" class="panel hidden">
+      <h2>Generate <span class="x" title="Close">×</span></h2>
+      <div class="grp">
+        <div class="cap">Song</div>
+        <div class="row" title="The genre sets the rhythmic grammar of all three parts — where trigs land, how long notes are, how hard they hit, and the groove (as real per-note micro-timing, never the swing byte).">
+          <span class="lab">Genre</span><select id="genGenre"></select>
+        </div>
+        <div class="row" title="Pattern length for every generated part">
+          <span class="lab">Bars</span><select id="genBars"></select>
+        </div>
+        <div class="row" title="The key. These are the same Root and Scale the Harmony panel edits, so the tinted rows on the grid always agree with what was generated.">
+          <span class="lab">Root</span><select id="genRoot"></select>
+        </div>
+        <div class="row">
+          <span class="lab">Scale</span><select id="genScale"></select>
+        </div>
+        <div class="row" title="Roman numerals in the key above: i is the tonic, VI the sixth degree, i7 adds the scale's own 7th, i:2 lasts two bars. Type your own, or press ↻ for another of this genre's.">
+          <input id="genProg" type="text" maxlength="72" placeholder="i VI III VII">
+          <button id="genProgNext" title="Another progression from this genre">↻</button>
+        </div>
+        <p class="hint" id="genProgHint"></p>
+        <div class="row" title="The number every random decision comes from. Same seed, same music — so a result is reproducible and shareable. 🎲 rolls a new one; 🔒 keeps it fixed while you push the sliders around.">
+          <span class="lab">Seed</span>
+          <input id="genSeed" type="number" min="0" max="4294967295" step="1">
+          <button id="genSeedRoll" title="Roll a new seed">🎲</button>
+          <button id="genSeedLock" title="Lock the seed: generating again gives the same music, so you can change one slider at a time">🔒</button>
+        </div>
+        <p class="hint" id="genBpmHint"></p>
+        <button id="genSetBpm" class="wide">Set BPM</button>
+      </div>
+
+      <div class="grp">
+        <div class="cap">Parts</div>
+        <div class="row" title="The bassline: roots, fifths, octaves and approach tones into a chord change. Generated first, so the other two react to it.">
+          <label class="field"><input id="genOnBass" type="checkbox"> Bass</label>
+          <select id="genSlotBass" class="push" title="Which pattern slot this part is written into"></select>
+          <b id="genDensBassLabel"></b>
+        </div>
+        <input id="genDensBass" type="range" min="0" max="100" title="How busy the bassline is, between this genre's own sparsest and busiest">
+        <div class="row" title="One voicing per chord, with voice leading: the inversion that moves least from the chord before it, so the part walks instead of jumping.">
+          <label class="field"><input id="genOnChords" type="checkbox"> Chords</label>
+          <select id="genSlotChords" class="push" title="Which pattern slot this part is written into"></select>
+          <b id="genDensChordsLabel"></b>
+        </div>
+        <input id="genDensChords" type="range" min="0" max="100" title="How often the chords hit">
+        <div class="row" title="A short motif, then developed across the progression — transposed, inverted, retrograded, displaced. Answers the bass rather than doubling it.">
+          <label class="field"><input id="genOnLead" type="checkbox"> Lead</label>
+          <select id="genSlotLead" class="push" title="Which pattern slot this part is written into"></select>
+          <b id="genDensLeadLabel"></b>
+        </div>
+        <input id="genDensLead" type="range" min="0" max="100" title="How much of the motif survives each phrase">
+        <p class="hint" id="genSlotHint"></p>
+      </div>
+
+      <div class="grp">
+        <div class="cap">Feel</div>
+        <div class="row" title="P-lock automation: filter contours, send swells, drive on accents, pan movement. 0 draws no lanes at all. Lanes are chosen from the parameters measured on the box digi-roll can see — with no box resolvable it makes none and says so.">
+          <span class="lab">Motion</span><b id="genMotionLabel"></b>
+        </div>
+        <input id="genMotion" type="range" min="0" max="100">
+        <div class="row" title="Per-trig conditions: 1:2 / 2:2 so a two-bar loop isn't two identical bars, 3:4 details that arrive every fourth pass, PROB on ghost notes, the odd FILL trig. 0 writes none.">
+          <span class="lab">Looseness</span><b id="genLooseLabel"></b>
+        </div>
+        <input id="genLoose" type="range" min="0" max="100">
+        <div class="row" title="Wobble on velocity and micro-timing, so a repeated hit isn't machine-identical. 0 gives exactly the genre's own numbers.">
+          <span class="lab">Humanize</span><b id="genHumanLabel"></b>
+        </div>
+        <input id="genHuman" type="range" min="0" max="100">
+      </div>
+
+      <div class="grp">
+        <button id="genRun" class="wide" title="Replace every checked part's slot with a freshly generated one. Undoable in one step.">Generate arrangement</button>
+        <button id="genRunSlot" class="wide" style="margin-top:6px" title="Re-roll only the part in the slot you're editing, against the same key, progression and seed — so the other parts stay exactly as they are">Generate this slot</button>
+        <p class="hint" id="genHint"></p>
       </div>
     </aside>
 
@@ -249,6 +330,29 @@
       <p>Two more things. <b>Sending replaces that track's automation:</b> lanes the box has and your pattern doesn't are cleared, the same way the trigs and their conditions are replaced — the confirmation names it before anything is written, and the usual backup downloads first. And a lock on a step with <b>no trig</b> (the box allows those) stays read-only rather than being edited, because digi-roll doesn't author them yet.</p>
       <h3>Chords</h3>
       <p>In the <b>Harmony</b> panel, turn on <b>Chord draw</b> and every click on an empty cell stamps a whole chord — a ghost shows what you'll get before you commit, and dragging right lengthens all of it. With a scale selected and quality on <b>In scale</b>, chords are diatonic: click D in C major and you get D minor, the V gets a dominant 7th, and so on. <b>alt+wheel</b> over the grid cycles the inversion, <b>Spread</b> opens the voicing up, and <b>Strum</b> staggers the notes with real micro-timing (it survives write-back to the box). <b>Harmonize selection</b> builds chords under notes you've already drawn. Chords are capped at 4 notes: that's exactly one trig's worth on the Digitakt II, whose trigs hold four note slots. The Digitone II can hold more, but digi-roll keeps the same cap so a pattern means the same thing on either box. Copying a fat chord onto a box that can't hold it keeps the four loudest notes and tells you what it dropped — never silently.</p>
+      <h3>Generating a bassline, chords and a lead</h3>
+      <p>The <b>Generate</b> panel (⚄) is somewhere between a randomiser and a session musician: pick a <b>genre</b> and a <b>key</b> and it writes three parts that agree with each other — a bassline, a chord part and a lead — into three pattern slots. Then send each slot to its own track on the box with the <b>Box</b> panel, exactly as you would a pattern you drew by hand. Nothing new is sent to the hardware: the generator only produces notes, per-trig conditions and p-lock lanes, and they leave through the same backed-up, byte-verified write path.</p>
+      <p><b>Genre</b> sets the rhythmic grammar of all three parts — where trigs land, how long notes are, how hard they hit, and the groove. <b>DnB</b> (around 174) puts a long root anchor on the 1 and syncopates off the grid; <b>Breaks</b> (135) is funkier and full of soft ghost notes; <b>Electro</b> (130) is staccato sixteenths with octave leaps; <b>House</b> (124) puts the bass on every off-beat and stabs seventh chords between the beats. Each suggests its own tempo — there's a <b>Set</b> button, and nothing changes the transport unless you press it.</p>
+      <p><b>Root</b> and <b>Scale</b> here are the same ones the <b>Harmony</b> panel edits, so the tinted rows on the grid always agree with what was generated. <b>Progression</b> is roman numerals in that key: <code>i</code> is the tonic, <code>VI</code> the sixth degree, <code>i7</code> adds the scale's own 7th, <code>i:2</code> lasts two bars. Type your own or press <b>↻</b> for another of that genre's. Each degree gets its natural quality from the scale — the same diatonic walk chord draw uses — so <code>i VI III VII</code> in C minor is Cm, A♭, E♭, B♭ with no chord tables anywhere.</p>
+      <h4>The three parts, and why it's a band</h4>
+      <p>They are generated in order — bass, then chords, then lead — and each one is handed what the previous parts are already playing. That's what buys call-and-response rather than three randomisers in a row.</p>
+      <ul>
+        <li><b>Bass</b> — roots, fifths, octaves and the chord's own seventh, with the occasional approach tone leading into the next chord. Downbeats hit hard, ghosts whisper. The 1 always plays.</li>
+        <li><b>Chords</b> — one voicing per chord, with <b>voice leading</b>: of every inversion and octave that fits the register, it picks the one that moves least from the chord before it, so the part walks instead of jumping. Capped at four notes, which is one trig's worth on a Digitakt II.</li>
+        <li><b>Lead</b> — a short <b>motif</b> is invented once and then <i>developed</i> across the progression: repeated, transposed, turned upside down, played backwards, shoved late. Notes on the beat land on chord tones; the ones between are free to pass through. And it <b>answers the bass</b> — a note that would land on a step the bass owns moves over or steps aside.</li>
+      </ul>
+      <p><b>Density</b> per part runs between that genre's own sparsest and busiest, so even 0 is music rather than silence — use the checkbox to leave a part out.</p>
+      <h4>Feel: Motion, Looseness, Humanize</h4>
+      <ul>
+        <li><b>Motion</b> draws <b>p-lock lanes</b> — filter contours that open across the loop, delay and reverb swelling into the turnaround, overdrive on the accents, pan movement on a lead. At 0 it draws none. A lane belongs to <i>one box's</i> parameter numbering, so it needs to know which box you're on: pick it in the MIDI output menu (or import a track from it) and it will say so on the status line if it still can't tell.</li>
+        <li><b>Looseness</b> writes <b>per-trig conditions</b>, used for what they're actually for: <code>1:2</code>/<code>2:2</code> so a two-bar loop isn't two identical bars, <code>3:4</code> details that only arrive every fourth pass, <b>PROB</b> on ghost notes so the part breathes, the odd <b>FILL</b> trig. At 0 it writes none.</li>
+        <li><b>Humanize</b> wobbles velocity and micro-timing so a repeated hit isn't machine-identical. At 0 you get exactly the genre's own numbers.</li>
+      </ul>
+      <p>Two things it deliberately never touches. <b>Swing</b>, because that byte re-times all sixteen tracks in the destination pattern — genre groove (including house's shuffle) comes out as real per-note <b>micro-timing</b> instead, which is per note and yours alone. And the <b>Probability</b> slider, because chance belongs on per-trig PROB locks, which is how the hardware itself models it.</p>
+      <h4>The seed</h4>
+      <p>Every random decision comes from one number, so the same seed is the same music — shareable, and reproducible tomorrow. <b>🎲</b> rolls a new one and <b>Generate arrangement</b> rolls one each time unless you press <b>🔒</b>. Lock it and each part still draws from its own stream, so nudging the lead's density leaves the bass exactly where it was: that's how you change one thing at a time. <b>Re-roll the …</b> does the slot you're editing on its own, keeping the seed — so you can keep a bass you like and try five leads against it, each one still answering that bassline.</p>
+      <p><b>Generating replaces the slots it's aimed at.</b> It names them and asks first if there's anything in them, and the whole arrangement is a <b>single undo step</b> — one <b>cmd/ctrl+Z</b> puts all three slots back.</p>
+
       <h3>Fallback: capture by live recording</h3>
       <p>Only needed when digi-roll can't write to your box directly — an older Digitakt, a Digitone I, an Analog Rytm, or an OS build the pattern format hasn't been verified against yet (the app says so when you try to send). It plays the pattern out as MIDI while the box records it, so it's at the mercy of clock and timing; sending is better whenever it's available.</p>
       <ol>

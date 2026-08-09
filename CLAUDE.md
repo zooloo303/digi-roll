@@ -99,6 +99,12 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
   (swing) · `plocks.js` the p-lock lane pool · `params.js` + `param-tables.js` +
   `dt2|dn2/params.js` the curated p-lock parameter tables ·
   `js/roll-bridge.js` roll ↔ device notes and lanes
+- `js/gen/` the pattern generator (built 2026-08-09) — `rng.js` seeded per-part
+  streams · `theory.js` key/scale/chord maths and register windows ·
+  `progressions.js` + `genres.js` the data · `rhythm.js` trigs, groove and
+  per-trig conditions · `motif.js` the lead's memory · `parts/` one function per
+  role · `plockdesign.js` lanes from the curated writable set · `arrange.js` the
+  orchestrator · `context.js` the song context · `js/genpanel.js` the panel
 - `js/plocklane.js` the p-lock automation strip · `js/triglane.js` the trig strip
 - `js/bank.js` named saves · `js/labs/` device console + diffing lab pages ·
   `labs/probe.js` + `labs/capture-pair.js` the contributor path for mapping boxes
@@ -110,6 +116,35 @@ feature gets unit tests. The model to copy is the minimal-diff property test for
   (BSD-2-Clause, by mzero) — keep the attribution.
 
 `PLAN.md` is the roadmap — what's shipped and what's next.
+
+**The pattern generator is a pure producer of pattern state, and that is what
+keeps it safe** (built 2026-08-09; design and the nine build decisions in
+`docs/pattern-generator.md`). It emits notes, per-note velocity/length/micro,
+per-trig PROB/FILL/COND and p-lock lanes, and they leave for the box through
+`safeWriteTrack` unchanged — no new write path, no byte encoded anywhere in
+`js/gen/`, and the only thing it reads from `js/elektron/` is the curated
+parameter tables (to know which lanes are writable on the resolved box). Three
+rules to keep if you touch it:
+
+- **It never writes `swing` or `trackProb`.** Swing re-times all sixteen tracks
+  in the destination slot, so genre groove is per-note micro-timing instead;
+  chance is per-trig PROB locks, the hardware's own model. `applyPartToPattern`
+  in `arrange.js` is the one place that writes to a slot, and its comment is the
+  complete list of fields it touches.
+- **Each slider changes only the thing it names.** Motion is p-lock lanes,
+  Looseness is trig conditions, Humanize is velocity/micro wobble; none of them
+  may reach a pitch decision, and lanes draw from their own rng stream so turning
+  Motion up can't rewrite the music. Same reason every part has its own stream
+  (`rngFor(seed, role)`), and why "Generate this slot" bumps a per-part
+  `variation` rather than the seed.
+- **No box resolvable ⇒ no lanes, and say so.** A lane belongs to one box's
+  parameter numbering (74 is overdrive on a DT2, filter frequency on a DN2), so
+  guessing would write the wrong knob.
+
+**Hardware-verified 2026-08-09**, the day it was built: generated parts sent to
+three tracks, notes, conditions and lanes as drawn, destination swing untouched.
+Which box that was on isn't recorded, so treat the second box as unconfirmed —
+the lane recipes resolve per box by canonical name.
 
 **P-lock lanes: a parameter has two independent mappings, and the split is the
 whole design** (built 2026-08-04; Phase 0 measured the same day; **write path

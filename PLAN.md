@@ -606,7 +606,7 @@ Out of scope for v1, explicitly: trigless locks, the DT2 per-step *sound*
 p-lock lane (track `+1024`, a different structure), and previewing p-locked
 params in the browser.
 
-## Pattern generator — planned 2026-08-09, branch `pattern-generator`
+## Pattern generator — **built and hardware-verified 2026-08-09**
 
 Somewhere between a randomiser and a session musician: pick a genre and a key
 and digi-roll writes a **bassline, a chord part and a lead** that agree with
@@ -637,6 +637,72 @@ locks, which is the hardware's own model.
 The one edit to existing app code: an undo entry in `main.js` is a snapshot of a
 single slot, which can't express "three slots changed at once", so it becomes a
 list of slot snapshots — a single-slot entry being a list of one.
+
+### What shipped
+
+All five phases in one session, 2026-08-09. `js/gen/` (rng, theory,
+progressions, genres, rhythm, motif, parts/{bass,chords,lead}, plockdesign,
+arrange, context) is the generator, all pure and canvas-free; `js/genpanel.js`
+plus a `generatePanel` aside and a **Generate** rail button between Harmony and
+Library is the UI. **291 new tests, 801 in the suite, green.** Nothing under
+`js/elektron/` changed; `js/state.js` gained one declared field and `js/main.js`
+the multi-slot undo entry plus the panel wiring.
+
+`docs/pattern-generator.md` has the full record, including its own
+"What actually shipped" section. The nine decisions worth not re-deriving, in
+brief:
+
+- **The progression is text in the context**, parsed only by `resolveContext`. A
+  malformed entry stays on screen with the parser's sentence under it in red, the
+  context keeps the last good one, and *generating refuses* until it's fixed —
+  better than the planned silent revert, which would have thrown away typing.
+- **`state.gen` is backfilled by the panel's constructor, not `loadState`.**
+  Doing it in `loadState` would make `state.js` import `gen/context.js` →
+  `theory.js` → `pianoroll.js` → `state.js`. Not worth a cycle through the module
+  everything depends on; `state.js` declares `gen: null` and points at the panel.
+- **"Generate this slot" bumps a per-part `variation`, not the seed** (`streamTag`
+  in `arrange.js`). Rolling the seed would move all three parts, so the re-rolled
+  lead would answer a bassline no longer in the slot. Now only that part changes
+  and it still answers the parts you kept.
+- **All three parts are always generated**, even unchecked ones, and the caller
+  applies only the checked ones — otherwise unchecking the bass reshuffles the
+  lead that answers it.
+- **Motion drives automation and nothing else.** An early cut had it scaling the
+  bass's melodic odds, which meant the Motion slider rewrote the notes. Lanes
+  also draw from their own `role.lanes` stream. Each slider changes exactly the
+  thing it names.
+- **Voice leading needs octave transpositions, not just inversions**
+  (`voicingCandidates`): inversions alone all sit where the folded root landed, so
+  a low window can only travel upward. Window-clipped candidates are dropped (a
+  two-note chord would win any "moves least" contest), and the first chord — with
+  nothing to lead from — is placed near the middle of the register.
+- **Groove and strum snap to the box's 1/24-step micro grid** (`snapMicro`), the
+  same bargain `snapLenFine` strikes for lengths: what the roll draws is what the
+  hardware stores.
+- **Conditions are applied once, in `rhythm.js`** (`trigFeelFor`), keyed by step,
+  and stamped on every note sharing it — the step-uniformity rule the encoder
+  relies on, which is easy to break if each part does its own.
+- **`windowFor` moved to `theory.js`**, leaving `genres.js` a pure data leaf.
+
+Two tests carry the safety story. `test/gen-arrange.test.js` pushes a generated
+part through `encodeTrackNotes` + `applyTrackTrigSettings` + `applyTrackPLocks`
+into a **real hardware fixture** on both boxes and reads the notes, conditions
+and lanes back identically, with nothing outside the target track moved and
+byte-identical output for a given seed. `test/genpanel.test.js` drives the panel
+over a ~40-line DOM stub whose `getElementById` only answers for ids that are
+really in `index.html`, so a control the panel reaches for that the page lacks is
+a failure rather than a blank space.
+
+**Hardware-verified 2026-08-09** by Neil, the same day it was built: the smoke
+test (item 10 in the design doc — generate, send bass/chords/lead to three tracks,
+check the notes, per-trig conditions and p-lock lanes against what the roll drew,
+and that the destination pattern's swing is unchanged) passed, and everything
+worked. That run was also the panel's first outing in a real browser; up to then
+it had only been driven through the DOM stub in `test/genpanel.test.js`.
+
+Not recorded, and worth pinning down next time someone has a box in front of
+them: **which box** it was tested on. The lane recipes resolve per box by
+canonical name, so DT2 and DN2 are separate confirmations.
 
 ## Next level — the multi-track session sequencer (direction settled 2026-08-08)
 

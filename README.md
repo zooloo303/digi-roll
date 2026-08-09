@@ -124,6 +124,38 @@ notes arriving.
   auto-saved to localStorage
 - Space bar = play/stop
 
+## Generating parts (Generate panel)
+
+Somewhere between a randomiser and a session musician: pick a **genre** and a
+**key** and digi-roll writes a **bassline, a chord part and a lead** into three
+pattern slots, all locked to the same progression and aware of each other's
+rhythm. Then send each slot to its own track with the Box panel — the generator
+adds no write path of its own, it only produces ordinary pattern state.
+
+- Four genres — **DnB, Breaks, Electro, House** — each supplying its own step
+  weights, note lengths, velocity levels, groove and suggested tempo
+- **Progression** as roman numerals in the Harmony panel's key (`i VI III VII`,
+  `i7:2 iv7:2`), from a genre-tagged library or typed by hand; each degree takes
+  its natural quality from the scale, via the same diatonic walk chord draw uses
+- Generated in band order, each part handed what the others are playing: the
+  chords **voice-lead** (the inversion that moves least from the last chord), the
+  lead develops one **motif** across the progression and **answers the bass**
+  instead of doubling it
+- **Motion** draws p-lock lanes (filter contours, send swells, drive on accents)
+  from the parameters measured on the resolved box — and none at all, with a
+  reason, when it can't tell which box; **Looseness** writes per-trig
+  `1:2`/`2:2`/`3:4` and PROB locks; **Humanize** wobbles velocity and micro-timing
+- A visible, lockable **seed**: same seed, same music. Each part draws from its
+  own stream, so nudging the lead's density leaves the bass alone, and
+  **Re-roll the …** re-does one slot against the same seed
+- It never writes **swing** (that byte re-times all sixteen tracks in the
+  destination pattern — genre groove is per-note micro-timing instead) or the
+  track **Probability** default. Generating replaces the slots it names, asks
+  first if they hold notes, and undoes as a **single step**
+
+Built and tested on hardware 2026-08-09. Design and decisions:
+`docs/pattern-generator.md`.
+
 ## Device console (SysEx)
 
 `console.html` is a separate page that talks to the box over SysEx: it shows a
@@ -180,6 +212,11 @@ whose source is the de-facto documentation of Elektron's SysEx protocol.
 - `js/triglane.js` — the step-aligned PROB/COND/FILL strip under the roll
 - `js/plocklane.js` — the p-lock automation lanes below it
 - `js/main.js` — UI wiring
+- `js/gen/` — the pattern generator: `rng.js` (seeded streams), `theory.js`
+  (key/scale/chord maths), `progressions.js` + `genres.js` (the data),
+  `rhythm.js` (trigs, groove, conditions), `motif.js`, `parts/`,
+  `plockdesign.js`, `arrange.js`, `context.js` — all pure and canvas-free;
+  `js/genpanel.js` is its panel
 - `js/elektron/` — SysEx protocol: `sevenbit.js` (7↔8-bit packing),
   `protocol.js` (framing/checksums), `device.js` (handshake, dumps),
   `pattern-core.js` + `dt2/` + `dn2/` (pattern struct decode/encode),
