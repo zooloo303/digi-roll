@@ -13,6 +13,7 @@ import { buildApiMessage, buildDumpMessage, parseSysEx, API, DUMP } from './prot
 // learn its protocol.
 const PRODUCTS = {
   12: { name: 'Digitakt', slug: 'digitakt', family: 0x0a },
+  20: { name: 'Digitone', slug: 'digitone', family: 0x0d }, // productId from elk-herd; family confirmed against real DN1 captures 2026-08-13
   42: { name: 'Digitakt II', slug: 'digitakt2', family: 0x14 },
   43: { name: 'Digitone II', slug: 'digitone2', family: 0x15 }, // both values captured from real hardware 2026-08-01 (family byte via 0x60 probe sweep)
 };

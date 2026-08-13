@@ -43,11 +43,13 @@ import { applySwing, readSwing } from './pattern-settings.js';
 import { stashBackup } from './backup-stash.js';
 import * as dt2 from './dt2/pattern.js';
 import * as dn2 from './dn2/pattern.js';
+import * as dn1 from './dn1/pattern.js';
 
 // Devices whose pattern structs digi-roll can decode.
 export const DECODERS = {
   digitakt2: dt2,
   digitone2: dn2,
+  digitone: dn1,
 };
 
 // Product identity by dump family byte, for the paths that read a .syx file
@@ -55,6 +57,7 @@ export const DECODERS = {
 export const PRODUCT_BY_FAMILY = {
   [FAMILY.DIGITAKT_2]: { slug: 'digitakt2', productId: 42, name: 'Digitakt II' },
   [FAMILY.DIGITONE_2]: { slug: 'digitone2', productId: 43, name: 'Digitone II' },
+  [FAMILY.DIGITONE]: { slug: 'digitone', productId: 20, name: 'Digitone' },
 };
 
 // OS builds the pattern write path has been verified against on real hardware,

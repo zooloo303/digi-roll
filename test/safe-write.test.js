@@ -366,12 +366,24 @@ describe('writeGate', () => {
   it('only allowlists the builds Phases 2 and 3 were verified on', () => {
     expect(WRITE_ALLOWED_BUILDS).toEqual({ digitakt2: ['0070'], digitone2: ['0049'] });
   });
+
+  it('reads DN1 patterns but refuses to write until a build is hardware-verified', () => {
+    // decoderFor resolves, so import/backup/diff-lab work; writeGate still
+    // closes because 'digitone' has no WRITE_ALLOWED_BUILDS entry at all —
+    // no build string can pass an empty allowlist. See dn1-support-plan.md
+    // Phase 2: the entry goes in only after the null round trip and a real
+    // write have both been verified on the exact build string.
+    expect(decoderFor('digitone')).not.toBe(null);
+    expect(writeGate({ slug: 'digitone', name: 'Digitone', build: '0097' }))
+      .toMatchObject({ ok: false, reason: expect.stringMatching(/read-only/) });
+  });
 });
 
 describe('PRODUCT_BY_FAMILY', () => {
   it('identifies a box from a .syx file, where there was no handshake', () => {
     expect(PRODUCT_BY_FAMILY[FAMILY.DIGITAKT_2]).toEqual({ slug: 'digitakt2', productId: 42, name: 'Digitakt II' });
     expect(PRODUCT_BY_FAMILY[FAMILY.DIGITONE_2]).toEqual({ slug: 'digitone2', productId: 43, name: 'Digitone II' });
+    expect(PRODUCT_BY_FAMILY[FAMILY.DIGITONE]).toEqual({ slug: 'digitone', productId: 20, name: 'Digitone' });
   });
 });
 

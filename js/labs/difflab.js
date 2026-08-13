@@ -18,10 +18,12 @@ import { sweepPlan, deepPlan, summarizeFindings, contributorReport, REQUEST_TYPE
 import { buildCapturePair, parseCapturePair } from './capture-pair.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
+import * as dn1 from '../elektron/dn1/pattern.js';
 
 const DESCRIBERS = {
   digitakt2: dt2.describeOffset,
   digitone2: dn2.describeOffset,
+  digitone: dn1.describeOffset,
 };
 
 // Specs, for the readouts that need to know the struct rather than just how to
@@ -29,6 +31,7 @@ const DESCRIBERS = {
 const SPECS = {
   digitakt2: dt2.SPEC,
   digitone2: dn2.SPEC,
+  digitone: dn1.SPEC,
 };
 
 // Struct knowledge is keyed off what was actually captured — the family byte

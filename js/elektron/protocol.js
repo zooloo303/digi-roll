@@ -48,9 +48,12 @@ export const DUMP = {
 // Dump family codes (SysEx byte 4) — which device's structs a dump carries.
 // DIGITONE_2 is not in elk-herd: discovered 2026-08-01 by probing a real DN2
 // (OS 1.10D) with 0x60 requests across candidate bytes — only 0x15 answered.
+// DIGITONE (the DN1) is elk-herd's published Digitakt-family value; confirmed
+// against real DN1 captures 2026-08-13 (see docs/dn1-support-plan.md §1).
 export const FAMILY = {
   DIGITAKT: 0x0a,
   DIGITAKT_2: 0x14,
+  DIGITONE: 0x0d,
   DIGITONE_2: 0x15,
 };
 

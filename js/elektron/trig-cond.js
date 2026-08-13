@@ -51,6 +51,12 @@ function assertTrack(spec, trackIndex) {
 // The import path only ever asks about steps that have notes.
 export function readTrackTrigSettings(spec, payload, trackIndex) {
   assertTrack(spec, trackIndex);
+  // A device whose format has no per-step condition lanes yet (the DN1's
+  // conditions live in one undecoded combined byte, not three lanes) reports
+  // no settings rather than throwing — that's a real gap in what digi-roll
+  // knows, not a caller mistake, and every call site above this one already
+  // treats an empty result as "nothing stored".
+  if (spec.track.trigCond == null) return new Map();
   const { trigCond, trigFill, trigProb } = lanesOf(spec);
   const out = new Map();
   for (let step = 0; step < spec.track.numSteps; step++) {
@@ -90,6 +96,9 @@ export function readStepTrigSetting(spec, payload, trackIndex, step) {
 // Nothing outside this track's three lanes is touched.
 export function applyTrackTrigSettings(spec, payload, trackIndex, byStep) {
   assertTrack(spec, trackIndex);
+  // Same reasoning as readTrackTrigSettings: nothing to scrub or write when
+  // the device has no decoded condition lanes.
+  if (spec.track.trigCond == null) return payload;
   const { trigCond, trigFill, trigProb } = lanesOf(spec);
   const { numSteps } = spec.track;
 
@@ -128,8 +137,14 @@ const trackProbOffset = (spec, trackIndex) => {
 // An out-of-range byte reads as 100 with a warning rather than throwing: it
 // would mean the field has moved, and a pattern we can't fully read must still
 // open — the same rule condFromByte follows.
+//
+// A device with no track-level PROB default at all (the DN1) reads as `null`
+// — distinct from 100, and the same "the box default" meaning `applyTrackProb`
+// already gives `null`, so a value read off one device and applied to another
+// behaves correctly with no caller-side branching.
 export function readTrackProb(spec, payload, trackIndex) {
   assertTrack(spec, trackIndex);
+  if (spec.track.trackProb == null) return null;
   const byte = payload[trackProbOffset(spec, trackIndex)];
   if (byte > PROB_MAX) {
     console.warn(`digi-roll: out-of-range track probability ${byte} — treating as ${PROB_MAX}%`);
@@ -144,6 +159,7 @@ export function readTrackProb(spec, payload, trackIndex) {
 // the same value the box would already be holding, and the diff stays empty.
 export function applyTrackProb(spec, payload, trackIndex, prob) {
   assertTrack(spec, trackIndex);
+  if (spec.track.trackProb == null) return payload; // no such byte on this device
   const v = prob == null ? PROB_MAX : Math.max(PROB_MIN, Math.min(PROB_MAX, Math.round(prob)));
   payload[trackProbOffset(spec, trackIndex)] = v;
   return payload;

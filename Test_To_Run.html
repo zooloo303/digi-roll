@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>digi-roll — DN1 tests to run at the machine</title>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f25; --line: #2c313a; --ink: #e7e9ee; --dim: #98a0ae;
+    --accent: #f0a848; --pass: #55c07a; --fail: #e0605e; --block: #8b93a3;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f7f9; --panel: #fff; --line: #dde1e7; --ink: #1b1e24; --dim: #667085; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1.25rem 5rem; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 60rem; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
+  .sub { color: var(--dim); margin: 0 0 1.75rem; font-size: .93rem; }
+  .sub code { font-family: var(--mono); font-size: .88em; }
+
+  h2 {
+    font-size: .78rem; text-transform: uppercase; letter-spacing: .09em; color: var(--dim);
+    margin: 2.25rem 0 .75rem; font-weight: 600;
+  }
+  h2 .gate {
+    text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--accent);
+    font-family: var(--mono); font-size: .95em; margin-left: .5rem;
+  }
+
+  .t {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    padding: .9rem 1rem; margin-bottom: .6rem;
+  }
+  .t.done { opacity: .62; }
+  .notice {
+    background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: 9px; padding: .9rem 1rem; margin-bottom: 1.25rem; font-size: .93rem;
+  }
+  .t > header { display: flex; gap: .7rem; align-items: baseline; }
+  .id {
+    font-family: var(--mono); font-size: .78rem; color: var(--dim);
+    border: 1px solid var(--line); border-radius: 4px; padding: .05rem .35rem; flex: none;
+  }
+  .t h3 { font-size: .97rem; margin: 0; font-weight: 600; flex: 1; }
+  .who {
+    font-size: .72rem; font-family: var(--mono); border-radius: 999px; padding: .1rem .55rem;
+    flex: none; border: 1px solid var(--line);
+  }
+  .who.human { color: var(--accent); border-color: var(--accent); }
+  .who.agent { color: var(--dim); }
+
+  ol.steps { margin: .55rem 0 .55rem 0; padding-left: 1.5rem; color: var(--ink); }
+  ol.steps li { margin: .18rem 0; }
+  ol.steps li.human-step { }
+  ol.steps li.human-step::marker { color: var(--accent); }
+  ol.steps li.agent-step::marker { color: var(--dim); }
+  .expect {
+    margin: .55rem 0 0; padding: .5rem .7rem; border-left: 2px solid var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, transparent); font-size: .93rem;
+  }
+  .expect b { color: var(--accent); font-weight: 600; }
+  code { font-family: var(--mono); font-size: .88em; }
+  pre { font-family: var(--mono); font-size: .82rem; margin: .4rem 0 0; white-space: pre-wrap; color: var(--dim); }
+
+  .verdict { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .75rem; }
+  .verdict label {
+    font-size: .82rem; padding: .22rem .6rem; border: 1px solid var(--line); border-radius: 999px;
+    cursor: pointer; user-select: none; color: var(--dim);
+  }
+  .verdict input { position: absolute; opacity: 0; pointer-events: none; }
+  .verdict label:has(input:checked) { color: #10131a; font-weight: 600; }
+  .verdict label.p:has(input:checked) { background: var(--pass); border-color: var(--pass); }
+  .verdict label.f:has(input:checked) { background: var(--fail); border-color: var(--fail); }
+  .verdict label.b:has(input:checked) { background: var(--block); border-color: var(--block); }
+  .verdict label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  textarea {
+    width: 100%; margin-top: .55rem; min-height: 2.4rem; resize: vertical;
+    background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+    padding: .45rem .6rem; font: inherit; font-size: .9rem;
+  }
+  textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+
+  .bar {
+    position: sticky; bottom: 0; margin-top: 2rem; padding: .8rem 1rem;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+  }
+  .bar .count { color: var(--dim); font-size: .88rem; margin-right: auto; }
+  button {
+    font: inherit; font-size: .88rem; padding: .4rem .85rem; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); cursor: pointer;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #10131a; font-weight: 600; }
+  button:hover { border-color: var(--accent); }
+
+  #out { display: none; margin-top: 1rem; }
+  #out[data-open] { display: block; }
+  #out textarea { min-height: 16rem; font-family: var(--mono); font-size: .8rem; }
+  .hint { color: var(--dim); font-size: .85rem; margin: .5rem 0 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>digi-roll — DN1 tests to run at the machine</h1>
+
+<div class="notice">
+  <b style="color:var(--accent)">Use Chrome.</b> The diff lab (<code>difflab.html</code>) is
+  read-only by construction — its hardware paths refuse anything outside the
+  <code>0x60</code>–<code>0x6e</code> dump-<em>request</em> range, so nothing here can write to the
+  box. Every card below is a <b>capture pair</b>: baseline, one physical edit on the Digitone 1's own
+  panel, capture again, diff. See <code>docs/adding-a-device.md</code> for the full method and
+  <code>docs/dn1-support-plan.md</code> for why each fact below is still open.
+</div>
+<p class="sub">
+  <b>Two roles on every card.</b> <span class="who human" style="padding:.1rem .55rem">human</span>
+  steps are on the Digitone 1's own front panel — nobody else can press its buttons. <span class="who agent" style="padding:.1rem .55rem">agent</span>
+  steps are <code>difflab.html</code> clicks — Connect, Capture baseline, Capture + diff, Save to
+  notebook — which Claude can drive directly over the Chrome extension once a session is live, so a
+  human only needs to make the one edit and say so. Nothing here has run yet: a DN1 hasn't been on
+  this desk since this plan was written.<br>
+  Tick as you go — the page remembers in this browser. <b>Build report</b> when done, paste the
+  block into the session.<br>
+  <span style="color:var(--dim)">Written 2026-08-14 · <code>C:\ZZ_Code\ZZ_Personal\digi-roll\Test_To_Run.html</code></span>
+</p>
+
+<h2>Setup — once, before any card below <span class="gate">runnable now, code is merged on feat/dn1_support</span></h2>
+
+<article class="t" data-id="S0">
+  <header><span class="id">S0</span><h3>Confirm the box identifies correctly</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="human-step">Plug the Digitone 1 into USB, load a <b>scratch project</b> — never a
+      live set (CLAUDE.md's rule, same as every other device here).</li>
+    <li class="agent-step">Open <code>difflab.html</code>, pick the DN1's port, <b>Connect</b>.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> the device info line reads <b>“Digitone”</b> (not “Elektron device #20” — that
+    would mean the product-id registration in <code>device.js</code> is wrong) and the family byte
+    shows <code>0d</code>. If it instead says <b>“Digitone II”</b>, <code>slugFromPortName</code>'s
+    longest-name-first match broke — stop and say so, that's a code bug, not a hardware finding.
+  </p>
+</article>
+
+<h2>Trig conditions — the one blocking unknown <span class="gate">needs S0</span></h2>
+
+<p class="sub" style="margin:-.35rem 0 .75rem">
+  The DN1 stores COND/FILL/PROB as <b>one combined byte</b> per step (unlike the DT2/DN2's three
+  separate lanes digi-roll already decodes). Nothing ships for DN1 conditions until this table
+  exists — see <code>dn1-support-plan.md</code> §1. Walk the menu one entry at a time; each entry is
+  its own capture pair.
+</p>
+
+<article class="t" data-id="C1">
+  <header><span class="id">C1</span><h3>Baseline, then one trig with no condition</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="agent-step"><b>Capture baseline</b> on an empty pattern.</li>
+    <li class="human-step">Add one note trig, track 1, step 1. Leave TRC/condition unset.</li>
+    <li class="agent-step"><b>Capture + diff</b>, note “trig added, no condition”, <b>Save to
+      notebook</b>.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> confirms the byte at track-relative <code>0x140</code> (this module's
+    <code>track.trigCondition</code>) reads <code>0xFF</code> on an unconditional trig, matching the
+    DT2/DN2 "none" sentinel.
+  </p>
+</article>
+
+<article class="t" data-id="C2">
+  <header><span class="id">C2</span><h3>Walk the condition menu, one step at a time</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="agent-step"><b>Chain: B → baseline</b> from C1's capture.</li>
+    <li class="human-step">Open that trig's TRC page. Set it to the <b>first</b> entry in the menu
+      (whatever the DN1 shows first — note the exact on-screen label in the note box).</li>
+    <li class="agent-step"><b>Capture + diff</b>, note the exact label shown on the box, <b>Save</b>,
+      then <b>Chain: B → baseline</b>.</li>
+    <li class="human-step">Move to the <b>next</b> entry in the menu. Repeat capture/save/chain.</li>
+    <li>Continue through the whole menu — expect roughly 20–35 entries, going by the DT2/DN2 COND
+      list's size and DNX's DN1 corpus, which saw 35 distinct byte values in the wild.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> one byte value per on-screen label, monotonically or in whatever order the menu
+    actually shows — <b>do not assume</b> it matches the DT2/DN2 order
+    (<code>js/elektron/conditions.js</code>); that table's own header says it was walked by hand for
+    exactly this reason. Percentages (PROB) and FILL are believed to live in this same menu on the
+    DN1, unlike the DT2/DN2's separate lanes — confirm that as you walk it, and flag immediately if a
+    percentage or FILL entry doesn't fit the single-byte model.<br>
+    <b>This is the long one.</b> It's fine to split across sessions — <b>Export pair</b> after each
+    handful and the notebook survives a reload.
+  </p>
+</article>
+
+<article class="t" data-id="C3">
+  <header><span class="id">C3</span><h3>Export the condition notebook</h3><span class="who agent">agent</span></header>
+  <ol class="steps">
+    <li class="agent-step">Once C2 is walked, <b>Export .md</b> from the notebook pane.</li>
+  </ol>
+  <p class="expect">
+    <b>What this unblocks:</b> a new <code>js/elektron/dn1/conditions.js</code> table and the write
+    side of <code>trig-cond.js</code>'s guard (currently a no-op for DN1 — see
+    <code>trig-cond.js</code>'s <code>spec.track.trigCond == null</code> checks). Everything else in
+    Phase 1 ships without this; it only blocks conditions specifically.
+  </p>
+</article>
+
+<h2>Swing — a strong candidate, not yet a fact <span class="gate">needs S0</span></h2>
+
+<article class="t" data-id="SW1">
+  <header><span class="id">SW1</span><h3>Move pattern swing and diff exactly one byte</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="agent-step"><b>Capture baseline</b> on any pattern at the default 50% swing.</li>
+    <li class="human-step">Set swing to <b>80%</b> (the DT2/DN2 max) — the DN1's swing setting is
+      per-pattern, same menu location as the DT2/DN2.</li>
+    <li class="agent-step"><b>Capture + diff</b>, note “swing 50→80”, <b>Save</b>.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> exactly <b>one byte</b> changes, at pattern offset <code>nameOffset + 24</code>
+    (<code>0x473C</code>) — the same relative offset the DT2/DN2 swing byte sits at. This offset
+    already reads a plausible value in five real captures this session (0 in 504 of 516, 4 in the
+    rest — <code>dn1-support-plan.md</code> §1) but that's corpus evidence, not a controlled edit.
+    <b>If more than one byte moves, or a different offset, stop</b> — that means the DT2/DN2 analogy
+    doesn't hold and <code>pattern-settings.js</code>'s DN1 wiring needs to change before Phase 2.
+  </p>
+</article>
+
+<h2>Chords — offset direction and ordering <span class="gate">needs S0</span></h2>
+
+<article class="t" data-id="CH1">
+  <header><span class="id">CH1</span><h3>A 4-note chord on one step</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="agent-step"><b>Capture baseline</b> on an empty pattern.</li>
+    <li class="human-step">Enter a 4-note chord on track 1 step 1 through NOTE EDIT — e.g. C4, E4,
+      G4, B4 (a Cmaj7).</li>
+    <li class="agent-step"><b>Capture + diff</b>, note the exact notes entered and the order you
+      pressed them, <b>Save</b>.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> byte 0 of the 8-byte note record (track-relative <code>0x180 + 8×step</code>) is
+    the <b>lowest</b> pitch (root), and the other three are signed offsets from it — this module's
+    encoder assumes exactly that (lowest pitch is root; see
+    <code>js/elektron/dn1/pattern.js</code>'s <code>encodeTrackNotes</code>) but it's inferred from
+    DNX's corpus, not confirmed by an entry on real hardware. <b>If the root isn't the lowest note</b>
+    — if it's whichever note was pressed first, say — that assumption is wrong and needs fixing
+    before any DN1 write path.
+  </p>
+</article>
+
+<h2>Track length <span class="gate">needs S0</span></h2>
+
+<article class="t" data-id="TL1">
+  <header><span class="id">TL1</span><h3>Change one track's length and diff the settings tail</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="agent-step"><b>Capture baseline</b> on a track at its default 16-step length.</li>
+    <li class="human-step">Change that track's length to <b>32</b> steps.</li>
+    <li class="agent-step"><b>Capture + diff</b>, note “track 1 length 16→32”, <b>Save</b>.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> one byte changes at track-relative <code>0x3C0 + 0x0C</code> (settings +12),
+    reading <b>32</b>. This is DNX's INFERRED reading, untested on real hardware — confirming it also
+    unblocks trusting <code>track.lengthSteps</code> for the fallback used when a note's length byte
+    reads <code>0x7F</code> (infinite).
+  </p>
+</article>
+
+<h2>Step-flag mystery bits <span class="gate">needs S0, lower priority</span></h2>
+
+<article class="t" data-id="FL1">
+  <header><span class="id">FL1</span><h3>Retrig, if the DN1 has one on a note trig</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="agent-step"><b>Capture baseline</b> with one plain note trig.</li>
+    <li class="human-step">Turn retrig on for that trig, if the DN1's UI offers it per-trig.</li>
+    <li class="agent-step"><b>Capture + diff</b>, note exactly what was turned on, <b>Save</b>.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> one of the unexplained step-flag bits (<code>0x0080</code>, <code>0x0200</code>,
+    <code>0x0400</code>, <code>0x2000</code>, <code>0x4000</code> — DNX §4.1) lights up. Retrig is
+    the standing guess; this is the cheapest way to test it. <b>Not blocking</b> — digi-roll's
+    encoder already preserves every step-flag bit it doesn't understand, so this is purely upside,
+    not a prerequisite for anything in the plan.
+  </p>
+</article>
+
+<h2>Write path <span class="gate">Phase 2 — needs Phase 0 conditions done and Phase 1 code merged first</span></h2>
+
+<article class="t" data-id="W1">
+  <header><span class="id">W1</span><h3>Null round trip: read a pattern, write it back to itself</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="human-step">Scratch project. Note which pattern slot is loaded.</li>
+    <li class="agent-step">Fetch the pattern, re-send the identical bytes to the same slot, fetch
+      again, byte-compare.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> byte-identical, the same "the write path works and changed nothing" proof DNX ran
+    first on this exact box (<code>docs/device-probing.md</code> §"WRITING WORKS"). Only after this
+    passes is <code>WRITE_ALLOWED_BUILDS.digitone</code> worth adding, and only for the exact build
+    string this ran against.
+  </p>
+</article>
+
+<article class="t" data-id="W2">
+  <header><span class="id">W2</span><h3>Write a real track, verify, then check the box's own UI</h3><span class="who human">human</span></header>
+  <ol class="steps">
+    <li class="human-step">Empty pattern slot on the scratch project.</li>
+    <li class="agent-step">Draw a short pattern in digi-roll's roll (notes + a chord), <b>Send to
+      box</b>, let the safe-write flow back it up, write, and verify.</li>
+    <li class="human-step">Look at the box: right notes, right chord, right slot, nothing else
+      changed. Play it.</li>
+  </ol>
+  <p class="expect">
+    <b>Expect:</b> verify reports byte-identical, and the box agrees by ear and by screen. Also worth
+    trying deliberately: write to a slot that already has work on it, per DNX's finding that the DN1
+    <b>silently refuses</b> a write to an occupied slot rather than overwriting
+    (<code>docs/device-probing.md</code>) — if digi-roll's verify then reports "did not store what we
+    sent" for a refusal rather than a real corruption, that's the three-way comparison
+    (<code>dn1-support-plan.md</code> Phase 2) worth building before this ships.
+  </p>
+</article>
+
+<div class="bar">
+  <span class="count" id="count"></span>
+  <button id="clear">Clear all</button>
+  <button id="build" class="primary">Build report</button>
+</div>
+
+<div id="out">
+  <textarea id="report" readonly spellcheck="false"></textarea>
+  <p class="hint">
+    <button id="copy">Copy</button>
+    <button id="save">Download as .md</button>
+    Paste this into the session — the tests you reported on come out of this file, the rest stay.
+  </p>
+</div>
+
+</main>
+
+<script>
+const KEY = "digi-roll-dn1-tests-to-run";
+const state = JSON.parse(localStorage.getItem(KEY) || "{}");
+
+for (const card of document.querySelectorAll(".t[data-id]")) {
+  const id = card.dataset.id;
+  const rev = card.dataset.rev || "1";
+  const stored = state[id] || {};
+  const saved = stored.rev === rev ? stored : {};
+
+  const verdict = document.createElement("div");
+  verdict.className = "verdict";
+  for (const [value, label, cls] of [["pass", "Pass", "p"], ["fail", "Fail", "f"], ["blocked", "Blocked", "b"]]) {
+    const wrap = document.createElement("label");
+    wrap.className = cls;
+    wrap.innerHTML = `<input type="radio" name="v-${id}" value="${value}"> ${label}`;
+    verdict.append(wrap);
+  }
+  const notes = document.createElement("textarea");
+  notes.placeholder = "What actually happened — exact byte offsets, on-screen labels, anything that read differently than expected.";
+  notes.value = saved.notes || "";
+
+  card.append(verdict, notes);
+
+  if (saved.verdict) {
+    const hit = card.querySelector(`input[value="${saved.verdict}"]`);
+    if (hit) hit.checked = true;
+  }
+
+  const save = () => {
+    const picked = card.querySelector("input:checked");
+    state[id] = { verdict: picked ? picked.value : "", notes: notes.value, rev };
+    localStorage.setItem(KEY, JSON.stringify(state));
+    paint();
+  };
+  verdict.addEventListener("change", save);
+  notes.addEventListener("input", save);
+}
+
+function paint() {
+  let done = 0;
+  for (const card of document.querySelectorAll(".t[data-id]")) {
+    const has = !!(state[card.dataset.id] || {}).verdict;
+    card.classList.toggle("done", has);
+    if (has) done++;
+  }
+  const total = document.querySelectorAll(".t[data-id]").length;
+  document.getElementById("count").textContent =
+    done === 0 ? `${total} tests outstanding` : `${done} of ${total} recorded`;
+}
+paint();
+
+function buildReport() {
+  const lines = ["# digi-roll DN1 hardware test results", "", `Run: ${new Date().toISOString().slice(0, 16).replace("T", " ")}`, ""];
+  let any = false;
+  for (const card of document.querySelectorAll(".t[data-id]")) {
+    const id = card.dataset.id;
+    const r = state[id] || {};
+    if (!r.verdict && !(r.notes || "").trim()) continue;
+    any = true;
+    const title = card.querySelector("h3").textContent;
+    lines.push(`## ${id} — ${title}`);
+    lines.push(`**${(r.verdict || "not recorded").toUpperCase()}**`);
+    if ((r.notes || "").trim()) lines.push("", r.notes.trim());
+    lines.push("");
+  }
+  const untouched = [...document.querySelectorAll(".t[data-id]")]
+    .filter((c) => !(state[c.dataset.id] || {}).verdict)
+    .map((c) => c.dataset.id);
+  if (untouched.length) lines.push(`Not run: ${untouched.join(", ")}`);
+  return any || untouched.length ? lines.join("\n") : "Nothing recorded yet.";
+}
+
+const out = document.getElementById("out");
+const report = document.getElementById("report");
+
+document.getElementById("build").addEventListener("click", () => {
+  report.value = buildReport();
+  out.setAttribute("data-open", "");
+  report.scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
+document.getElementById("copy").addEventListener("click", () => {
+  report.select();
+  document.execCommand("copy");
+});
+
+document.getElementById("save").addEventListener("click", () => {
+  const blob = new Blob([report.value], { type: "text/markdown" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `digi-roll-dn1-test-results-${new Date().toISOString().slice(0, 10)}.md`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById("clear").addEventListener("click", () => {
+  if (!confirm("Clear every verdict and note on this page?")) return;
+  localStorage.removeItem(KEY);
+  location.reload();
+});
+</script>
+</body>
+</html>

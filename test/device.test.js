@@ -88,6 +88,23 @@ describe('identify', () => {
     expect(id).toMatchObject({ productId: 43, name: 'Digitone II', slug: 'digitone2', family: 0x15, supported: true });
     dev.close();
   });
+
+  it('knows the Digitone 1, dump family 0x0d', async () => {
+    // Product id 20 is elk-herd's published Digitakt-family value; the family
+    // byte was confirmed against real DN1 SysEx captures 2026-08-13 (see
+    // docs/dn1-support-plan.md §1) rather than probed on live hardware here.
+    const { input, output } = fakePorts(msg => {
+      if (msg.kind !== 'api') return;
+      if (msg.apiId === API.DEVICE) {
+        return [buildApiMessage(1, API.DEVICE + API.RESPONSE, [20, 0, ...ascii('Digitone'), 0], msg.msgId)];
+      }
+      return [buildApiMessage(2, API.VERSION + API.RESPONSE, [...ascii('0097'), 0, ...ascii('1.42A'), 0], msg.msgId)];
+    });
+    const dev = new ElektronDevice(input, output);
+    const id = await dev.identify();
+    expect(id).toMatchObject({ productId: 20, name: 'Digitone', slug: 'digitone', family: 0x0d, supported: true });
+    dev.close();
+  });
 });
 
 // The generic dump fetch and the probe are the contributor-facing primitives:
@@ -262,6 +279,14 @@ describe('slugFromPortName', () => {
     // the gen-1 box supports things it doesn't.
     expect(slugFromPortName('Elektron Digitakt')).toBe('digitakt');
     expect(slugFromPortName('Elektron Digitakt II')).toBe('digitakt2');
+  });
+
+  it('does not mistake a Digitone 1 for a Digitone II', () => {
+    // Same trap as Digitakt/Digitakt II, the other direction: "Digitone"
+    // is a prefix of "Digitone II".
+    expect(slugFromPortName('Elektron Digitone')).toBe('digitone');
+    expect(slugFromPortName('Elektron Digitone II')).toBe('digitone2');
+    expect(slugFromPortName('Digitone MIDI 1')).toBe('digitone');
   });
 
   it('says nothing rather than guessing at an unknown port', () => {

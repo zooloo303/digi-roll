@@ -9,12 +9,14 @@ import { splitSysExStream, DUMP, FAMILY } from '../elektron/protocol.js';
 import { trackNotes, trackTrigCount, bankName } from '../elektron/pattern-core.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
+import * as dn1 from '../elektron/dn1/pattern.js';
 
 // DECODERS (which boxes we can decode) comes from safe-write.js with the rest
 // of the write flow; writing keeps its separate, stricter allowlist gate.
 const DECODER_BY_FAMILY = {
   [FAMILY.DIGITAKT_2]: { mod: dt2, label: 'Digitakt II' },
   [FAMILY.DIGITONE_2]: { mod: dn2, label: 'Digitone II' },
+  [FAMILY.DIGITONE]: { mod: dn1, label: 'Digitone' },
 };
 import { loadState, saveState, NUM_SLOTS } from '../state.js';
 import {
