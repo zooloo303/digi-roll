@@ -1,0 +1,46 @@
+# Code owners for digi-roll.
+#
+# A code owner is auto-requested for review on any PR touching these paths. It
+# is only *enforced* if the ruleset on `main` has "Require review from Code
+# Owners" turned on — see docs/adding-a-device.md and CLAUDE.md for why these
+# particular files are the ones that matter.
+#
+# Owners must have write access to the repo, so this list stays as the repo
+# owner until a second maintainer has been mapping boxes for a while.
+
+# Default: everything gets a look.
+*                               @zooloo303
+
+# --- The hardware-verified encode/decode internals -------------------------
+# Mapped byte-by-byte against real hardware; every byte layout in docs/ is
+# derived from them. Compose them, don't edit them.
+/js/elektron/sevenbit.js        @zooloo303
+/js/elektron/protocol.js        @zooloo303
+/js/elektron/pattern-core.js    @zooloo303
+/js/elektron/dt2/pattern.js     @zooloo303
+/js/elektron/dn2/pattern.js     @zooloo303
+
+# --- The write path --------------------------------------------------------
+# safe-write.js implements the five safety rules as one function so a caller
+# can't skip one. Every write goes through it; nothing adds a sixth path.
+/js/elektron/safe-write.js      @zooloo303
+/js/elektron/backup-stash.js    @zooloo303
+
+# --- The diff lab's read-only guard ---------------------------------------
+# fetchDump and probeDumpRequests refuse any opcode outside 0x60-0x6e, because
+# an 0x5n is what stores a payload on a box. The pitch to strangers is "this
+# page cannot touch your patterns" and it has to stay literally true.
+/js/elektron/device.js          @zooloo303
+/js/labs/                       @zooloo303
+
+# --- Ground truth ----------------------------------------------------------
+# Hardware captures the test suite pins itself to, and the byte-level docs
+# derived from them. Changing either invalidates a hardware verification.
+/dumps/                         @zooloo303
+/docs/elektron-sysex-protocol.md @zooloo303
+/docs/dt2-pattern-format.md     @zooloo303
+/docs/dn2-pattern-format.md     @zooloo303
+
+# --- The rules themselves --------------------------------------------------
+/CLAUDE.md                      @zooloo303
+/.github/                       @zooloo303
