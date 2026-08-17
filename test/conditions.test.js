@@ -277,12 +277,16 @@ describe.skipIf(!haveProject)('a project dump captured before the feature existe
   // trigs carry "a single small value in the first per-step array" that
   // dt2-pattern-format.md recorded as unexplained — the mapping says they are
   // COND locks, and they decode as valid conditions on live trigs.
-  const kits = splitSysExStream(new Uint8Array(readFileSync(PROJECT_FIXTURE)))
-    .filter(m => m.kind === 'dump' && m.type === DUMP.PATTERN_KIT);
+  // Read lazily: describe.skipIf skips the *tests*, but vitest still runs this
+  // callback at collection time, so a top-level read would ENOENT on a
+  // checkout without the gitignored project dumps.
+  let cached;
+  const kits = () => (cached ??= splitSysExStream(new Uint8Array(readFileSync(PROJECT_FIXTURE)))
+    .filter(m => m.kind === 'dump' && m.type === DUMP.PATTERN_KIT));
 
   it('explains the two previously-unknown lane bytes as COND locks', () => {
     const found = [];
-    for (const m of kits) {
+    for (const m of kits()) {
       for (let t = 0; t < dt2.SPEC.pattern.numTracks; t++) {
         for (const [step, setting] of readTrackTrigSettings(dt2.SPEC, m.payload, t)) {
           const live = !!(dt2.decodePatternKit(m.payload).tracks[t].steps[step] & 1);
@@ -297,7 +301,7 @@ describe.skipIf(!haveProject)('a project dump captured before the feature existe
   });
 
   it('reads an empty map for the 15 tracks that never had one', () => {
-    const p0 = kits.find(m => m.index === 0).payload;
+    const p0 = kits().find(m => m.index === 0).payload;
     for (const t of [0, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15]) {
       expect(readTrackTrigSettings(dt2.SPEC, p0, t).size, `track ${t + 1}`).toBe(0);
     }

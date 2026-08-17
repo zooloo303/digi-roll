@@ -240,8 +240,14 @@ const CHORD_FIXTURE = fileURLToPath(new URL('../dumps/digitone2-pernote-chords-2
 const haveChordFixture = existsSync(CHORD_FIXTURE);
 
 describe.skipIf(!haveChordFixture)('a DN2 chord the box itself wrote', () => {
+  // Read lazily behind a getter: describe.skipIf skips the *tests*, but vitest
+  // still runs this callback at collection time, so reading here directly would
+  // ENOENT on a checkout without the gitignored fixture. Memoised, so every
+  // test still shares one payload instance as before.
+  let cached;
   const box = {
-    name: 'DN2', mod: dn2, payload: payloadOf(CHORD_FIXTURE, 0), trackIndex: 0,
+    name: 'DN2', mod: dn2, trackIndex: 0,
+    get payload() { return (cached ??= payloadOf(CHORD_FIXTURE, 0)); },
     stepWords: t => [4 + t * 1187, 4 + t * 1187 + 256],
     pool: [18996, 68148],
   };
