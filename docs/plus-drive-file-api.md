@@ -7,7 +7,7 @@ decoders are built on — this is a **third**, unrelated SysEx surface, layered
 on top of the same **API** mechanism (`F0 00 20 3C 10 00 …`) that `device.js`
 already uses for identity and version.
 
-Contributed 2026-08-14 by [DNX](../../DNX), a sibling project independently
+Contributed 2026-08-14 by DNX, a sibling project independently
 reverse-engineering the Digitone family, after we asked them to double-check
 a claim in `elektron-sysex-protocol.md` that turned out to be wrong (see
 below). Everything here is either measured on real hardware or read off a USB
@@ -32,11 +32,15 @@ different things depending on which header carries it.
 | dump (`F0 00 20 3C <family> 00 …`) | family byte (`0x0A` DT, `0x14` DT2, `0x15` DN2, …) | **Sound dump** — a payload, per `elektron-sysex-protocol.md`'s dump-type table |
 | API (`F0 00 20 3C 10 00 …`) | always `0x10` | **List** — a +Drive directory listing, empty body |
 
-So a box advertising both the gen-1 numbering *and* `50–5E` in `Device` isn't
-advertising two unrelated feature sets — it's the same file API reachable two
-ways. That also resolves why a DT2 capture shows both: it isn't evidence of
-some "II-series" opcode band, it's the ordinary overlap of an old and a new
-numbering for one API.
+A box advertising both the gen-1 numbering *and* `50–5E` in `Device` is —
+per elk-herd and other Digitakt/Digitone reverse-engineering references —
+thought to be reaching the same file API two ways, rather than advertising
+two unrelated feature sets. That would also explain why a DT2 capture shows
+both: not evidence of some "II-series" opcode band, but the ordinary overlap
+of an old and a new numbering for one API. **This part is unverified against
+a DT2 directly** — no DT2 was available to confirm its `50–5E` opcodes
+actually answer as this file API. §3/§4 below are the parts measured on real
+hardware; this paragraph is not.
 
 ## 1. Raw bytes, before 7-bit decoding
 

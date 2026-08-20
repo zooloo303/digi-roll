@@ -59,8 +59,8 @@ DN2 identity capture notes: its supported-opcode list is
 paragraph read the `50–5E` here as absence of elk-herd's gen-1 file opcodes
 (`0x10–0x13`, `0x30–0x36`, `0x40–0x46`) and concluded the DN2 "has no sample
 drive". That is wrong, and it survived here for the same reason it survived on
-[DNX](../../DNX) (a sibling project, independently reverse-engineering the
-Digitone family) until they used the API instead of reading its absence:
+DNX (a sibling project, independently reverse-engineering the Digitone
+family) until they used the API instead of reading its absence:
 **`50–5E` in *this* list is a second, renumbered +Drive file API**, not the
 dump types of the same name — see `docs/plus-drive-file-api.md` for the full
 opcode map, raw-byte captures, and a write-path gotcha, contributed by DNX
@@ -74,11 +74,14 @@ which header it's read under:
 | dump (`F0 00 20 3C <family> 00 …`) | family byte (`0x0A`/`0x14`/`0x15`/…) | Sound dump — see the table below |
 | API (`F0 00 20 3C 10 00 …`) | always `0x10` | **List** — a +Drive directory listing |
 
-So a DT2 advertising both the gen-1 numbering *and* `50–5E` isn't advertising
-two unrelated feature sets — the `50–5E` band there is the *same* file API
-under a different numbering, and the gen-1 codes and the renumbered ones may
-simply be two ways to reach it. Confirmed on a **Digitone 1** too (build
-0097): the file API is not DN2/II-specific.
+A DT2 also advertises both the gen-1 numbering *and* `50–5E`. Per elk-herd and
+other Digitakt/Digitone reverse-engineering references, that band is thought
+to be the *same* file API under a different numbering — but this is
+**unverified against a DT2 directly**: no DT2 was available to confirm its
+`50–5E` opcodes actually answer as this file API rather than something else,
+and the gen-1 codes and the renumbered ones may simply be two ways to reach
+it. Confirmed on a **Digitone 1** (build 0097): the file API is not
+DN2/II-specific, whatever the DT2 turns out to be doing.
 
 Verified against a real DT2 (OS 1.15B build 0070): identity, version and a
 full 16.3 MB whole-project backup all work as described here — that part of
