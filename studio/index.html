@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Digi-Roll Studio — a piano roll for Elektron boxes</title>
+<meta name="description" content="Draw, generate and write MIDI patterns straight into a Digitakt II or Digitone II over SysEx. Byte-verified writes, no live recording. Free and open source.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0c0f'/><rect x='6' y='9' width='11' height='4' rx='1' fill='%236ecf9a'/><rect x='12' y='15' width='14' height='4' rx='1' fill='%236ecf9a'/><rect x='6' y='21' width='8' height='4' rx='1' fill='%236ecf9a'/></svg>">
+
+<meta property="og:title" content="Digi-Roll Studio">
+<meta property="og:description" content="A piano roll for your Elektron boxes. Draw it, generate it, write it to the box.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://zooloo303.github.io/digi-roll/studio/">
+<meta property="og:image" content="https://zooloo303.github.io/digi-roll/studio/screenshot.png">
+<meta property="og:image:alt" content="Digi-Roll Studio: a 32-track grid across two Elektron boxes with a piano roll below it.">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+  :root {
+    --bg:        #0a0c0f;
+    --panel:     #14171b;
+    --panel-2:   #1a1e24;
+    --line:      #262b32;
+    --line-soft: #1e232a;
+    --text:      #ccd2da;
+    --dim:       #858e9a;
+    --dimmer:    #5f6873;
+    --green:     #6ecf9a;
+    --blue:      #4a9fd8;
+    --purple:    #8b6fd4;
+    --amber:     #d9a441;
+    --teal:      #4fd1c5;
+    --kofi:      #ff5e5b;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    --wrap: 1080px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .btn:hover { transform: none; }
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .wrap { max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+
+  /* ---- chrome bar, echoing the app's transport ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(10,12,15,.86);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .topbar .wrap {
+    display: flex; align-items: center; gap: 16px;
+    height: 54px;
+  }
+  .brand {
+    font-family: var(--mono);
+    font-size: 13px; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--text); font-weight: 600;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .brand .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--green); box-shadow: 0 0 9px rgba(110,207,154,.6);
+  }
+  .topnav { margin-left: auto; display: flex; gap: 22px; align-items: center; }
+  .topnav a {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .07em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  .topnav a:hover { color: var(--text); text-decoration: none; }
+  @media (max-width: 620px) { .topnav a.hide-sm { display: none; } }
+
+  /* ---- hero ---- */
+  .hero { padding: 84px 0 20px; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ""; position: absolute; inset: -40% 0 auto 50%;
+    width: 900px; height: 620px; transform: translateX(-50%);
+    background: radial-gradient(ellipse at center, rgba(74,159,216,.10), transparent 62%);
+    pointer-events: none;
+  }
+  .hero .wrap { position: relative; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--dimmer); margin-bottom: 20px;
+  }
+  .eyebrow b { color: var(--teal); font-weight: 500; }
+
+  h1 {
+    font-size: clamp(38px, 6.2vw, 62px);
+    line-height: 1.04; letter-spacing: -.028em;
+    margin: 0 0 20px; font-weight: 650; color: #eef1f5;
+  }
+  .lede {
+    font-size: clamp(17px, 2.1vw, 20px);
+    color: var(--dim); max-width: 660px; margin: 0 0 34px;
+    line-height: 1.6;
+  }
+  .lede b { color: var(--text); font-weight: 500; }
+
+  /* ---- downloads ---- */
+  .downloads { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 11px;
+    padding: 13px 22px; border-radius: 7px;
+    font-family: var(--mono); font-size: 13px; letter-spacing: .04em;
+    border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--text); transition: border-color .15s, background .15s, transform .15s;
+  }
+  .btn:hover { text-decoration: none; border-color: #39414b; background: #20252c; transform: translateY(-1px); }
+  .btn svg { flex: none; opacity: .82; }
+  .btn .sub { color: var(--dimmer); font-size: 11px; letter-spacing: .05em; }
+  .btn-primary {
+    border-color: rgba(110,207,154,.42);
+    background: linear-gradient(180deg, rgba(110,207,154,.14), rgba(110,207,154,.06));
+    color: #dff5e9;
+  }
+  .btn-primary:hover { border-color: rgba(110,207,154,.7); background: rgba(110,207,154,.17); }
+
+  .relmeta {
+    margin-top: 18px;
+    font-family: var(--mono); font-size: 12px; color: var(--dimmer);
+    letter-spacing: .04em;
+  }
+  .relmeta a { color: var(--dim); }
+  .relmeta .tag { color: var(--green); }
+
+  /* ---- screenshot frame ---- */
+  .shot { margin: 60px 0 0; }
+  .shot-frame {
+    border: 1px solid var(--line); border-radius: 11px;
+    background: var(--panel); overflow: hidden;
+    box-shadow: 0 28px 70px -22px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.02) inset;
+  }
+  .shot-frame img { display: block; width: 100%; height: auto; }
+  .shot-fallback {
+    display: none; padding: 60px 28px; text-align: center;
+    font-family: var(--mono); font-size: 12.5px; color: var(--dimmer);
+    letter-spacing: .05em; line-height: 2;
+  }
+  .shot-fallback code { color: var(--amber); }
+  .shot-caption {
+    margin-top: 14px; text-align: center;
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .07em;
+    color: var(--dimmer);
+  }
+
+  /* ---- sections ---- */
+  section { padding: 92px 0; }
+  section + section { border-top: 1px solid var(--line-soft); }
+
+  .sechead {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--dimmer); margin-bottom: 12px;
+  }
+  h2 {
+    font-size: clamp(26px, 3.6vw, 34px); letter-spacing: -.02em;
+    margin: 0 0 14px; font-weight: 620; color: #e8ecf1;
+  }
+  .sec-lede { color: var(--dim); max-width: 620px; margin: 0 0 44px; }
+
+  /* ---- feature grid ---- */
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    border: 1px solid var(--line-soft); border-radius: 9px;
+    background: linear-gradient(180deg, var(--panel), #101317);
+    padding: 26px 26px 28px;
+  }
+  .card h3 {
+    margin: 0 0 10px; font-size: 17px; font-weight: 600; color: #e6eaef;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .card h3 .pip {
+    width: 6px; height: 14px; border-radius: 2px; flex: none;
+  }
+  .pip-green  { background: var(--green); }
+  .pip-blue   { background: var(--blue); }
+  .pip-purple { background: var(--purple); }
+  .pip-amber  { background: var(--amber); }
+  .pip-teal   { background: var(--teal); }
+  .card p { margin: 0; color: var(--dim); font-size: 15px; line-height: 1.68; }
+  .card p + p { margin-top: 11px; }
+  .card code, .inline-code {
+    font-family: var(--mono); font-size: .88em;
+    color: var(--teal); background: rgba(79,209,197,.08);
+    padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* ---- gear table ---- */
+  .gear { border: 1px solid var(--line-soft); border-radius: 9px; overflow: hidden; }
+  .gear-row {
+    display: grid; grid-template-columns: 1fr 1.4fr;
+    border-top: 1px solid var(--line-soft);
+  }
+  .gear-row:first-child { border-top: 0; }
+  .gear-row > div { padding: 18px 22px; }
+  .gear-row .who {
+    font-family: var(--mono); font-size: 13px; color: var(--text);
+    background: rgba(255,255,255,.012); letter-spacing: .02em;
+  }
+  .gear-row .what { color: var(--dim); font-size: 14.5px; }
+  .gear-row .what .badge {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 20px;
+    margin-right: 10px; white-space: nowrap;
+  }
+  .badge-write { color: var(--green); border: 1px solid rgba(110,207,154,.35); background: rgba(110,207,154,.08); }
+  .badge-rec   { color: var(--dim);   border: 1px solid var(--line);          background: rgba(255,255,255,.02); }
+  @media (max-width: 620px) {
+    .gear-row { grid-template-columns: 1fr; }
+    .gear-row .who { border-bottom: 1px solid var(--line-soft); }
+  }
+
+  /* ---- install / callout ---- */
+  .callout {
+    border: 1px solid var(--line-soft); border-left: 2px solid var(--amber);
+    border-radius: 0 8px 8px 0; background: rgba(217,164,65,.045);
+    padding: 20px 24px; margin: 0 0 30px;
+  }
+  .callout h4 {
+    margin: 0 0 8px; font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: .13em; text-transform: uppercase; color: var(--amber); font-weight: 600;
+  }
+  .callout p { margin: 0; color: var(--dim); font-size: 14.5px; }
+  .callout p + p { margin-top: 9px; }
+
+  .steps { display: grid; gap: 18px; grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+  .step {
+    border: 1px solid var(--line-soft); border-radius: 9px;
+    background: var(--panel); padding: 24px 26px 26px;
+  }
+  .step h3 {
+    margin: 0 0 14px; font-size: 15px; font-weight: 600; color: #e6eaef;
+    display: flex; align-items: center; gap: 9px;
+  }
+  .step ol { margin: 0; padding-left: 20px; color: var(--dim); font-size: 14.5px; }
+  .step li { margin-bottom: 8px; }
+  .step li:last-child { margin-bottom: 0; }
+  pre {
+    margin: 12px 0 0; padding: 12px 14px; overflow-x: auto;
+    background: #0d0f13; border: 1px solid var(--line-soft); border-radius: 6px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--teal); line-height: 1.6;
+  }
+
+  /* ---- support strip ---- */
+  .support {
+    display: flex; align-items: center; gap: 26px; flex-wrap: wrap;
+    border: 1px solid var(--line-soft); border-radius: 10px;
+    background: linear-gradient(100deg, rgba(255,94,91,.05), rgba(255,94,91,.015) 55%, transparent);
+    padding: 26px 28px;
+  }
+  .support-copy { flex: 1 1 340px; min-width: 0; }
+  .support-copy h3 {
+    margin: 0 0 7px; font-size: 16px; font-weight: 600; color: #e6eaef;
+  }
+  .support-copy p { margin: 0; color: var(--dim); font-size: 14.5px; line-height: 1.62; }
+  .btn-kofi {
+    border-color: rgba(255,94,91,.4);
+    background: linear-gradient(180deg, rgba(255,94,91,.14), rgba(255,94,91,.05));
+    color: #ffd9d8; flex: none;
+  }
+  .btn-kofi:hover { border-color: rgba(255,94,91,.72); background: rgba(255,94,91,.18); }
+  .btn-kofi svg { opacity: 1; color: var(--kofi); }
+
+  /* ---- footer ---- */
+  footer {
+    border-top: 1px solid var(--line-soft); padding: 44px 0 60px;
+    color: var(--dimmer); font-size: 13.5px;
+  }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 18px 30px; align-items: center; }
+  footer .spacer { flex: 1 1 auto; }
+  footer a { color: var(--dim); }
+  .footlinks { display: flex; gap: 24px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; letter-spacing: .05em; }
+
+  .disclaimer { max-width: 560px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="dot"></span>Digi-Roll Studio</div>
+    <nav class="topnav">
+      <a href="#what" class="hide-sm">What it does</a>
+      <a href="#gear" class="hide-sm">Supported gear</a>
+      <a href="#contribute" class="hide-sm">Add your box</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/zooloo303/digi-roll-studio">GitHub</a>
+    </nav>
+  </div>
+</div>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Digitakt II &amp; Digitone II · <b>free and open source</b></div>
+
+    <h1>A piano roll for your&nbsp;Elektron boxes.</h1>
+
+    <p class="lede">
+      Draw a pattern, or generate one that already agrees with itself, and
+      write it <b>straight into a pattern slot over SysEx</b> — no live
+      recording, no clock to line up. Every write is backed up, byte-verified,
+      and touches only the tracks you aimed at.
+    </p>
+
+    <div class="downloads">
+      <a class="btn btn-primary" id="dl-mac" href="https://github.com/zooloo303/digi-roll-studio/releases/latest">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.7c0-2.4 2-3.6 2.1-3.6-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.6.9s-1.9-.9-3.1-.8c-1.6 0-3.1.9-3.9 2.4-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.7 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.3.9-1.3 1.3-2.6 1.3-2.7-.1 0-2.5-1-2.6-3.9zM14 5.6c.7-.8 1.1-1.9 1-3-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.2-.6 2.9-1.4z"/></svg>
+        <span>Download for macOS<br><span class="sub">Apple Silicon</span></span>
+      </a>
+      <a class="btn" id="dl-win" href="https://github.com/zooloo303/digi-roll-studio/releases/latest">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.6l7.4-1v7.1H3V5.6zm0 12.8l7.4 1v-7h-7.4v6zM11.4 4.4L21 3v8.7h-9.6V4.4zm0 15.2L21 21v-8.6h-9.6v7.2z"/></svg>
+        <span>Download for Windows<br><span class="sub">x64</span></span>
+      </a>
+    </div>
+
+    <div class="relmeta" id="relmeta">
+      <span id="relver">Latest release</span> ·
+      <a href="https://github.com/zooloo303/digi-roll-studio/releases">All releases &amp; release notes</a>
+    </div>
+
+    <div class="shot">
+      <div class="shot-frame">
+        <img src="screenshot.png" alt="Digi-Roll Studio: the Generate panel on the left, a 32-track grid across two Elektron boxes, the piano roll below, and the Setup panel for reading and writing patterns on the right." id="shot-img"
+             onerror="this.style.display='none';document.getElementById('shot-fb').style.display='block'">
+        <div class="shot-fallback" id="shot-fb">
+          drop a screenshot next to this page as <code>screenshot.png</code>
+        </div>
+      </div>
+      <div class="shot-caption">Two boxes, 32 tracks, one canvas.</div>
+    </div>
+  </div>
+</header>
+
+<section id="what">
+  <div class="wrap">
+    <div class="sechead">What it does</div>
+    <h2>The part of pattern writing that isn't fun, done for you.</h2>
+    <p class="sec-lede">
+      Elektron sequencers are wonderful and entering a sixteen-note bassline
+      on one is not. Digi-Roll Studio is the piano roll they don't have.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3><span class="pip pip-green"></span>Write straight to the box</h3>
+        <p>
+          Pick a destination pattern and track, press send, confirm. The notes
+          land in the box's own sequencer — nothing to record in, no tempo to
+          match.
+        </p>
+        <p>
+          Every write re-reads the destination first, saves a
+          <code>.syx</code> backup of it, changes only the tracks you aimed at,
+          then reads it back and compares every byte. Your sounds, your kit and
+          the other fifteen tracks are untouched.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3><span class="pip pip-blue"></span>Round-trip what's already there</h3>
+        <p>
+          Fetch a pattern off the box, open it in the roll, fix the thing that
+          was bothering you, write it back where it came from. P-locks move with
+          the notes they belong to.
+        </p>
+        <p>
+          Reading is always safe — it replaces the pattern in the app, never the
+          one on the card.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3><span class="pip pip-purple"></span>Generate parts that agree</h3>
+        <p>
+          Choose a genre and a progression and get a bassline, chords, a lead
+          and a kick built against the same harmony, call-and-response, top
+          down.
+        </p>
+        <p>
+          Motion, looseness and humanize sliders shape the feel; per-part
+          density and octave shape the range. Lock the seed when you land on one
+          worth keeping.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3><span class="pip pip-teal"></span>Both boxes at once</h3>
+        <p>
+          Digitakt II and Digitone II side by side — 32 tracks, per-track length
+          and scale, and p-lock lanes for probability, condition, fill, cutoff
+          and resonance drawn right under the roll.
+        </p>
+        <p>
+          Internal or external clock, a fill toggle, and a panic button for when
+          a note gets stuck.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="gear">
+  <div class="wrap">
+    <div class="sechead">Supported gear</div>
+    <h2>What it can write to, and what it can play to.</h2>
+    <p class="sec-lede">
+      Direct pattern writing needs a documented SysEx format, so it's the
+      current-generation boxes. Everything else can still capture a pattern the
+      old way.
+    </p>
+
+    <div class="gear">
+      <div class="gear-row">
+        <div class="who">Digitakt II</div>
+        <div class="what"><span class="badge badge-write">Direct write</span>Fetch, edit and write patterns over SysEx, byte-verified. Gated on an allowlist of tested OS builds.</div>
+      </div>
+      <div class="gear-row">
+        <div class="who">Digitone II</div>
+        <div class="what"><span class="badge badge-write">Direct write</span>Same round trip, same verification, same allowlist.</div>
+      </div>
+      <div class="gear-row">
+        <div class="who">Octatrack · Digitakt · Digitone</div>
+        <div class="what"><span class="badge badge-rec">Live record</span>No SysEx write, but they take notes and clock — arm the sequencer, press play, capture the pattern.</div>
+      </div>
+      <div class="gear-row">
+        <div class="who">Anything else with MIDI in</div>
+        <div class="what"><span class="badge badge-rec">Live record</span>If it receives notes and clock, it can record what Digi-Roll Studio plays.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="contribute">
+  <div class="wrap">
+    <div class="sechead">Don't see your box?</div>
+    <h2>You can map it yourself, without writing any code.</h2>
+    <p class="sec-lede">
+      The reason the list above is two boxes long isn't difficulty — it's that
+      mapping a pattern format needs the box in front of you, and we have two.
+      If you own one of the others, the tool for mapping it already exists and
+      runs in your browser.
+    </p>
+
+    <div class="grid">
+      <div class="card">
+        <h3><span class="pip pip-amber"></span>The diff lab</h3>
+        <p>
+          Open the lab, fetch a pattern off your box, change <b>one thing</b> on
+          the box, fetch it again, and the lab shows you which bytes moved. That
+          is the entire method — it's how the Digitakt II and Digitone II
+          formats were worked out, and it's how the
+          <a href="https://github.com/zooloo303/digi-roll/blob/main/docs/dn2-pattern-format.md">first public documentation of the DN2 pattern format</a>
+          got written.
+        </p>
+        <p>
+          Chrome, Edge or Brave — Safari has no Web MIDI. Nothing to install and
+          no account.
+        </p>
+      </div>
+
+      <div class="card">
+        <h3><span class="pip pip-green"></span>It cannot write to your box</h3>
+        <p>
+          Not by convention — by construction. Elektron's protocol uses
+          <code>0x6n</code> messages to <i>request</i> a dump and <code>0x5n</code>
+          to <i>carry</i> one; sending a <code>0x5n</code> is what stores a
+          payload. The lab's two hardware functions refuse every opcode outside
+          the request range and throw before a byte reaches the port.
+        </p>
+        <p>
+          Mapping a box doesn't switch writing on for anybody either — that
+          stays gated on an OS build somebody has verified by hand.
+        </p>
+      </div>
+    </div>
+
+    <div class="downloads" style="margin-top:26px;align-items:stretch">
+      <a class="btn btn-primary" href="https://zooloo303.github.io/digi-roll/difflab.html">
+        <span>Open the diff lab<span class="sub" style="display:block">in the browser, read-only</span></span>
+      </a>
+      <a class="btn" href="https://github.com/zooloo303/digi-roll/blob/main/docs/adding-a-device.md">
+        <span>Read the walkthrough</span>
+      </a>
+      <a class="btn" href="https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml">
+        <span>Open a mapping issue</span>
+      </a>
+    </div>
+
+    <p style="margin:22px 0 0;color:var(--dimmer);font-size:14px">
+      Wanted: <b>Syntakt</b>, <b>Analog Four</b>, <b>Analog Rytm</b>,
+      <b>Octatrack</b>, and the gen-1 <b>Digitakt</b> and <b>Digitone</b>.
+    </p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sechead">Install</div>
+    <h2>One extra click, the first time.</h2>
+    <p class="sec-lede">
+      Digi-Roll Studio isn't code-signed — the certificates cost money every
+      year, forever, and this is a free project with no income. Both operating
+      systems will therefore make a face at it once. Here's how to get past
+      it.
+    </p>
+
+    <div class="callout">
+      <h4>Why the warning appears</h4>
+      <p>
+        An unsigned app means the OS can't confirm who built it — not that
+        anything is wrong with it. The whole source is on GitHub if you'd
+        rather read it, or build it yourself, before running it.
+      </p>
+      <p>
+        Making it go away means <b>$99 a year</b> to Apple's developer
+        programme, renewed forever, plus a certificate on the Windows side.
+        That's a subscription, not a one-off, and there's nothing coming in to
+        pay it with. If this app earns its place in your studio,
+        <a href="https://ko-fi.com/zooloo303" target="_blank" rel="noopener" style="color:var(--kofi)">buying me a Ko-fi</a>
+        is the one thing that would delete this entire section.
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <h3>macOS</h3>
+        <ol>
+          <li>Open the downloaded <span class="inline-code">.dmg</span> and drag Digi-Roll Studio to Applications.</li>
+          <li>Launch it once. macOS will refuse, because it can't verify the developer — that's expected.</li>
+          <li>Go to <b>System Settings → Privacy &amp; Security</b>, scroll to the bottom, and click <b>Open Anyway</b> next to the message about Digi-Roll Studio.</li>
+          <li>Launch it again and confirm. macOS remembers, so this is a one-time thing.</li>
+        </ol>
+        <p style="margin:14px 0 0;color:var(--dimmer);font-size:13px">
+          On macOS 14 and earlier you can shortcut all of that: <b>right-click</b> the
+          app, choose <b>Open</b>, then <b>Open</b> again. Sequoia removed that
+          bypass, so on 15 and later the route above is the only one.
+        </p>
+        <p style="margin:14px 0 0;color:var(--dimmer);font-size:13px">If macOS insists the app is damaged:</p>
+        <pre>xattr -dr com.apple.quarantine \
+  /Applications/Digi-Roll\ Studio.app</pre>
+      </div>
+
+      <div class="step">
+        <h3>Windows</h3>
+        <ol>
+          <li>Run the downloaded installer.</li>
+          <li>SmartScreen will say it prevented an unrecognised app from starting.</li>
+          <li>Click <b>More info</b>, then <b>Run anyway</b>.</li>
+        </ol>
+        <p style="margin:14px 0 0;color:var(--dimmer);font-size:13px">
+          The warning fades on its own as more people download a given release.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin:30px 0 0;border-left-color:var(--blue);background:rgba(74,159,216,.045)">
+      <h4 style="color:var(--blue)">Before your first write</h4>
+      <p>
+        Writing to a pattern slot overwrites what's in it. Digi-Roll Studio
+        re-reads the destination and stores a backup before it sends — a backup
+        it can't store is a write that doesn't happen — then reads the result
+        back and compares every byte.
+      </p>
+      <p>
+        <b>Use a throwaway project on your box anyway.</b> This is beta
+        software writing to hardware you can't easily undo, and the habit costs
+        you nothing. Back the project up from the box itself the first few
+        times too.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="support" style="padding:64px 0">
+  <div class="wrap">
+    <div class="support">
+      <div class="support-copy">
+        <h3>Digi-Roll Studio is free, and stays free.</h3>
+        <p>
+          No licence, no trial, no account. If it's saved you an evening of
+          entering notes one trig at a time, a coffee is a lovely way to say so
+          — and it's what would eventually pay for the code signing certificate
+          that makes those install warnings go away.
+        </p>
+      </div>
+      <a class="btn btn-kofi" href="https://ko-fi.com/zooloo303" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 8h13v6a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8z"/>
+          <path d="M17 9.5h1.6a2.9 2.9 0 0 1 0 5.8H17"/>
+          <path d="M7.5 4.6v1.2M11 4v1.8M14.5 4.6v1.2"/>
+        </svg>
+        <span>Buy me a Ko-fi</span>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="disclaimer">
+      Free software under the
+      <a href="https://github.com/zooloo303/digi-roll-studio/blob/main/LICENSE">GPL-3.0-or-later</a>.
+      Not affiliated with, endorsed by, or supported by Elektron. Use at your
+      own risk on your own gear.
+    </div>
+    <div class="spacer"></div>
+    <div class="footlinks">
+      <a href="https://github.com/zooloo303/digi-roll-studio">Source</a>
+      <a href="https://github.com/zooloo303/digi-roll-studio/issues">Report a bug</a>
+      <a href="https://ko-fi.com/zooloo303" target="_blank" rel="noopener" style="color:var(--kofi);opacity:.85">Ko-fi</a>
+      <a href="https://zooloo303.github.io/digi-roll/">digi-roll (browser original)</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Fill the download buttons from the latest GitHub release.
+// If anything fails — no release yet, rate limit, offline — the buttons keep
+// their hardcoded fallback of /releases/latest, which always works.
+(function () {
+  var REPO = 'zooloo303/digi-roll-studio';
+
+  var targets = [
+    { el: 'dl-mac', test: function (n) {
+        return /\.(dmg)$/.test(n) || (/\.(zip|tar\.gz)$/.test(n) && /(mac|osx|darwin|apple|aarch64|arm64|universal)/.test(n));
+      } },
+    { el: 'dl-win', test: function (n) {
+        return /\.(exe|msi)$/.test(n) || (/\.zip$/.test(n) && /(win|windows|x86_64-pc|x64)/.test(n));
+      } }
+  ];
+
+  // The unauthenticated API allows 60 requests an hour per IP, so remember the
+  // answer for this tab rather than spending one on every click around the page.
+  var CACHE = 'drs-latest-release';
+
+  function cached() {
+    try { return JSON.parse(sessionStorage.getItem(CACHE)); } catch (e) { return null; }
+  }
+
+  function remember(rel) {
+    try { sessionStorage.setItem(CACHE, JSON.stringify(rel)); } catch (e) { /* private mode, full quota */ }
+  }
+
+  var stored = cached();
+  if (stored) {
+    apply(stored);
+  } else {
+    fetch('https://api.github.com/repos/' + REPO + '/releases/latest', {
+      headers: { Accept: 'application/vnd.github+json' }
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (rel) { remember(rel); apply(rel); })
+      .catch(function () { /* fallbacks already in the markup */ });
+  }
+
+  function apply(rel) {
+    var assets = rel.assets || [];
+
+    targets.forEach(function (t) {
+      var hit = assets.filter(function (a) { return t.test(a.name.toLowerCase()); })[0];
+      if (hit) document.getElementById(t.el).href = hit.browser_download_url;
+    });
+
+    var ver = document.getElementById('relver');
+    var when = rel.published_at
+      ? new Date(rel.published_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+      : null;
+    ver.innerHTML = '<span class="tag">' + (rel.tag_name || 'latest') + '</span>' + (when ? ' · released ' + when : '');
+  }
+})();
+</script>
+
+</body>
+</html>
