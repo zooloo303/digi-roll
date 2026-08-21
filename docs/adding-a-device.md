@@ -8,6 +8,12 @@ If you own a **Digitone, Syntakt, Analog Rytm, Analog Four, Octatrack** or a
 gen-1 **Digitakt**, you can map it without writing any code. This is what to do
 and what happens to what you send.
 
+Two links you'll need:
+
+- the lab — **https://zooloo303.github.io/digi-roll/difflab.html** — in Chrome,
+  Edge or Brave (Safari has no Web MIDI). Nothing to install.
+- where findings go — **[a mapping issue](https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml)**.
+
 ## First: nothing here writes to your box
 
 The diff lab (`difflab.html`) is read-only by construction, not by convention:
@@ -32,14 +38,21 @@ holds: `0x0a` Digitakt, `0x14` Digitakt II, `0x15` Digitone II. These aren't
 published anywhere. The DN2's was found by sweeping requests across candidate
 bytes until one answered.
 
-1. Connect your box over USB, open `difflab.html`, pick it in the dropdown, hit
+1. Connect your box over USB, open [the diff lab](https://zooloo303.github.io/digi-roll/difflab.html),
+   pick it in the dropdown, hit
    **Connect**. It should name itself and its OS even if digi-roll knows nothing
    else about it.
 2. Hit **Probe dump protocol**. It sends ~100 read-only requests over about
    twenty seconds, then prints a report.
-3. **Copy report** and post it to the thread — *including* a report that found
-   nothing. "This box answers no family byte over USB-MIDI" is a real finding,
-   and it tells us to look at a different transport rather than at our sweep.
+3. **Copy report**, then
+   [open a mapping issue](https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml)
+   and paste it in — *including* a report that found nothing. "This box answers
+   no family byte over USB-MIDI" is a real finding, and it tells us to look at a
+   different transport rather than at our sweep.
+
+A probe report on its own is a real contribution. Open the issue with just that
+if you'd rather stop there — the capture pairs below can follow later, or come
+from someone else with the same box.
 
 The report says which family byte answered, which dump types it serves, and how
 big each one is. That alone is most of what a new device entry needs.
@@ -62,8 +75,9 @@ in, and:
    struct and as raw offsets where we don't. For a new box everything is raw
    offsets — that's expected, and those offsets are the discovery.
 4. Type what you changed into the note box, in plain words.
-5. **Export pair** → attach the `.json` to the thread. **Save to notebook** keeps
-   a running log you can **Export .md** at the end of a session.
+5. **Export pair** → drag the `.json` into your mapping issue. **Save to
+   notebook** keeps a running log you can **Export .md** at the end of a session
+   and paste in alongside.
 
 A good first series, one pair each: empty pattern → one trig on track 1 step 1;
 then that trig's velocity; then its length; then micro-timing; then note pitch;

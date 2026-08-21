@@ -1,0 +1,75 @@
+name: Map my device
+description: Report what the diff lab found on a box we don't own
+title: "[map] "
+labels: ["device-mapping"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks — this is the one job that can't be done without the hardware.
+
+        If you haven't run the lab yet, start with
+        [docs/adding-a-device.md](https://github.com/zooloo303/digi-roll/blob/main/docs/adding-a-device.md).
+        The lab is at
+        [difflab.html](https://zooloo303.github.io/digi-roll/difflab.html) and
+        cannot write to your box.
+
+  - type: input
+    id: box
+    attributes:
+      label: Which box
+      placeholder: Syntakt, Analog Four MkII, Octatrack MkII, Digitakt (gen 1)…
+    validations:
+      required: true
+
+  - type: input
+    id: osbuild
+    attributes:
+      label: OS version and build number
+      description: The lab prints the build when it connects. Both, please — the build is what write gating keys on.
+      placeholder: "OS 1.30, build 0061"
+    validations:
+      required: true
+
+  - type: input
+    id: family
+    attributes:
+      label: Family byte
+      description: The byte the box answers dump requests with, if you got that far.
+      placeholder: "0x16"
+
+  - type: textarea
+    id: probe
+    attributes:
+      label: Probe results
+      description: What replied, and what didn't — paste the lab's probe output.
+      render: text
+
+  - type: textarea
+    id: diffs
+    attributes:
+      label: What moved when you changed one thing
+      description: |
+        One line per experiment: what you changed on the box, and which offsets
+        the lab said differed. This is the actual mapping work.
+      placeholder: |
+        note on step 1 → offsets 1024, 1088 changed
+        that note's velocity 100 → 40 → offset 1090 changed
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything odd
+      description: Requests that hung, dumps of a surprising length, values that didn't hold still.
+
+  - type: checkboxes
+    id: scratch
+    attributes:
+      label: Housekeeping
+      options:
+        - label: I used a scratch project on the box, not a live set.
+          required: true
+        - label: I can attach the `.syx` captures if they'd help (don't attach them if the project is private to you).
