@@ -334,6 +334,21 @@
         <span>Download for Windows<br><span class="sub">x64</span></span>
       </a>
     </div>
+    <script>
+    // Lead with the visitor's own platform. Runs inline, before first paint, so
+    // the highlight never visibly jumps. macOS stays the default when we can't
+    // tell — that's the build most people come here for.
+    (function () {
+      var d = navigator.userAgentData;
+      var p = (d && d.platform) || navigator.platform || navigator.userAgent || '';
+      if (!/windows|win32|win64/i.test(p)) return;
+      var mac = document.getElementById('dl-mac');
+      var win = document.getElementById('dl-win');
+      mac.className = 'btn';
+      win.className = 'btn btn-primary';
+      win.style.order = '-1';
+    })();
+    </script>
 
     <div class="relmeta" id="relmeta">
       <span id="relver">Latest release</span> ·
