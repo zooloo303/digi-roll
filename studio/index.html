@@ -42,6 +42,7 @@
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     .btn:hover { transform: none; }
+    .play-badge { transition: none; }
   }
 
   body {
@@ -143,22 +144,91 @@
   .relmeta a { color: var(--dim); }
   .relmeta .tag { color: var(--green); }
 
-  /* ---- screenshot frame ---- */
-  .shot { margin: 60px 0 0; }
+  /* ---- screenshot / demo carousel ---- */
+  .shot { margin: 60px 0 0; position: relative; }
   .shot-frame {
+    position: relative;
     border: 1px solid var(--line); border-radius: 11px;
     background: var(--panel); overflow: hidden;
     box-shadow: 0 28px 70px -22px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.02) inset;
   }
-  .shot-frame img { display: block; width: 100%; height: auto; }
+  /* A scroll-snap track, so swiping still works if the script never runs. */
+  .shot-track {
+    display: flex; overflow-x: auto; overscroll-behavior-x: contain;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none; -ms-overflow-style: none;
+  }
+  .shot-track::-webkit-scrollbar { display: none; }
+  .shot-slide {
+    flex: 0 0 100%; scroll-snap-align: center;
+    aspect-ratio: 1624 / 1061; background: #0d1013;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .shot-slide > img { display: block; width: 100%; height: 100%; object-fit: contain; }
   .shot-fallback {
     display: none; padding: 60px 28px; text-align: center;
     font-family: var(--mono); font-size: 12.5px; color: var(--dimmer);
     letter-spacing: .05em; line-height: 2;
   }
   .shot-fallback code { color: var(--amber); }
+
+  /* The video slide stays a plain YouTube link until it is clicked, so nothing
+     is fetched from YouTube by simply opening this page. */
+  .shot-video {
+    position: relative; display: block; width: 100%; aspect-ratio: 16 / 9;
+    text-decoration: none;
+  }
+  .shot-video img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .play-badge {
+    position: absolute; left: 50%; top: 50%; z-index: 1;
+    transform: translate(-50%,-50%);
+    width: 74px; height: 52px; border-radius: 13px;
+    background: rgba(205,32,31,.9);
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .18s ease, background .18s ease;
+  }
+  .play-badge svg { width: 21px; height: 21px; fill: #fff; margin-left: 3px; }
+  .shot-video:hover .play-badge,
+  .shot-video:focus-visible .play-badge {
+    background: #e62117; transform: translate(-50%,-50%) scale(1.07);
+  }
+  .shot-embed { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; }
+  @media (max-width: 640px) {
+    .play-badge { width: 54px; height: 38px; border-radius: 10px; }
+    .play-badge svg { width: 16px; height: 16px; }
+  }
+
+  /* ---- carousel controls ---- */
+  .shot-arrow {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+    width: 38px; height: 38px; padding: 0; border-radius: 50%;
+    border: 1px solid var(--line); background: rgba(10,12,15,.72);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    color: var(--text); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .18s ease, background .18s ease;
+  }
+  .shot:hover .shot-arrow, .shot-arrow:focus-visible { opacity: 1; }
+  .shot-arrow:hover { background: rgba(26,30,36,.95); }
+  .shot-arrow svg { width: 15px; height: 15px; fill: currentColor; }
+  .shot-arrow.prev { left: 12px; }
+  .shot-arrow.next { right: 12px; }
+  @media (hover: none) { .shot-arrow { display: none; } }
+
+  .shot-nav { display: flex; justify-content: center; gap: 4px; margin-top: 12px; }
+  .shot-dot {
+    width: 22px; height: 22px; padding: 0; border: 0; background: none;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .shot-dot::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--line); transition: background .18s ease, transform .18s ease;
+  }
+  .shot-dot:hover::before { background: var(--dim); }
+  .shot-dot[aria-current="true"]::before { background: var(--green); transform: scale(1.3); }
+
   .shot-caption {
-    margin-top: 14px; text-align: center;
+    margin-top: 8px; text-align: center;
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .07em;
     color: var(--dimmer);
   }
@@ -355,15 +425,46 @@
       <a href="https://github.com/zooloo303/digi-roll-studio/releases">All releases &amp; release notes</a>
     </div>
 
-    <div class="shot">
+    <div class="shot" id="shot" role="group" aria-roledescription="carousel"
+         aria-label="Digi-Roll Studio screenshot and demo video">
       <div class="shot-frame">
-        <img src="screenshot.png" alt="Digi-Roll Studio: the Generate panel on the left, a 32-track grid across two Elektron boxes, the piano roll below, and the Setup panel for reading and writing patterns on the right." id="shot-img"
-             onerror="this.style.display='none';document.getElementById('shot-fb').style.display='block'">
-        <div class="shot-fallback" id="shot-fb">
-          drop a screenshot next to this page as <code>screenshot.png</code>
+        <div class="shot-track" id="shot-track">
+
+          <div class="shot-slide" role="group" aria-roledescription="slide" aria-label="1 of 2: screenshot"
+               data-caption="Two boxes, 32 tracks, one canvas.">
+            <img src="screenshot.png" alt="Digi-Roll Studio: the Generate panel on the left, a 32-track grid across two Elektron boxes, the piano roll below, and the Setup panel for reading and writing patterns on the right." id="shot-img"
+                 onerror="this.style.display='none';document.getElementById('shot-fb').style.display='block'">
+            <div class="shot-fallback" id="shot-fb">
+              drop a screenshot next to this page as <code>screenshot.png</code>
+            </div>
+          </div>
+
+          <div class="shot-slide" role="group" aria-roledescription="slide" aria-label="2 of 2: demo video"
+               data-caption="A walk through Digi-Roll Studio, on YouTube.">
+            <a class="shot-video" id="video-play" href="https://youtu.be/4ZSJJw8MGhU"
+               target="_blank" rel="noopener"
+               aria-label="Play the Digi-Roll Studio demo video on YouTube">
+              <img src="video-thumb.jpg" loading="lazy"
+                   alt="Video: Digi-Roll Studio is a multi track piano roll editor for Elektron music machines.">
+              <span class="play-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></span>
+            </a>
+          </div>
+
         </div>
+
+        <button class="shot-arrow prev" type="button" aria-label="Previous">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 4.6L13.9 3l-9 9 9 9 1.5-1.6L8 12z"/></svg>
+        </button>
+        <button class="shot-arrow next" type="button" aria-label="Next">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 4.6L10.1 3l9 9-9 9-1.5-1.6L16 12z"/></svg>
+        </button>
       </div>
-      <div class="shot-caption">Two boxes, 32 tracks, one canvas.</div>
+
+      <div class="shot-nav">
+        <button class="shot-dot" type="button" aria-current="true" aria-label="Show the screenshot"></button>
+        <button class="shot-dot" type="button" aria-current="false" aria-label="Show the demo video"></button>
+      </div>
+      <div class="shot-caption" id="shot-caption">Two boxes, 32 tracks, one canvas.</div>
     </div>
   </div>
 </header>
@@ -707,6 +808,127 @@
       : null;
     ver.innerHTML = '<span class="tag">' + (rel.tag_name || 'latest') + '</span>' + (when ? ' · released ' + when : '');
   }
+})();
+</script>
+
+<script>
+// The hero carousel: the app screenshot and the demo video.
+// The track is CSS scroll-snap, so swiping between the two works with this
+// script disabled — dots, arrows and the slow auto-advance are what it adds.
+// The video stays an ordinary YouTube link until someone clicks it, so opening
+// this page fetches nothing from YouTube.
+(function () {
+  var root = document.getElementById('shot');
+  if (!root) return;
+
+  var track   = document.getElementById('shot-track');
+  var caption = document.getElementById('shot-caption');
+  var slides  = [].slice.call(track.querySelectorAll('.shot-slide'));
+  var dots    = [].slice.call(root.querySelectorAll('.shot-dot'));
+  var still   = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  var idx = 0, timer = null, held = false;
+  var moving = false, settle = null;
+
+  function paint() {
+    dots.forEach(function (d, i) { d.setAttribute('aria-current', i === idx ? 'true' : 'false'); });
+    caption.textContent = slides[idx].getAttribute('data-caption') || '';
+  }
+
+  function at() { return Math.round(track.scrollLeft / track.clientWidth); }
+  function landed() { return Math.abs(track.scrollLeft - idx * track.clientWidth) < 2; }
+
+  function go(i, jump) {
+    idx = (i + slides.length) % slides.length;
+    paint();
+    moving = true;
+    clearTimeout(settle);
+    track.scrollTo({ left: idx * track.clientWidth, behavior: (jump || still.matches) ? 'auto' : 'smooth' });
+    // A smooth scroll inside a snap container can be interrupted by a layout
+    // change mid-flight and left snapped back where it started. If we are not
+    // there shortly, put it there.
+    settle = setTimeout(function () {
+      moving = false;
+      if (!landed()) track.scrollTo({ left: idx * track.clientWidth, behavior: 'auto' });
+    }, 700);
+  }
+
+  // Keep the dots honest when someone swipes the track themselves.
+  var pending = false;
+  track.addEventListener('scroll', function () {
+    if (pending) return;
+    pending = true;
+    requestAnimationFrame(function () {
+      pending = false;
+      // Ignore the frames of our own animation, or it would read the half-way
+      // position as a slide change and flip the dots back.
+      if (moving) {
+        if (landed()) { moving = false; clearTimeout(settle); }
+        return;
+      }
+      var i = at();
+      if (i !== idx && slides[i]) { idx = i; paint(); }
+    });
+  });
+
+  window.addEventListener('resize', function () { go(idx, true); });
+
+  function stop() { if (timer) { clearInterval(timer); timer = null; } }
+
+  if (!still.matches && slides.length > 1) {
+    timer = setInterval(function () {
+      if (!held && !document.hidden) go(idx + 1);
+    }, 7000);
+  }
+
+  // Hovering or tabbing into it holds the current slide; a deliberate move —
+  // a dot, an arrow, a swipe, pressing play — hands the carousel over for good.
+  root.addEventListener('mouseenter', function () { held = true; });
+  root.addEventListener('mouseleave', function () { held = false; });
+  root.addEventListener('focusin',    function () { held = true; });
+  root.addEventListener('focusout',   function () { held = false; });
+  track.addEventListener('pointerdown', function () {
+    stop();
+    moving = false;          // they are steering now, not us
+    clearTimeout(settle);
+  });
+
+  dots.forEach(function (d, i) {
+    d.addEventListener('click', function () { stop(); go(i); });
+  });
+
+  [].slice.call(root.querySelectorAll('.shot-arrow')).forEach(function (b) {
+    b.addEventListener('click', function () {
+      stop();
+      go(idx + (b.classList.contains('next') ? 1 : -1));
+    });
+  });
+
+  root.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    stop();
+    go(idx + (e.key === 'ArrowRight' ? 1 : -1));
+  });
+
+  // Clicking the thumbnail swaps the real player in, in place. Modified clicks
+  // still mean "open YouTube in a new tab", which is what the href already is.
+  var play = document.getElementById('video-play');
+  if (play) {
+    play.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      e.preventDefault();
+      stop();
+      var f = document.createElement('iframe');
+      f.className = 'shot-embed';
+      f.src = 'https://www.youtube-nocookie.com/embed/4ZSJJw8MGhU?autoplay=1&rel=0';
+      f.title = 'Digi-Roll Studio demo';
+      f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+      f.allowFullscreen = true;
+      play.parentNode.replaceChild(f, play);
+    });
+  }
+
+  paint();
 })();
 </script>
 
