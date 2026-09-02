@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Digi-Roll Studio — a piano roll for Elektron boxes</title>
-<meta name="description" content="Draw, generate and write MIDI patterns straight into a Digitakt II or Digitone II over SysEx. Byte-verified writes, no live recording. Free and open source.">
+<meta name="description" content="Draw, generate and write MIDI patterns straight into a Digitakt II, Digitone II or Analog Four over SysEx. Byte-verified writes, no live recording. Free and open source.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0c0f'/><rect x='6' y='9' width='11' height='4' rx='1' fill='%236ecf9a'/><rect x='12' y='15' width='14' height='4' rx='1' fill='%236ecf9a'/><rect x='6' y='21' width='8' height='4' rx='1' fill='%236ecf9a'/></svg>">
 
 <meta property="og:title" content="Digi-Roll Studio">
@@ -12,7 +12,7 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://zooloo303.github.io/digi-roll/studio/">
 <meta property="og:image" content="https://zooloo303.github.io/digi-roll/studio/screenshot.png">
-<meta property="og:image:alt" content="Digi-Roll Studio: a 32-track grid across two Elektron boxes with a piano roll below it.">
+<meta property="og:image:alt" content="Digi-Roll Studio: 38 tracks across a Digitakt II, a Digitone II and an Analog Four in one session, with a piano roll below them.">
 <meta name="twitter:card" content="summary_large_image">
 
 <style>
@@ -161,7 +161,7 @@
   .shot-track::-webkit-scrollbar { display: none; }
   .shot-slide {
     flex: 0 0 100%; scroll-snap-align: center;
-    aspect-ratio: 1624 / 1061; background: #0d1013;
+    aspect-ratio: 1707 / 1148; background: #0d1013;
     display: flex; align-items: center; justify-content: center;
   }
   .shot-slide > img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -383,7 +383,7 @@
 
 <header class="hero">
   <div class="wrap">
-    <div class="eyebrow">Digitakt II &amp; Digitone II · <b>free and open source</b></div>
+    <div class="eyebrow">Digitakt II · Digitone II · Analog Four · <b>free and open source</b></div>
 
     <h1>A piano roll for your&nbsp;Elektron boxes.</h1>
 
@@ -431,8 +431,8 @@
         <div class="shot-track" id="shot-track">
 
           <div class="shot-slide" role="group" aria-roledescription="slide" aria-label="1 of 2: screenshot"
-               data-caption="Two boxes, 32 tracks, one canvas.">
-            <img src="screenshot.png" alt="Digi-Roll Studio: the Generate panel on the left, a 32-track grid across two Elektron boxes, the piano roll below, and the Setup panel for reading and writing patterns on the right." id="shot-img"
+               data-caption="Three boxes, 38 tracks, one canvas.">
+            <img src="screenshot.png" alt="Digi-Roll Studio: the Generate panel on the left, 38 tracks across a Digitakt II, a Digitone II and an Analog Four in one session, a piano roll with trig and p-lock lanes under it, and the Setup panel on the right offering a fetch and a write for each of the three boxes." id="shot-img"
                  onerror="this.style.display='none';document.getElementById('shot-fb').style.display='block'">
             <div class="shot-fallback" id="shot-fb">
               drop a screenshot next to this page as <code>screenshot.png</code>
@@ -464,7 +464,7 @@
         <button class="shot-dot" type="button" aria-current="true" aria-label="Show the screenshot"></button>
         <button class="shot-dot" type="button" aria-current="false" aria-label="Show the demo video"></button>
       </div>
-      <div class="shot-caption" id="shot-caption">Two boxes, 32 tracks, one canvas.</div>
+      <div class="shot-caption" id="shot-caption">Three boxes, 38 tracks, one canvas.</div>
     </div>
   </div>
 </header>
@@ -522,11 +522,11 @@
       </div>
 
       <div class="card">
-        <h3><span class="pip pip-teal"></span>Both boxes at once</h3>
+        <h3><span class="pip pip-teal"></span>Your whole studio at once</h3>
         <p>
-          Digitakt II and Digitone II side by side — 32 tracks, per-track length
-          and scale, and p-lock lanes for probability, condition, fill, cutoff
-          and resonance drawn right under the roll.
+          Digitakt II, Digitone II and Analog Four side by side — up to 38
+          tracks, per-track length and scale, and p-lock lanes drawn right
+          under the roll from each box's own parameters.
         </p>
         <p>
           Internal or external clock, a fill toggle, and a panic button for when
@@ -542,9 +542,10 @@
     <div class="sechead">Supported gear</div>
     <h2>What it can write to, and what it can play to.</h2>
     <p class="sec-lede">
-      Direct pattern writing needs a documented SysEx format, so it's the
-      current-generation boxes. Everything else can still capture a pattern the
-      old way.
+      Direct pattern writing needs a pattern format somebody has mapped byte
+      by byte. That's three boxes so far — two gen-2 digis and, since
+      September 2026, the gen-1 Analog Four. Everything else can still capture
+      a pattern the old way.
     </p>
 
     <div class="gear">
@@ -555,6 +556,10 @@
       <div class="gear-row">
         <div class="who">Digitone II</div>
         <div class="what"><span class="badge badge-write">Direct write</span>Same round trip, same verification, same allowlist.</div>
+      </div>
+      <div class="gear-row">
+        <div class="who">Analog Four</div>
+        <div class="what"><span class="badge badge-write">Direct write</span>The same round trip on a gen-1 box: six tracks, 64 steps, any of 128 slots, paced for its slower wire. Velocity, length, micro-timing, trig conditions and thirteen p-lock parameters all carry. Its FX and CV tracks are read-only and come back byte-exact.</div>
       </div>
       <div class="gear-row">
         <div class="who">Octatrack · Digitakt · Digitone</div>
@@ -573,10 +578,10 @@
     <div class="sechead">Don't see your box?</div>
     <h2>You can map it yourself, without writing any code.</h2>
     <p class="sec-lede">
-      The reason the list above is two boxes long isn't difficulty — it's that
-      mapping a pattern format needs the box in front of you, and we have two.
-      If you own one of the others, the tool for mapping it already exists and
-      runs in your browser.
+      The reason the list above is three boxes long isn't difficulty — it's
+      that mapping a pattern format needs the box in front of you, and we have
+      three. If you own one of the others, the tool for mapping it already
+      exists and runs in your browser.
     </p>
 
     <div class="grid">
@@ -586,7 +591,8 @@
           Open the lab, fetch a pattern off your box, change <b>one thing</b> on
           the box, fetch it again, and the lab shows you which bytes moved. That
           is the entire method — it's how the Digitakt II and Digitone II
-          formats were worked out, and it's how the
+          formats were worked out, it's how the Analog Four's gen-1 format was
+          mapped after them one captured question at a time, and it's how the
           <a href="https://github.com/zooloo303/digi-roll/blob/main/docs/dn2-pattern-format.md">first public documentation of the DN2 pattern format</a>
           got written.
         </p>
@@ -625,8 +631,8 @@
     </div>
 
     <p style="margin:22px 0 0;color:var(--dimmer);font-size:14px">
-      Wanted: <b>Syntakt</b>, <b>Analog Four</b>, <b>Analog Rytm</b>,
-      <b>Octatrack</b>, and the gen-1 <b>Digitakt</b> and <b>Digitone</b>.
+      Wanted: <b>Syntakt</b>, <b>Analog Rytm</b>, <b>Octatrack</b>, and the
+      gen-1 <b>Digitakt</b> and <b>Digitone</b>.
     </p>
   </div>
 </section>
