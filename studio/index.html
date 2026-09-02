@@ -143,6 +143,9 @@
   }
   .relmeta a { color: var(--dim); }
   .relmeta .tag { color: var(--green); }
+  /* Shown only to a Linux visitor, by the class the hero script sets. */
+  #archnote { display: none; }
+  .plat-linux #archnote { display: block; }
 
   /* ---- screenshot / demo carousel ---- */
   .shot { margin: 60px 0 0; position: relative; }
@@ -315,6 +318,7 @@
   .callout p + p { margin-top: 9px; }
 
   .steps { display: grid; gap: 18px; grid-template-columns: repeat(2, 1fr); }
+  .step-wide { grid-column: 1 / -1; }
   @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
   .step {
     border: 1px solid var(--line-soft); border-radius: 9px;
@@ -403,6 +407,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 5.6l7.4-1v7.1H3V5.6zm0 12.8l7.4 1v-7h-7.4v6zM11.4 4.4L21 3v8.7h-9.6V4.4zm0 15.2L21 21v-8.6h-9.6v7.2z"/></svg>
         <span>Download for Windows<br><span class="sub">x64</span></span>
       </a>
+      <a class="btn" id="dl-linux" href="https://github.com/zooloo303/digi-roll-studio/releases/latest">
+        <svg width="16" height="17" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M12 1.6c-2.2 0-3.9 1.8-3.9 4.1v1.6c0 1-.4 1.6-1.2 2.7-1.6 2.1-2.4 4-2.4 5.7 0 .9.2 1.7.6 2.4l-1.6 2.3c-.4.6 0 1.4.7 1.4h15.6c.7 0 1.1-.8.7-1.4l-1.6-2.3c.4-.7.6-1.5.6-2.4 0-1.7-.8-3.6-2.4-5.7-.8-1.1-1.2-1.7-1.2-2.7V5.7c0-2.3-1.7-4.1-3.9-4.1zm-1.5 3.1a.85 1.15 0 0 1 0 2.3.85 1.15 0 0 1 0-2.3zm3 0a.85 1.15 0 0 1 0 2.3.85 1.15 0 0 1 0-2.3zm-1.5 3.1 1.7 1.1-1.7 1.1-1.7-1.1z"/></svg>
+        <span>Download for Linux<br><span class="sub">x86_64 · tarball</span></span>
+      </a>
     </div>
     <script>
     // Lead with the visitor's own platform. Runs inline, before first paint, so
@@ -410,19 +418,36 @@
     // tell — that's the build most people come here for.
     (function () {
       var d = navigator.userAgentData;
-      var p = (d && d.platform) || navigator.platform || navigator.userAgent || '';
-      if (!/windows|win32|win64/i.test(p)) return;
-      var mac = document.getElementById('dl-mac');
-      var win = document.getElementById('dl-win');
-      mac.className = 'btn';
-      win.className = 'btn btn-primary';
-      win.style.order = '-1';
+      var p = ((d && d.platform) || navigator.platform || navigator.userAgent || '').toLowerCase();
+
+      // Android and ChromeOS both say Linux, and neither has a build here.
+      var lead = /windows|win32|win64/.test(p) ? 'dl-win'
+               : (/linux|x11/.test(p) && !/android|cros/.test(p)) ? 'dl-linux'
+               : null;
+      if (!lead) return;
+
+      var el = document.getElementById(lead);
+      document.getElementById('dl-mac').className = 'btn';
+      el.className = 'btn btn-primary';
+      el.style.order = '-1';
+
+      // The tarball is the download for every distro, but the package is the
+      // better install where pacman is what you have — and the only Linux
+      // install this app has been run from. Worth saying, to the people it
+      // applies to.
+      if (lead === 'dl-linux') document.documentElement.className += ' plat-linux';
     })();
     </script>
 
     <div class="relmeta" id="relmeta">
       <span id="relver">Latest release</span> ·
       <a href="https://github.com/zooloo303/digi-roll-studio/releases">All releases &amp; release notes</a>
+    </div>
+
+    <div class="relmeta" id="archnote" style="margin-top:9px">
+      On Arch and derivatives, take
+      <a id="dl-arch" href="https://github.com/zooloo303/digi-roll-studio/releases/latest">the pacman package</a>
+      instead — it can check the libraries the tarball can only list.
     </div>
 
     <div class="shot" id="shot" role="group" aria-roledescription="carousel"
@@ -643,9 +668,9 @@
     <h2>One extra click, the first time.</h2>
     <p class="sec-lede">
       Digi-Roll Studio isn't code-signed — the certificates cost money every
-      year, forever, and this is a free project with no income. Both operating
-      systems will therefore make a face at it once. Here's how to get past
-      it.
+      year, forever, and this is a free project with no income. macOS and
+      Windows will therefore each make a face at it once, and here's how to get
+      past it. Linux doesn't check, so its steps are just the install.
     </p>
 
     <div class="callout">
@@ -698,7 +723,43 @@
           The warning fades on its own as more people download a given release.
         </p>
       </div>
+
+      <div class="step step-wide">
+        <h3>Linux</h3>
+        <ol>
+          <li>Unpack the tarball.</li>
+          <li>Run the <span class="inline-code">install.sh</span> inside it — per-user, into <span class="inline-code">~/.local</span>, no root, nothing to click past.</li>
+          <li>Launch it from your menu, or run <span class="inline-code">digi_roll_studio</span> from a terminal.</li>
+        </ol>
+        <pre>tar -xzf Digi-Roll-Studio-*-Linux-x86_64.tar.gz
+cd Digi-Roll-Studio-*-Linux-x86_64
+./install.sh</pre>
+        <p style="margin:14px 0 0;color:var(--dimmer);font-size:13px">
+          <span class="inline-code">uninstall.sh</span> next to it takes the three
+          files back out. On <b>Arch</b> and derivatives prefer the package from
+          the same release — it declares the libraries the graphics layer opens
+          at runtime, so pacman refuses to install it where the app wouldn't
+          start:
+        </p>
+        <pre>sudo pacman -U digi-roll-studio-*-x86_64.pkg.tar.zst</pre>
+        <p style="margin:14px 0 0;color:var(--dimmer);font-size:13px">
+          Built against glibc 2.35 — Debian 12, Ubuntu 22.04, Fedora 36 and
+          newer. MIDI is ALSA: the boxes turn up as sequencer ports over USB and
+          auto-connect claims them, and <span class="inline-code">aconnect -l</span>
+          is the first thing to check if one doesn't appear. The tarball's
+          <span class="inline-code">INSTALL.md</span> names the runtime libraries
+          per distro.
+        </p>
+      </div>
     </div>
+
+    <p style="margin:20px 0 0;color:var(--dimmer);font-size:13px">
+      Linux is new in <b>v0.3.3</b>. It builds, tests and packages on CI like the
+      other two, and a Digitone II has been auto-connected and identified over
+      ALSA from a Linux build — but <b>no write to a box has been run from one
+      yet</b>. It's the same write path the macOS and Windows builds verified,
+      and that's the honest state of it.
+    </p>
 
     <div class="callout" style="margin:30px 0 0;border-left-color:var(--blue);background:rgba(74,159,216,.045)">
       <h4 style="color:var(--blue)">Before your first write</h4>
@@ -773,6 +834,15 @@
       } },
     { el: 'dl-win', test: function (n) {
         return /\.(exe|msi)$/.test(n) || (/\.zip$/.test(n) && /(win|windows|x86_64-pc|x64)/.test(n));
+      } },
+    // Kept apart from the macOS `.tar.gz` alternative above by the asset name:
+    // the Linux tarball is named -Linux-x86_64 precisely so it can't answer to
+    // mac, darwin, apple, arm64 or universal.
+    { el: 'dl-linux', test: function (n) {
+        return /\.tar\.gz$/.test(n) && /linux/.test(n);
+      } },
+    { el: 'dl-arch', test: function (n) {
+        return /\.pkg\.tar\.zst$/.test(n);
       } }
   ];
 
@@ -804,8 +874,9 @@
     var assets = rel.assets || [];
 
     targets.forEach(function (t) {
+      var el = document.getElementById(t.el);
       var hit = assets.filter(function (a) { return t.test(a.name.toLowerCase()); })[0];
-      if (hit) document.getElementById(t.el).href = hit.browser_download_url;
+      if (el && hit) el.href = hit.browser_download_url;
     });
 
     var ver = document.getElementById('relver');
