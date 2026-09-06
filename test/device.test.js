@@ -73,6 +73,26 @@ describe('identify', () => {
     dev.close();
   });
 
+  it('knows the Analog Four — product id 4, dump family 0x06', async () => {
+    // The two numbers are different, and that is the whole trap: the identity
+    // API calls this box 4, its dumps are framed with 0x06. Captured off an A4
+    // mk1 on 2026-08-28 and re-read through the deployed lab 2026-09-06.
+    const { input, output } = fakePorts(msg => {
+      if (msg.kind !== 'api') return;
+      if (msg.apiId === API.DEVICE) {
+        return [buildApiMessage(1, API.DEVICE + API.RESPONSE, [4, 0, ...ascii('Analog Four'), 0], msg.msgId)];
+      }
+      return [buildApiMessage(2, API.VERSION + API.RESPONSE, [...ascii('0195'), 0, ...ascii('1.55B'), 0], msg.msgId)];
+    });
+    const dev = new ElektronDevice(input, output);
+    const id = await dev.identify();
+    expect(id).toMatchObject({
+      productId: 4, name: 'Analog Four', slug: 'analogfour',
+      family: FAMILY.ANALOG_FOUR, build: '0195', version: '1.55B', supported: true,
+    });
+    dev.close();
+  });
+
   it('knows the Digitone II, dump family 0x15', async () => {
     // Product id 43, OS strings and family byte all captured from real
     // hardware, 2026-08-01 (the family via a 0x60 probe sweep — Phase 3).
@@ -131,6 +151,42 @@ describe('fetchDump', () => {
     // 0x51 is a dump *payload* — sending one is what writes to a box.
     expect(() => dev.fetchDump(0x1a, 0x51, 0)).toThrow(/not a dump request opcode/);
     expect(() => dev.fetchDump(0x1a, 0x50, 0)).toThrow(/refusing/);
+    dev.close();
+  });
+
+  // Measured on an A4 mk1 (OS 1.55B) through the deployed lab, 2026-09-06:
+  // requests 0x68, 0x6a, 0x6b, 0x6c and 0x6d were sent for slot 2 and answered
+  // with index 1, 1, 0, 0 and 0 — the *loaded* slot. Matching a reply on the
+  // index we asked for threw all five away and called the box silent.
+  it('takes a reply whose index is not the one it asked for', async () => {
+    const { input, output } = fakePorts(msg => {
+      if (msg.kind !== 'dump' || msg.family !== 0x06 || msg.type !== 0x68) return;
+      // The box reports the loaded kit, whatever slot was requested.
+      return [buildDumpMessage(0x06, 0x58, 1, Uint8Array.of(4, 5, 6))];
+    });
+    const dev = new ElektronDevice(input, output);
+    const { payload, msg } = await dev.fetchDump(0x06, 0x68, 2);
+    expect([...payload]).toEqual([4, 5, 6]);
+    expect(msg.index).toBe(1); // the answer, not the question
+    dev.close();
+  });
+
+  it('still ignores a reply from the wrong family or of the wrong type', async () => {
+    // Dropping the index check must not turn into taking anything that arrives:
+    // other boxes share the port, and 0x54 is a pattern on an A4 and project
+    // settings on a Digitakt II.
+    const { input, output } = fakePorts(msg => {
+      if (msg.kind !== 'dump') return;
+      return [
+        buildDumpMessage(0x14, 0x51, 0, Uint8Array.of(1)),  // right type, wrong family
+        buildDumpMessage(0x1a, 0x52, 0, Uint8Array.of(2)),  // right family, wrong type
+        buildDumpMessage(0x1a, 0x51, 7, Uint8Array.of(3)),  // the one we asked for
+      ];
+    });
+    const dev = new ElektronDevice(input, output);
+    const { payload, msg } = await dev.fetchDump(0x1a, 0x61, 0);
+    expect([...payload]).toEqual([3]);
+    expect(msg).toMatchObject({ family: 0x1a, type: 0x51, index: 7 });
     dev.close();
   });
 

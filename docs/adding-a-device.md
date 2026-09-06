@@ -4,9 +4,10 @@ digi-roll reads and writes Digitakt II and Digitone II patterns. Nothing about
 the approach is specific to those two boxes — the blocker is that mapping a
 pattern format requires having the box in front of you, and we have two.
 
-If you own a **Digitone, Syntakt, Analog Rytm, Analog Four, Octatrack** or a
-gen-1 **Digitakt**, you can map it without writing any code. This is what to do
-and what happens to what you send.
+If you own a **Digitone, Syntakt, Analog Rytm, Octatrack** or a gen-1
+**Digitakt**, you can map it without writing any code. This is what to do and
+what happens to what you send. An **Analog Four MkII** or **Analog Keys** is
+worth a probe as well — see "if your box is a gen-1 Analog" below.
 
 Two links you'll need:
 
@@ -34,9 +35,9 @@ codebase is built on.
 ## Step 1 — probe the dump protocol
 
 Every Elektron dump message carries a **family byte** saying whose structs it
-holds: `0x0a` Digitakt, `0x14` Digitakt II, `0x15` Digitone II. These aren't
-published anywhere. The DN2's was found by sweeping requests across candidate
-bytes until one answered.
+holds: `0x06` Analog Four, `0x0a` Digitakt, `0x14` Digitakt II, `0x15` Digitone
+II. These aren't published anywhere. The DN2's was found by sweeping requests
+across candidate bytes until one answered.
 
 1. Connect your box over USB, open [the diff lab](https://zooloo303.github.io/digi-roll/difflab.html),
    pick it in the dropdown, hit
@@ -49,6 +50,30 @@ bytes until one answered.
    and paste it in — *including* a report that found nothing. "This box answers
    no family byte over USB-MIDI" is a real finding, and it tells us to look at a
    different transport rather than at our sweep.
+
+### If your box is a gen-1 Analog
+
+The Analog Four, Analog Keys and Analog Rytm are older than the Digitakt II, and
+**the same opcode fetches a different object on them**. On a Digitakt II, request
+`0x64` is the project settings; on an Analog Four it is the pattern. The lab
+knows this and follows the family byte — pick `06` and the capture menu renames
+itself — but it is worth knowing before you read a report, because a line saying
+"`0x64` → 12,974 bytes" is a pattern, not a settings blob.
+
+Two other things the A4 taught us, which will probably hold for its relatives:
+
+- **Requests `0x68`–`0x6d` fetch the box's current working state** — what is
+  loaded and being edited right now. Those are the best captures to make, because
+  an edit shows up with no save and without touching a stored slot at all. The
+  lab labels them "working …" in the capture menu.
+- **A working-state request ignores the slot you ask for** and answers with the
+  loaded one. The lab records the slot the box *answered* with and tells you when
+  it differs, so don't be alarmed when you ask for A06 and get A02 — that is the
+  box telling you which pattern is loaded.
+
+Request `0x60` on an Analog Four is not a dump but the **whole project**: 405
+messages, 2.3 MB, about ten seconds. The probe knows to skip it, and you should
+not pick it by hand unless that is what you want.
 
 A probe report on its own is a real contribution. Open the issue with just that
 if you'd rather stop there — the capture pairs below can follow later, or come

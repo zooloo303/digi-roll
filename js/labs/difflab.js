@@ -14,7 +14,10 @@ import { bankName, diffAnnotatedRanges } from '../elektron/pattern-core.js';
 import { readAllPLocks } from '../elektron/plocks.js';
 import { PRODUCT_BY_FAMILY } from '../elektron/safe-write.js';
 import { downloadText } from '../download.js';
-import { sweepPlan, deepPlan, summarizeFindings, contributorReport, REQUEST_TYPES } from './probe.js';
+import {
+  sweepPlan, deepPlan, summarizeFindings, contributorReport, requestTypesFor, defaultRequestFor,
+  objectName,
+} from './probe.js';
 import { buildCapturePair, parseCapturePair } from './capture-pair.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
@@ -83,8 +86,29 @@ function captureTarget() {
   const family = parseInt($('labFamily').value, 16);
   const requestType = +$('labType').value;
   if (!Number.isInteger(family) || family < 0x01 || family > 0x7f || family === 0x10) return null;
-  if (!REQUEST_TYPES[requestType]) return null;
+  if (!requestTypesFor(family)[requestType]) return null;
   return { family, requestType };
+}
+
+// The request menu is rebuilt whenever the family byte changes, because an
+// opcode does not mean the same thing on every box: 0x64 fetches project
+// settings from a Digitakt II and *the pattern* from an Analog Four. Offering
+// one generation's names for the other's box is how a contributor's first
+// experiment teaches them something false — the same rule `describerFor`
+// follows for struct annotation. A family we have never met gets bare
+// "request 0x6n" labels and the full 0x60–0x6e range to try.
+function refreshTypeMenu() {
+  const sel = $('labType');
+  const family = parseInt($('labFamily').value, 16);
+  const types = requestTypesFor(family);
+  const prev = +sel.value;
+  sel.innerHTML = '';
+  for (const [type, label] of Object.entries(types)) {
+    sel.add(new Option(`0x${(+type).toString(16)} ${label}`, type));
+  }
+  // Keep the selection across a family change when the new box serves that
+  // opcode too; otherwise fall back to whatever it does serve first.
+  sel.value = types[prev] ? String(prev) : sel.options[0]?.value ?? '';
 }
 
 function syncButtons() {
@@ -100,7 +124,7 @@ function syncButtons() {
   $('labExportPair').disabled = !(baseline && lastCapture && lastDiff && !lastDiff.fromFile);
 }
 
-$('labFamily').oninput = syncButtons;
+$('labFamily').oninput = () => { refreshTypeMenu(); syncButtons(); };
 $('labType').onchange = syncButtons;
 
 $('port').onchange = () => { device?.close(); device = null; baseline = null; lastCapture = null; lastDiff = null; $('deviceInfo').textContent = ''; syncButtons(); };
@@ -117,14 +141,24 @@ $('connect').onclick = async () => {
     // The capture target follows the identity when we have one; for an unknown
     // box it stays blank until the probe (or the user) supplies a family byte.
     $('labFamily').value = id.family != null ? id.family.toString(16).padStart(2, '0') : '';
-    $('labType').value = '96'; // 0x60, the pattern(+kit) request
+    refreshTypeMenu();
+    // The pattern request, in this box's dialect — 0x60 on the digis, 0x64 on
+    // an Analog Four.
+    $('labType').value = String(defaultRequestFor(id.family));
     if (!id.supported) {
       setStatus(`${id.name} identified, but its dump family byte is unknown — hit “Probe dump protocol” to look for one (read-only)`, true);
     } else {
       setStatus(`Connected to ${id.name} — capture a baseline${DESCRIBERS[id.slug] ? '' : ' (no struct map for this box yet: diffs will be raw offsets)'}`);
     }
   } catch (err) {
-    setStatus(`No identity reply: ${err.message}`, true);
+    // Silence here is nearly always the box rather than the browser: it is
+    // still booting, it is asleep, or this page was loaded before it was
+    // plugged in and is holding a port that no longer goes anywhere. Say so —
+    // a bare "no reply to API request 0x01" sends people to look at the wrong
+    // half of the problem.
+    setStatus(`${pair.out.name} didn't answer (${err.message}). Check the box has finished`
+      + ' booting and is not in Overbridge mode, then hit Connect again — and if it was'
+      + ' plugged in after this page loaded, reload first.', true);
     device.close();
     device = null;
   }
@@ -144,9 +178,10 @@ let lastDiff = null;    // { device, build, version, index, ranges, … }
 // pattern-kit — the notebook and the export need to say what was captured,
 // because for a new box that *is* the finding.
 function targetLabel(family, requestType) {
-  return describerFor(family, requestType)
-    ? null
-    : `family 0x${family.toString(16).padStart(2, '0')} · request 0x${requestType.toString(16)}`;
+  if (describerFor(family, requestType)) return null;
+  const object = objectName(family, requestType);
+  return `family 0x${family.toString(16).padStart(2, '0')} · request 0x${requestType.toString(16)}`
+    + (object ? ` (${object})` : '');
 }
 
 // Fetch through the capture target. The target is pinned per experiment: a
@@ -154,10 +189,14 @@ function targetLabel(family, requestType) {
 // the UI fields — otherwise editing the target mid-experiment would diff two
 // different structs and call the whole file a change.
 async function capture(target) {
-  const index = +$('labPattern').value;
-  setStatus(`Fetching ${bankName(index)} (family 0x${target.family.toString(16)}, request 0x${target.requestType.toString(16)})…`);
-  const { payload, raw } = await device.fetchDump(target.family, target.requestType, index);
-  return { index, payload, raw, ...target, at: new Date().toISOString() };
+  const asked = +$('labPattern').value;
+  setStatus(`Fetching ${bankName(asked)} (family 0x${target.family.toString(16)}, request 0x${target.requestType.toString(16)})…`);
+  const { payload, raw, msg } = await device.fetchDump(target.family, target.requestType, asked);
+  // Record the slot the box *answered* with. A working-state request ignores
+  // the index you send and reports the loaded slot instead (the Analog Four's
+  // 0x68/0x6a/0x6b/0x6c/0x6d do), and that answer is a finding: it is how you
+  // know which slot the edit you are about to make will land in.
+  return { index: msg.index, asked, payload, raw, ...target, at: new Date().toISOString() };
 }
 
 $('capA').onclick = async () => {
@@ -166,7 +205,8 @@ $('capA').onclick = async () => {
   try {
     baseline = await capture(target);
     lastCapture = null; lastDiff = null;
-    $('captureInfo').textContent = `baseline: ${bankName(baseline.index)}, ${baseline.payload.length} bytes`;
+    $('captureInfo').textContent = `baseline: ${bankName(baseline.index)}, ${baseline.payload.length} bytes`
+      + (baseline.index !== baseline.asked ? ` (the box answered with its loaded slot, not ${bankName(baseline.asked)})` : '');
     setStatus(`Baseline captured — now make ONE edit on the box, then “Capture + diff”`);
     $('diffPane').innerHTML = '<span class="dim">Baseline captured. Make one edit on the box…</span>';
   } catch (err) {
@@ -325,7 +365,15 @@ $('capB').onclick = async () => {
   if (!baseline) return;
   try {
     const cap = await capture({ family: baseline.family, requestType: baseline.requestType });
-    if (cap.index !== baseline.index) throw new Error('pattern slot changed between captures');
+    // Both sides must be the same slot or the diff is between two different
+    // objects. This compares what the box *answered*, which also catches a
+    // working-state capture where the box was made to load a different slot
+    // between A and B — a real way to ruin an experiment without touching the
+    // lab's controls.
+    if (cap.index !== baseline.index) {
+      throw new Error(`the box answered with ${bankName(cap.index)}, but the baseline is ${bankName(baseline.index)}`
+        + ' — capture a fresh baseline');
+    }
     lastCapture = cap;
     lastDiff = makeDiff(baseline, cap, device.identity);
     renderDiff(lastDiff, baseline.payload, cap.payload);
@@ -358,7 +406,9 @@ $('labChain').onclick = () => {
 const hexByte = v => `0x${v.toString(16).padStart(2, '0')}`;
 
 function renderProbeReport(report, summary) {
-  const pick = summary[0]?.replies.find(r => REQUEST_TYPES[r.requestType]);
+  const fam = summary[0];
+  const pick = fam && !fam.streamed
+    && fam.replies.find(r => requestTypesFor(fam.family)[r.requestType]);
   $('diffPane').innerHTML =
     `<div class="region"><span class="label">Probe report — post this to the digi-roll thread</span></div>`
     + `<pre class="probeReport">${esc(report)}</pre>`
@@ -403,10 +453,16 @@ $('labProbe').onclick = async () => {
     // Point the capture target at the best thing that answered, so the next
     // click is a capture rather than a hex-typing exercise.
     const fam = summary[0];
-    const reply = fam?.replies.find(r => r.ok && REQUEST_TYPES[r.requestType]);
+    const reply = fam && !fam.streamed
+      && fam.replies.find(r => r.ok && requestTypesFor(fam.family)[r.requestType]);
     if (reply) {
       $('labFamily').value = fam.family.toString(16).padStart(2, '0');
-      $('labType').value = String(reply.requestType);
+      refreshTypeMenu();
+      // Prefer the family's pattern request when it answered; otherwise take
+      // whatever did.
+      const wanted = defaultRequestFor(fam.family);
+      $('labType').value = String(fam.replies.some(r => r.ok && r.requestType === wanted)
+        ? wanted : reply.requestType);
       setStatus(`Probe done: family ${hexByte(fam.family)} answers — capture target set, copy the report to the thread`);
     } else {
       setStatus('Probe done: no family byte answered — copy the report to the thread anyway, silence is a finding too', true);
@@ -450,7 +506,8 @@ $('labImportPairInput').onchange = async () => {
     lastDiff = makeDiff(baseline, lastCapture, pair.device, { fromFile: true });
     $('labNote').value = pair.note;
     $('labFamily').value = pair.family.toString(16).padStart(2, '0');
-    if (REQUEST_TYPES[pair.requestType]) $('labType').value = String(pair.requestType);
+    refreshTypeMenu();
+    if (requestTypesFor(pair.family)[pair.requestType]) $('labType').value = String(pair.requestType);
     $('captureInfo').textContent = `from ${file.name}: ${bankName(pair.index)}, ${pair.baseline.payload.length} bytes`
       + ` · ${pair.device.name ?? 'unknown device'}${pair.device.build ? ` build ${pair.device.build}` : ''}`;
     renderDiff(lastDiff, baseline.payload, lastCapture.payload);
@@ -587,5 +644,6 @@ $('labExport').onclick = () => {
   }
   access.onstatechange = refreshPorts;
   refreshPorts();
+  refreshTypeMenu();
   setStatus('Pick your box and hit Connect.');
 })();

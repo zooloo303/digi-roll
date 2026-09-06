@@ -73,7 +73,7 @@
     <button id="labProbe" title="Sweep dump requests across candidate family bytes to find which one this box answers — the first step of mapping a device digi-roll doesn't know. Sends read-only requests, never a payload." disabled>Probe dump protocol</button>
     <span class="dim">capture target</span>
     <label class="field">family <input id="labFamily" type="text" size="3" placeholder="hex" title="Dump family byte (hex) — filled from the identity for a known box, from the probe for a new one"></label>
-    <select id="labType" title="Which dump to request per capture — a known box's pattern lives in 0x60; gen-1 and Analog boxes may only answer the split requests">
+    <select id="labType" title="Which dump to request per capture. The list follows the family byte, because an opcode does not mean the same thing on every box — 0x64 is project settings on a Digitakt II and the pattern on an Analog Four.">
       <option value="96">0x60 pattern+kit</option>
       <option value="97">0x61 pattern</option>
       <option value="98">0x62 kit</option>
@@ -87,7 +87,7 @@
   </div>
 
   <div class="barhint">
-    <b>Own a box digi-roll can't read yet</b> — Digitone, Syntakt, Analog Rytm?
+    <b>Own a box digi-roll can't read yet</b> — Digitone, Syntakt, Analog Rytm, Analog Four MkII?
     You can help map it, and nothing here ever writes to a box: this page only sends read-only requests.
     <b>Connect</b> → <b>Probe dump protocol</b> → post the report to the thread. If the probe finds a
     family byte, go further: <b>Capture baseline</b>, change <em>exactly one thing</em> on the box

@@ -8,8 +8,14 @@ digi-roll reads and writes Digitakt II and Digitone II patterns. Nothing about
 the approach is specific to those two — the blocker is that mapping a pattern
 format requires having the box in front of you, and we have two.
 
-If you own a **Digitone, Syntakt, Analog Rytm, Analog Four, Octatrack** or a
-gen-1 **Digitakt**, you can map it without writing a line of code.
+If you own a **Digitone, Syntakt, Analog Rytm, Octatrack** or a gen-1
+**Digitakt**, you can map it without writing a line of code.
+
+An **Analog Four MkII** or **Analog Keys** is worth a probe too. The mk1 is
+mapped (family byte `0x06`, twelve dump requests — the lab knows it and will
+name what it finds), and the later boxes share its OS line, so the likely answer
+is "same format" — but likely is not measured, and the probe settles it in
+twenty seconds.
 
 **→ [Open the diff lab](https://zooloo303.github.io/digi-roll/difflab.html)**
 (Chrome, Edge or Brave — Safari has no Web MIDI)

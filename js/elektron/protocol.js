@@ -48,7 +48,13 @@ export const DUMP = {
 // Dump family codes (SysEx byte 4) — which device's structs a dump carries.
 // DIGITONE_2 is not in elk-herd: discovered 2026-08-01 by probing a real DN2
 // (OS 1.10D) with 0x60 requests across candidate bytes — only 0x15 answered.
+//
+// ANALOG_FOUR is 0x06, and note it is NOT the product id: the identity API
+// calls that box 4. The A4 is a *gen-1* box, so the same 0x6n opcode fetches a
+// different object than it does on the digis — see REQUEST_TYPES_BY_FAMILY in
+// js/labs/probe.js, which is where that difference is written down.
 export const FAMILY = {
+  ANALOG_FOUR: 0x06,
   DIGITAKT: 0x0a,
   DIGITAKT_2: 0x14,
   DIGITONE_2: 0x15,

@@ -12,6 +12,7 @@ import { buildApiMessage, buildDumpMessage, parseSysEx, API, DUMP } from './prot
 // byte (`family`) can be backed up; anything else stays read-only until we
 // learn its protocol.
 const PRODUCTS = {
+  4: { name: 'Analog Four', slug: 'analogfour', family: 0x06 },  // product id 4, family 0x06 — not the same number, and the mismatch is the point
   12: { name: 'Digitakt', slug: 'digitakt', family: 0x0a },
   42: { name: 'Digitakt II', slug: 'digitakt2', family: 0x14 },
   43: { name: 'Digitone II', slug: 'digitone2', family: 0x15 }, // both values captured from real hardware 2026-08-01 (family byte via 0x60 probe sweep)
@@ -162,6 +163,15 @@ export class ElektronDevice {
   // Resolves to { payload, raw, msg }: `raw` is the complete SysEx message
   // exactly as the box sent it — an unknown box's version bytes and framing are
   // evidence, so captures keep the original rather than a re-encoding.
+  //
+  // **The reply is matched on family + type, never on the index it came back
+  // with.** A box is not obliged to echo the index you asked for, and the
+  // Analog Four does not: its working-state requests 0x68, 0x6a, 0x6b, 0x6c and
+  // 0x6d all answer with the *loaded* slot instead (measured through this very
+  // page on 2026-09-06 — asked for slot 2, answered 1, 1, 0, 0, 0). Filtering
+  // on the requested index dropped all five on the floor and reported the box
+  // as silent. The index the box chose is the answer, not noise, so it is
+  // handed back on `msg.index` for the caller to read and record.
   fetchDump(family, requestType, index, { what = `dump 0x${requestType.toString(16)}` } = {}) {
     assertRequestOpcode(requestType);
     if (this._dumpSink) throw new Error('a dump fetch is already running');
@@ -173,7 +183,7 @@ export class ElektronDevice {
         reject(new Error(`no response to ${what} request (slot ${index})`));
       }, DUMP_STALL_MS);
       this._dumpSink = (raw, msg) => {
-        if (msg.family !== family || msg.type !== responseType || msg.index !== index) return;
+        if (msg.family !== family || msg.type !== responseType) return;
         clearTimeout(timer);
         this._dumpSink = null;
         if (!msg.checksumOk || !msg.countOk) {
