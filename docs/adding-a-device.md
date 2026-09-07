@@ -9,6 +9,12 @@ If you own a **Digitone, Syntakt, Analog Rytm, Octatrack** or a gen-1
 what happens to what you send. An **Analog Four MkII** or **Analog Keys** is
 worth a probe as well — see "if your box is a gen-1 Analog" below.
 
+> **Not a developer?** Read
+> **[mapping-your-box.md](mapping-your-box.md)** instead — the same six steps
+> with none of the protocol, written for someone who owns the box rather than
+> someone who'll write the `SPEC`. This page assumes you want to know *why* each
+> step works.
+
 Two links you'll need:
 
 - the lab — **https://zooloo303.github.io/digi-roll/difflab.html** — in Chrome,

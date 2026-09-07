@@ -630,15 +630,19 @@
       <div class="card">
         <h3><span class="pip pip-green"></span>It cannot write to your box</h3>
         <p>
-          Not by convention — by construction. Elektron's protocol uses
-          <code>0x6n</code> messages to <i>request</i> a dump and <code>0x5n</code>
-          to <i>carry</i> one; sending a <code>0x5n</code> is what stores a
-          payload. The lab's two hardware functions refuse every opcode outside
-          the request range and throw before a byte reaches the port.
+          There is no button on that page that changes anything on your
+          instrument — no save, no send, no overwrite. Everything it does is ask
+          the box a question and write down the answer, which is the same thing
+          your box does when you back it up. Mapping a box doesn't switch
+          writing on either: that stays gated on an OS build somebody has
+          verified by hand.
         </p>
         <p>
-          Mapping a box doesn't switch writing on for anybody either — that
-          stays gated on an OS build somebody has verified by hand.
+          By construction, not convention, if you'd rather check than trust:
+          Elektron's protocol uses <code>0x6n</code> messages to <i>request</i> a
+          dump and <code>0x5n</code> to <i>carry</i> one, and the lab's two
+          hardware functions throw on every opcode outside the request range
+          before a byte reaches the port.
         </p>
       </div>
     </div>
@@ -647,13 +651,20 @@
       <a class="btn btn-primary" href="https://zooloo303.github.io/digi-roll/difflab.html">
         <span>Open the diff lab<span class="sub" style="display:block">in the browser, read-only</span></span>
       </a>
-      <a class="btn" href="https://github.com/zooloo303/digi-roll/blob/main/docs/adding-a-device.md">
-        <span>Read the walkthrough</span>
+      <a class="btn" href="https://github.com/zooloo303/digi-roll/blob/main/docs/mapping-your-box.md">
+        <span>Read the walkthrough<span class="sub" style="display:block">plain English, no coding</span></span>
       </a>
       <a class="btn" href="https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml">
         <span>Open a mapping issue</span>
       </a>
     </div>
+
+    <p style="margin:14px 0 0;color:var(--dimmer);font-size:13px">
+      Six button presses, about twenty minutes, and you don't need to know what a
+      byte is — the lab walks you through it a step at a time. If you'd rather
+      have the byte-level method, that's
+      <a href="https://github.com/zooloo303/digi-roll/blob/main/docs/adding-a-device.md">adding-a-device.md</a>.
+    </p>
 
     <p style="margin:22px 0 0;color:var(--dimmer);font-size:14px">
       Wanted: <b>Syntakt</b>, <b>Analog Rytm</b>, <b>Octatrack</b>, and the

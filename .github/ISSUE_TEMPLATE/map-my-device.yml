@@ -1,23 +1,31 @@
 name: Map my device
-description: Report what the diff lab found on a box we don't own
+description: Report what the diff lab found on a box we don't own — no coding needed
 title: "[map] "
 labels: ["device-mapping"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks — this is the one job that can't be done without the hardware.
+        **Thanks — this is the one job that can't be done without the hardware.**
 
-        If you haven't run the lab yet, start with
-        [docs/adding-a-device.md](https://github.com/zooloo303/digi-roll/blob/main/docs/adding-a-device.md).
-        The lab is at
-        [difflab.html](https://zooloo303.github.io/digi-roll/difflab.html) and
-        cannot write to your box.
+        You don't need to understand any of the numbers the lab printed. Paste
+        what it gave you, tell us what you changed in normal words, and attach
+        the files. We'll do the reading.
+
+        New here? **[Start with the plain-English walkthrough](https://github.com/zooloo303/digi-roll/blob/main/docs/mapping-your-box.md)**
+        — it's six button presses and about twenty minutes, and nothing in the
+        lab can change anything on your box.
+        The lab itself is at
+        **[difflab.html](https://zooloo303.github.io/digi-roll/difflab.html)**
+        (Chrome, Edge or Brave).
+
+        *Developers: the byte-level method is in
+        [adding-a-device.md](https://github.com/zooloo303/digi-roll/blob/main/docs/adding-a-device.md).*
 
   - type: input
     id: box
     attributes:
-      label: Which box
+      label: Which box do you have?
       placeholder: Syntakt, Analog Four MkII, Octatrack MkII, Digitakt (gen 1)…
     validations:
       required: true
@@ -25,51 +33,91 @@ body:
   - type: input
     id: osbuild
     attributes:
-      label: OS version and build number
-      description: The lab prints the build when it connects. Both, please — the build is what write gating keys on.
-      placeholder: "OS 1.30, build 0061"
+      label: Its OS version
+      description: The lab prints this when it connects — copy the whole line if it's easier. Both numbers if you have them; the build number is what our write-safety check keys on.
+      placeholder: "OS 1.30 (build 0061)"
     validations:
       required: true
-
-  - type: input
-    id: family
-    attributes:
-      label: Family byte
-      description: The byte the box answers dump requests with, if you got that far.
-      placeholder: "0x16"
 
   - type: textarea
     id: probe
     attributes:
-      label: Probe results
-      description: What replied, and what didn't — paste the lab's probe output.
-      render: text
-
-  - type: textarea
-    id: diffs
-    attributes:
-      label: What moved when you changed one thing
+      label: Probe report
       description: |
-        One line per experiment: what you changed on the box, and which offsets
-        the lab said differed. This is the actual mapping work.
-      placeholder: |
-        note on step 1 → offsets 1024, 1088 changed
-        that note's velocity 100 → 40 → offset 1090 changed
+        Paste what **Copy report** gave you, from step 2 of the walkthrough.
+
+        **Paste it even if it found nothing.** "This box answers none of these
+        requests" is a real result and it tells us where to look next — that is
+        not a failed attempt, and it's worth opening this issue for on its own.
       render: text
     validations:
       required: true
 
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        ### Snapshot pairs
+
+        If you got past the probe, this is the part that actually maps the
+        format. If you didn't, **leave the rest blank and submit** — the report
+        above is already useful.
+
+  - type: textarea
+    id: changes
+    attributes:
+      label: What did you change, for each pair?
+      description: |
+        One line per snapshot pair, in plain words — the same thing you typed
+        into the lab's note box. This is the most valuable thing in the whole
+        issue: we can see *that* something moved, but only you know what you
+        touched.
+
+        No byte offsets needed. They're in the attached files.
+      placeholder: |
+        pair 1 — put a trig on track 1, step 1
+        pair 2 — changed that trig's velocity from 100 to 40
+        pair 3 — changed the pattern tempo from 120 to 121
+      render: text
+
+  - type: markdown
+    attributes:
+      value: |
+        #### Now attach the files 📎
+
+        Drag the `.json` files from **Export pair** into the box below — one per
+        snapshot pair, all of them onto this same issue. They hold both
+        snapshots plus your note, and we can re-read them here without your box,
+        which is what makes this work.
+
+        They contain one pattern slot, your box's name and OS, and your note —
+        no samples, no sounds, no other patterns, nothing about you. Plain text
+        if you want to check first. (If the project isn't one you'd share, redo
+        the captures in an empty scratch project.)
+
+  - type: textarea
+    id: attachments
+    attributes:
+      label: Attached pair files
+      description: Drag and drop them here. If you'd rather not attach files, say so and paste your lab notebook export (**Export .md**) instead.
+      placeholder: Drop your .json files here…
+
   - type: textarea
     id: notes
     attributes:
-      label: Anything odd
-      description: Requests that hung, dumps of a surprising length, values that didn't hold still.
+      label: Anything odd or confusing?
+      description: |
+        Requests that hung, the box going quiet, dumps of a surprising size,
+        numbers that wouldn't hold still — all worth knowing.
+
+        Also: **if any part of this was confusing, please say so here.** The lab
+        is aimed at people who don't write code, and we only find out where it
+        fails when someone tells us.
 
   - type: checkboxes
     id: scratch
     attributes:
-      label: Housekeeping
+      label: One last thing
       options:
         - label: I used a scratch project on the box, not a live set.
           required: true
-        - label: I can attach the `.syx` captures if they'd help (don't attach them if the project is private to you).

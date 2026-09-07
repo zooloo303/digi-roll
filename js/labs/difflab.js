@@ -19,6 +19,7 @@ import {
   objectName,
 } from './probe.js';
 import { buildCapturePair, parseCapturePair } from './capture-pair.js';
+import { guideState, guideDoneText, plainDiffSummary } from './guide.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
 
@@ -122,10 +123,78 @@ function syncButtons() {
   // A pair is exportable once both sides exist and came off a box in this
   // session — re-exporting an imported file would only launder its metadata.
   $('labExportPair').disabled = !(baseline && lastCapture && lastDiff && !lastDiff.fromFile);
+  renderGuide();
 }
 
 $('labFamily').oninput = () => { refreshTypeMenu(); syncButtons(); };
 $('labType').onchange = syncButtons;
+
+// --- Guided mode -------------------------------------------------------------------
+//
+// Two audiences, one page. The controls are named for the protocol because that
+// is what the mapping work needs, and a contributor with a Syntakt reads
+// "family (hex)" as a form field they can't fill. Guided mode hides everything
+// the contributor path doesn't touch (`.expert` in difflab.html) and replaces the
+// one-line hint with a step panel that says one thing at a time.
+//
+// It is presentation only: the hidden controls stay live and keep their values,
+// so `captureTarget()` still reads the probe-filled family byte. What a capture
+// *collects* is identical in both modes — the mode changes which of it is drawn,
+// and an exported pair carries the same bytes either way. Least of all does it
+// change that the lab cannot write, which is true in both.
+
+// Guided by default: a first-time contributor is the whole reason this page is
+// public, and a returning developer flips it once and is remembered.
+const GUIDE_KEY = 'digiroll-difflab-guided-v1';
+let guided = localStorage.getItem(GUIDE_KEY) !== 'off';
+let probeDone = false;
+let exportedCount = 0;
+
+function renderGuide() {
+  $('guideToggle').textContent = guided ? 'Show all controls' : 'Guided mode';
+  document.body.classList.toggle('guided', guided);
+  if (!guided) return;
+
+  // A pair opened from a file fills in baseline/lastCapture/lastDiff without
+  // anything having been captured, so counting it as progress would tell a
+  // contributor they'd already taken snapshots of their own box. `fromFile` is
+  // the same flag that stops such a pair being re-exported.
+  const own = !!lastDiff && !lastDiff.fromFile;
+  const g = guideState({
+    connected: !!device?.identity,
+    boxKnown: !!device?.identity?.supported,
+    probeDone,
+    hasBaseline: !!baseline && !lastDiff?.fromFile,
+    hasDiff: own,
+    noteFilled: !!$('labNote').value.trim(),
+    exported: exportedCount > 0,
+  });
+  $('guideSteps').innerHTML = g.steps.map(s =>
+    `<li class="${s.state}"><span class="n">${s.state === 'done' ? '' : s.number}</span>`
+    + `<span class="stepTitle">${s.title}</span>`
+    + `<span class="stepBody">${s.body}</span></li>`).join('');
+
+  const foot = $('guidePanel').querySelector('.guideDone');
+  if (g.complete) {
+    const html = guideDoneText({ exportedCount });
+    if (foot) foot.innerHTML = html;
+    else $('guideSteps').insertAdjacentHTML('afterend', `<div class="guideDone">${html}</div>`);
+  } else if (foot) {
+    foot.remove();
+  }
+}
+
+$('guideToggle').onclick = () => {
+  guided = !guided;
+  localStorage.setItem(GUIDE_KEY, guided ? 'on' : 'off');
+  renderGuide();
+  // The diff already on screen was rendered for the other audience.
+  if (lastDiff) renderDiff(lastDiff, lastDiff.a, lastDiff.b);
+};
+
+// The note is the single most valuable thing a contributor produces, and its
+// step can't tick until they've typed something.
+$('labNote').oninput = renderGuide;
 
 $('port').onchange = () => { device?.close(); device = null; baseline = null; lastCapture = null; lastDiff = null; $('deviceInfo').textContent = ''; syncButtons(); };
 
@@ -316,15 +385,31 @@ function renderPLockReport(report) {
 }
 
 function renderDiff(diff, a, b) {
-  // The lane report goes first even when nothing else changed: on a p-lock
-  // experiment it is the answer, and the byte ranges below are the working.
-  const plocks = $('labPLocks').checked ? renderPLockReport(diff.plocks) : '';
+  // The lane report goes above the byte ranges even when nothing else changed:
+  // on a p-lock experiment it is the answer and the ranges are the working. It
+  // is also a readout for whoever is mapping the pool, so guided mode drops it —
+  // "paramId 0x3f, track 1" is precisely the vocabulary the panel exists to keep
+  // out of a contributor's way, and hiding it costs nothing, because it is
+  // display only: the lane findings still reach the notebook and the exported
+  // pair either way.
+  const plocks = guided || !$('labPLocks').checked ? '' : renderPLockReport(diff.plocks);
+  // In guided mode the hex gets a plain-language header, because the moment a
+  // contributor's first capture lands the screen fills with bytes and the
+  // reasonable conclusion is that they've done something wrong. They haven't,
+  // and they don't need to read any of it — the export carries it all.
+  const plain = guided
+    ? `<div class="plainSummary">${plainDiffSummary({
+        regions: diff.ranges.length,
+        bytes: diff.ranges.reduce((n, r) => n + r.end - r.start + 1, 0),
+        annotated: !!describerFor(diff.family, diff.requestType),
+      })}</div>`
+    : '';
   if (!diff.ranges.length) {
-    $('diffPane').innerHTML = plocks
+    $('diffPane').innerHTML = plain + plocks
       + '<span class="dim">No byte differences — the edit didn\'t reach this pattern (or there was no edit).</span>';
     return;
   }
-  const parts = [plocks,
+  const parts = [plain, plocks,
     `<div class="region"><span class="label">${diff.ranges.length} changed region${diff.ranges.length > 1 ? 's' : ''}, ${diff.ranges.reduce((n, r) => n + r.end - r.start + 1, 0)} bytes</span></div>`];
   for (const r of diff.ranges) {
     const width = r.end - r.start + 1;
@@ -353,6 +438,12 @@ function makeDiff(a, b, deviceInfo, { fromFile = false } = {}) {
 }
 
 function reportDiff() {
+  if (guided) {
+    setStatus(lastDiff.ranges.length
+      ? 'Got it — now write down what you changed, then hit “Export pair”'
+      : "Nothing moved between the two snapshots — check the read-out below");
+    return;
+  }
   const laneChanges = lastDiff.plocks?.changed.length ?? 0;
   setStatus(lastDiff.ranges.length
     ? `${lastDiff.ranges.length} region(s) changed`
@@ -442,6 +533,7 @@ $('labProbe').onclick = async () => {
       probed += plan2.length;
     }
 
+    probeDone = true;
     const summary = summarizeFindings(findings);
     const report = contributorReport({
       identity: device.identity,
@@ -491,7 +583,9 @@ $('labExportPair').onclick = () => {
     capturedAt: lastCapture.at,
     baselineRaw: baseline.raw, afterRaw: lastCapture.raw,
   }));
+  exportedCount++;
   setStatus(`Capture pair saved: ${name} — attach it to the thread with the probe report`);
+  syncButtons();
 };
 
 $('labImportPair').onclick = () => $('labImportPairInput').click();
@@ -632,6 +726,7 @@ $('labExport').onclick = () => {
   } catch (err) {
     setStatus(`The notebook couldn't render (${err.message}) — captures still work`, true);
   }
+  renderGuide();
   if (!navigator.requestMIDIAccess) {
     setStatus('Web MIDI not supported — use Chrome, Edge, or Brave', true);
     return;

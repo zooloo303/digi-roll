@@ -919,6 +919,33 @@ committed to, since #1 gates the launcher design.
   **Not verified: the probe against real hardware** — it needs a box, and the two
   here are already mapped, so the honest test is a contributor's first report.
   `docs/adding-a-device.md` is the walkthrough to link from the forum post.
+- [x] **Guided mode, for the contributors who aren't developers** (2026-09-07) —
+  the first real contributor found the lab confusing, and the diagnosis was that
+  all three entry points assumed a developer: the safety argument was made in
+  opcodes (`0x5n` stores a payload), the page gave a hex `family` field the same
+  prominence as the six buttons that matter, and the issue template *required*
+  byte offsets — the one thing a non-technical contributor cannot produce, while
+  the exported pair that contains them was an afterthought.
+
+  Three fixes. `js/labs/guide.js` is a pure step machine (the `copy-hint.js`
+  pattern: load-bearing wording, provable without a browser) driving a panel that
+  shows one step at a time and ticks them off; everything the contributor path
+  doesn't touch is `.expert` in `difflab.html` and hidden, leaving nine controls
+  from fifteen. `docs/mapping-your-box.md` is the same six steps in plain
+  English, with the safety stated as what the box does rather than what the code
+  refuses. The issue template now requires the probe report and the plain-words
+  note, asks for the `.json` files, and asks where the lab confused them.
+
+  Guided mode is presentation only — same requests, same captures, same exported
+  bytes, and the mode is remembered per browser so a developer flips it once.
+  Tests: 28 in `test/guide.test.js`, including that the copy never leaks
+  `0x…`/"family byte"/"offset", that the step titles name buttons that really
+  exist in `difflab.html`, and that ticks stay monotonic. Verified in a browser
+  with no box: guided mode hides exactly the expert controls, a donated pair no
+  longer counts as the contributor's own progress (it did at first — `fromFile`
+  now filters it), and toggling back restores the full page with the family byte
+  and request type intact. **Not verified: a real contributor's session** — the
+  point of the round is the part only a stranger can test.
 - [ ] **Retrig as a p-lock lane** — deferred from the audition round: no CC, no
       NRPN, and not one knob (RATE/LEN/VEL/on-off), so it needs a capture to show
       its shape before it can be modelled at all.

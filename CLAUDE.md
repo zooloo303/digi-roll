@@ -57,7 +57,23 @@ since.
 ## The diff lab is contributor-facing, and read-only by construction
 
 Since 2026-08-04 the diff lab is aimed at Elektronauts users mapping boxes nobody
-here owns (`docs/adding-a-device.md` is the walkthrough). Two rules protect that:
+here owns. There are two walkthroughs and they are not interchangeable:
+`docs/mapping-your-box.md` is the plain-English one for the person holding the
+box (no hex, no opcodes, safety stated as what the box does), and
+`docs/adding-a-device.md` is the same six steps with the protocol reasoning, for
+whoever turns the findings into a `SPEC`. A change to the flow has to land in
+both.
+
+Since 2026-09-07 the lab opens in **guided mode**: `js/labs/guide.js` is a pure
+step machine (the `copy-hint.js` pattern — no DOM, no device, tested as wording)
+driving the panel, and everything the contributor path doesn't touch is marked
+`.expert` in `difflab.html` and hidden. It is presentation only — same requests,
+same captures, same exported bytes — so nothing about it is load-bearing for
+correctness, but two things are load-bearing for the pitch: the copy must not
+leak protocol vocabulary (`test/guide.test.js` asserts that, and that its step
+titles name buttons the page really has), and a pair opened from a *file* must
+not count as the contributor's own progress (`fromFile`, the same flag that stops
+it being re-exported). Two rules protect the read-only guarantee:
 
 - **The lab's hardware paths cannot write.** `fetchDump` and
   `probeDumpRequests` in `device.js` throw on any opcode outside the dump-request

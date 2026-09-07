@@ -20,7 +20,9 @@ twenty seconds.
 **→ [Open the diff lab](https://zooloo303.github.io/digi-roll/difflab.html)**
 (Chrome, Edge or Brave — Safari has no Web MIDI)
 
-**→ [Read the walkthrough](docs/adding-a-device.md)**
+**→ [Read the walkthrough](docs/mapping-your-box.md)** — plain English, no coding,
+about twenty minutes. (The byte-level version, for whoever adds the `SPEC`
+afterwards, is [docs/adding-a-device.md](docs/adding-a-device.md).)
 
 **→ [Open a mapping issue](https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml)**
 

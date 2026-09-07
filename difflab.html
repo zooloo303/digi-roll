@@ -38,7 +38,54 @@
   .entry h3 { margin: 0 0 4px; font-size: 12px; color: #d8dae0; }
   .entry .meta { color: #7d8590; }
   .entry ul { margin: 4px 0 0; padding-left: 18px; color: #9aa0ab; }
-  .entry button { padding: 1px 6px; font-size: 11px; float: right; }
+  .entry button { padding: 1px 6px; float: right; font-size: 11px; }
+
+  /* Guided mode: the contributor path only. Everything the protocol work needs
+     but a first-timer doesn't is marked .expert and hidden — the family byte is
+     filled in by the probe, so a hex field they can't read is a field they think
+     they're supposed to fill. `display: none` and not `visibility`, because the
+     controls stay live: captureTarget() still reads #labFamily, and the p-lock
+     report stays checked. */
+  body.guided .expert { display: none; }
+  body:not(.guided) #guidePanel { display: none; }
+
+  #guidePanel { flex: none; padding: 10px 14px; border-bottom: 1px solid #2a2e38;
+    background: #171a20; font-size: 12px; line-height: 1.55; }
+  #guidePanel .guideHead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  #guidePanel .guideHead b { color: #d8dae0; font-size: 13px; }
+  #guidePanel .guideHead .dim { color: #7d8590; }
+  #guidePanel .safe { margin-bottom: 9px; padding: 6px 9px; border: 1px solid #2f4034;
+    border-radius: 5px; background: #161d18; color: #9dc2a6; }
+  #guidePanel .safe b { color: #6ecf9a; font-weight: 600; }
+  #guideSteps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  #guideSteps li { flex: 1 1 8em; min-width: 8em; padding: 5px 8px; border: 1px solid #2a2e38;
+    border-radius: 5px; background: #14161a; color: #7d8590; }
+  #guideSteps li .n { display: inline-block; width: 1.4em; color: #565d68; }
+  #guideSteps li.done { border-color: #2f4034; color: #6f8877; }
+  #guideSteps li.done .n::before { content: '✓'; }
+  #guideSteps li.done .n { color: #6ecf9a; }
+  #guideSteps li.done .stepTitle { text-decoration: line-through; text-decoration-color: #3d4a41; }
+  /* The current step is the only one that gets prose. Six paragraphs at once is
+     the wall of text this panel exists to replace. */
+  #guideSteps li.now { flex: 1 1 100%; border-color: #f0913a; background: #1d1a16; color: #d8dae0; }
+  #guideSteps li.now .n { color: #f0913a; }
+  #guideSteps li .stepTitle { color: inherit; font-weight: 600; }
+  #guideSteps li.now .stepBody { display: block; margin-top: 3px; color: #b7bdc8; font-weight: 400; }
+  #guideSteps li .stepBody { display: none; }
+  #guideSteps li.now .stepBody b { color: #f0b06a; font-weight: 600; }
+  #guideSteps li.now .stepBody em { color: #d8dae0; font-style: normal; font-weight: 600; }
+  #guidePanel .guideFoot { margin-top: 8px; color: #7d8590; }
+  #guidePanel .guideFoot a { color: #6db2f0; }
+  #guidePanel .guideDone { margin-top: 8px; padding: 6px 9px; border: 1px solid #3a4a2f;
+    border-radius: 5px; background: #181d15; color: #a8c48d; }
+  #guidePanel .guideDone b { color: #9ede6e; }
+  /* Plain-language header on the diff, for the moment a contributor's screen
+     fills with hex and they assume they broke something. */
+  .plainSummary { margin: 0 0 12px; padding: 8px 10px; border: 1px solid #2a3a4a;
+    border-radius: 6px; background: #161b21; color: #a8bccc;
+    font: 12px/1.55 system-ui, -apple-system, sans-serif; }
+  .plainSummary b { color: #d8dae0; }
+  #guideToggle { padding: 2px 8px; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -48,10 +95,33 @@
       <select id="port" title="Elektron device (needs both its input and output port)"></select>
       <button id="connect" title="Ask the device to identify itself">Connect</button>
       <span id="deviceInfo" class="field"></span>
+      <button id="guideToggle" title="Switch between the step-by-step contributor walkthrough and the full set of controls">Show all controls</button>
       <a href="console.html" class="backlink">← device console</a>
     </div>
     <div id="status"></div>
   </header>
+
+  <!-- Guided mode's panel. Populated by js/labs/guide.js; hidden outright in
+       expert mode, where #barhint below says the same thing in one line. -->
+  <div id="guidePanel">
+    <div class="guideHead">
+      <b>Mapping a box digi-roll can't read yet</b>
+      <span class="dim">Six steps, about twenty minutes, no coding.</span>
+    </div>
+    <div class="safe">
+      <b>This can't change anything on your box.</b> Every button here only ever <em>reads</em> —
+      there is no save, write, send or overwrite on this page, and there is nothing you can press
+      that alters a pattern, a sound or a setting. Use a scratch project anyway, because it costs
+      you nothing.
+    </div>
+    <ul id="guideSteps"></ul>
+    <div class="guideFoot">
+      Stuck, or want the longer version?
+      <a href="https://github.com/zooloo303/digi-roll/blob/main/docs/mapping-your-box.md">Read the walkthrough</a>
+      ·
+      <a href="https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml">Open a mapping issue</a>
+    </div>
+  </div>
 
   <div id="labBar">
     <span class="dim">Experiment</span>
@@ -60,33 +130,39 @@
     <span class="dim">→ make ONE edit on the box →</span>
     <button id="capB" title="Fetch the pattern again and diff it against the baseline" disabled>Capture + diff</button>
     <input id="labNote" type="text" placeholder="what did you change? e.g. “added trig, track 1, step 1”">
-    <button id="labSave" title="Save this diff to the lab notebook" disabled>Save to notebook</button>
-    <button id="labChain" title="Use the latest capture as the next baseline" disabled>Chain: B → baseline</button>
-    <label class="field" title="Read the 80-lane p-lock pool as lanes rather than as raw byte ranges: which lane a lock claimed, its paramId and track, and every per-step value that moved. This is the readout the p-lock mapping experiments are for.">
-      <input id="labPLocks" type="checkbox" checked> p-lock lane report
-    </label>
+    <span class="expert">
+      <button id="labSave" title="Save this diff to the lab notebook" disabled>Save to notebook</button>
+      <button id="labChain" title="Use the latest capture as the next baseline" disabled>Chain: B → baseline</button>
+      <label class="field" title="Read the 80-lane p-lock pool as lanes rather than as raw byte ranges: which lane a lock claimed, its paramId and track, and every per-step value that moved. This is the readout the p-lock mapping experiments are for.">
+        <input id="labPLocks" type="checkbox" checked> p-lock lane report
+      </label>
+    </span>
     <span id="captureInfo"></span>
   </div>
 
   <div id="contribBar">
     <span class="dim">New box</span>
     <button id="labProbe" title="Sweep dump requests across candidate family bytes to find which one this box answers — the first step of mapping a device digi-roll doesn't know. Sends read-only requests, never a payload." disabled>Probe dump protocol</button>
-    <span class="dim">capture target</span>
-    <label class="field">family <input id="labFamily" type="text" size="3" placeholder="hex" title="Dump family byte (hex) — filled from the identity for a known box, from the probe for a new one"></label>
-    <select id="labType" title="Which dump to request per capture. The list follows the family byte, because an opcode does not mean the same thing on every box — 0x64 is project settings on a Digitakt II and the pattern on an Analog Four.">
-      <option value="96">0x60 pattern+kit</option>
-      <option value="97">0x61 pattern</option>
-      <option value="98">0x62 kit</option>
-      <option value="99">0x63 sound</option>
-      <option value="100">0x64 project settings</option>
-    </select>
-    <span class="dim">·</span>
+    <span class="expert">
+      <span class="dim">capture target</span>
+      <label class="field">family <input id="labFamily" type="text" size="3" placeholder="hex" title="Dump family byte (hex) — filled from the identity for a known box, from the probe for a new one"></label>
+      <select id="labType" title="Which dump to request per capture. The list follows the family byte, because an opcode does not mean the same thing on every box — 0x64 is project settings on a Digitakt II and the pattern on an Analog Four.">
+        <option value="96">0x60 pattern+kit</option>
+        <option value="97">0x61 pattern</option>
+        <option value="98">0x62 kit</option>
+        <option value="99">0x63 sound</option>
+        <option value="100">0x64 project settings</option>
+      </select>
+      <span class="dim">·</span>
+    </span>
     <button id="labExportPair" title="Save baseline + capture + your note as one JSON file — the thing to attach to the forum thread" disabled>Export pair</button>
-    <button id="labImportPair" title="Open a capture pair someone else exported and read its diff — no box needed">Open pair…</button>
+    <span class="expert">
+      <button id="labImportPair" title="Open a capture pair someone else exported and read its diff — no box needed">Open pair…</button>
+    </span>
     <input id="labImportPairInput" type="file" accept=".json" hidden>
   </div>
 
-  <div class="barhint">
+  <div class="barhint expert">
     <b>Own a box digi-roll can't read yet</b> — Digitone, Syntakt, Analog Rytm, Analog Four MkII?
     You can help map it, and nothing here ever writes to a box: this page only sends read-only requests.
     <b>Connect</b> → <b>Probe dump protocol</b> → post the report to the thread. If the probe finds a
@@ -98,7 +174,7 @@
   <div id="labWrap">
     <div id="diffPane"><span class="dim">Connect a box, capture a baseline, poke exactly one thing, capture again.
 Each diffed byte is annotated with the struct region it lives in — unknown regions are the interesting ones.</span></div>
-    <div id="notebookPane">
+    <div id="notebookPane" class="expert">
       <div class="logbar" style="padding:0 0 6px">
         <span class="dim">Lab notebook</span>
         <button id="labExport" title="Download the notebook as Markdown">Export .md</button>

@@ -191,8 +191,15 @@ refuses to send anything but read-only dump requests. **Probe dump protocol**
 finds which SysEx family byte your box answers; then each capture pair
 (baseline → one edit → capture, exported as one file) teaches us one byte-level
 fact about its pattern format. Donated pairs can be diffed here with no hardware
-attached. See **[docs/adding-a-device.md](docs/adding-a-device.md)** for the
-walkthrough and exactly what a pair contains.
+attached. The lab opens in a guided mode that walks a contributor through the
+six steps one at a time and keeps the protocol controls out of the way until
+asked for.
+
+See **[docs/mapping-your-box.md](docs/mapping-your-box.md)** for the walkthrough
+written for Elektron users rather than developers — including exactly what a pair
+contains and what it doesn't. **[docs/adding-a-device.md](docs/adding-a-device.md)**
+is the same six steps with the protocol reasoning, for whoever turns the findings
+into a `SPEC`.
 
 Protocol notes live in `docs/elektron-sysex-protocol.md`; the pattern formats
 — including what we believe is the first public documentation of the
