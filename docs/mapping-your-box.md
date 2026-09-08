@@ -76,6 +76,11 @@ It should say its own name and OS version back at you — something like
 
 **If nothing happens**, or you get a message about no reply:
 
+- **Using Chrome 152 on a Mac?** A known browser bug can prevent device replies.
+  Read [connection help](../midi-help.html) for the tested launcher workaround
+  before restarting your gear. The help opens separately from the lab; download
+  any session ZIP before closing the lab tab.
+
 - Make sure the box has *finished* booting before you hit Connect.
 - If you plugged it in after opening the page, reload the page.
 - Some boxes occasionally stop answering this kind of message until they're

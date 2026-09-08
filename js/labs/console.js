@@ -4,6 +4,7 @@
 // (index.html) deliberately stays on sysex-free access so it never triggers
 // the scarier browser permission prompt.
 
+import { identifyWithConnectionHelp } from '../midi-connection-help.js';
 import { ElektronDevice } from '../elektron/device.js';
 import { splitSysExStream, DUMP, FAMILY } from '../elektron/protocol.js';
 import { trackNotes, trackTrigCount, bankName } from '../elektron/pattern-core.js';
@@ -120,7 +121,7 @@ $('connect').onclick = async () => {
   setStatus(`Asking ${pair.out.name} to identify itself…`);
   logNote(`Identity request → ${pair.out.name}`);
   try {
-    const id = await device.identify();
+    const id = await identifyWithConnectionHelp(device);
     $('deviceInfo').innerHTML = `<b>${esc(id.name)}</b>&nbsp; OS ${esc(id.version)}`;
     logNote(`Identified: ${id.name}, OS ${id.version}`);
     if (id.supported) {

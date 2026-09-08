@@ -11,6 +11,11 @@ No build step, no dependencies — plain HTML/JS using the Web MIDI API
 
 ## Run it
 
+**Mac users: Chrome 152 can break SysEx connections.** If your box appears but
+Connect/import times out, see [connection help and the reusable Chrome launcher](midi-help.html).
+The workaround must be applied when Chrome starts; clearing cache does not fix it.
+
+
 **Hosted:** https://zooloo303.github.io/digi-roll/ — open in Chrome (or
 Edge/Brave — not Safari), allow the MIDI permission, pick your box. Patterns
 save in the browser's localStorage per device.

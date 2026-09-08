@@ -21,6 +21,15 @@ Two links you'll need:
   Edge or Brave (Safari has no Web MIDI). Nothing to install.
 - where findings go — **[a mapping issue](https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml)**.
 
+## Browser connection regression
+
+Chrome 152 on macOS can corrupt SysEx framing in its new UMP backend.
+A silent identity/probe result on this browser is not evidence that a box lacks
+the requested protocol. See [connection help and launcher](../midi-help.html).
+Browser detection is advisory; successful connections still use the normal gates.
+See [browser release verification](browser-midi-verification.md) before declaring
+a Chrome release fixed or retiring the workaround.
+
 ## First: nothing here writes to your box
 
 The diff lab (`difflab.html`) is read-only by construction, not by convention:

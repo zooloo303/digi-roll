@@ -1,3 +1,4 @@
+import { identifyWithConnectionHelp } from './midi-connection-help.js';
 import { loadState, saveState, defaultPattern, makeNote, makePLockLane, NUM_SLOTS } from './state.js';
 import { MidiEngine, patternToMidiFile, midiFileToNotes } from './midi.js';
 import { PianoRoll, SCALES, PITCH_CLASSES, PITCH_MIN, PITCH_MAX } from './pianoroll.js';
@@ -886,7 +887,7 @@ async function connectBox() {
 
   box?.close();
   box = new ElektronDevice(pair.in, pair.out);
-  return box.identify();
+  return identifyWithConnectionHelp(box);
 }
 
 const dstPatSel = $('dstPattern'), dstTrkSel = $('dstTrack');

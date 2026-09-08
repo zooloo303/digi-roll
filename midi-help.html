@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>digi-roll — MIDI connection help</title>
+<style>
+  body { max-width: 760px; margin: 40px auto; padding: 0 20px; background: #171a20; color: #ddd; font: 16px/1.6 system-ui, sans-serif; }
+  a { color: #abc8ff; } h1, h2 { line-height: 1.25; } pre { background: #101216; padding: 14px; overflow-x: auto; } code { font-size: .9em; }
+  .notice { padding: 16px; border: 1px solid #82632b; background: #262016; }
+</style>
+</head>
+<body>
+<nav><a href="index.html">Piano roll</a> · <a href="console.html">Device console</a> · <a href="difflab.html">Dump diffing lab</a></nav>
+<h1>MIDI connection help</h1>
+<p class="notice"><strong>Mac + Chrome 152: a browser bug can stop device connections.</strong>
+The MIDI port can appear normally and notes may play, while identification, imports and dump captures time out.
+This also may affect browsers that share Chromium's MIDI backend.</p>
+<h2>Tested Mac workaround</h2>
+<p><a href="scripts/digi-roll-chrome.command" download>Download the digi-roll Chrome launcher</a>.
+Save it in Downloads, then run this in Terminal:</p>
+<pre><code>bash ~/Downloads/digi-roll-chrome.command</code></pre>
+<p>The launcher opens the hosted lab in Google Chrome with the affected MIDI backend disabled.
+It uses a separate digi-roll browser profile, so your ordinary Chrome can stay open.
+Allow MIDI access when prompted. Bookmarks, permissions and saved piano-roll patterns in your usual Chrome profile
+are separate; they are not copied or deleted. The lab still requires downloading your session ZIP before closing its tab.</p>
+<p>Use this launcher each time you start the workaround browser, including after restarting your Mac.
+A normal Chrome launch does not apply this workaround. For a local lab, pass its address:</p>
+<pre><code>bash ~/Downloads/digi-roll-chrome.command http://127.0.0.1:8765/difflab.html</code></pre>
+<p>If you prefer your existing Chrome profile: save your work and fully quit Chrome with ⌘Q, then run:</p>
+<pre><code>open -a "Google Chrome" --args --disable-features=MidiMacUmp</code></pre>
+<p>That command only applies to that launch. Check <code>chrome://version</code> → Command Line for
+<code>--disable-features=MidiMacUmp</code>. Clearing cache or changing device firmware does not repair this browser bug.</p>
+<h2>When can I stop using the workaround?</h2>
+<p>As of September 8, 2026, we reproduced the failure in Chrome <strong>152.0.7977.83</strong> on macOS.
+Disabling the new backend restored identity replies and checksum-validated A01 dump reads from Digitakt II, Digitone II and Analog Four. Hardware writes were not tested in this browser check.
+Chromium has an <a href="https://chromium.googlesource.com/chromium/src/+/5af1bee2ffd0d5234865b1848a52262b2081ecb2">upstream fix for the SysEx framing defect</a>,
+but we have not verified a fixed shipping Chrome release. Keep Chrome updated; we will name a verified release here after testing.
+The launch switch is temporary and Chrome may eventually remove it.</p>
+<p>Ordinary MIDI playback is not a sufficient test. A replacement browser release needs successful identification and dump reads;
+writing needs a separate scratch-project check with digi-roll's backup and byte verification still enabled.</p>
+<h2>If you still cannot connect</h2>
+<ul>
+<li>Wait for the box to finish booting and select the same device you intend to use.</li>
+<li>Allow MIDI and SysEx access for this site's address. Local and hosted addresses have separate permissions.</li>
+<li>Check USB/MIDI input and output routing on the box. If it was just plugged in, refresh the device list or reload after saving your work.</li>
+<li>Record your browser version, macOS version, device name and exact error when reporting a problem.</li>
+</ul>
+<p>A timeout alone does not prove this Chrome bug. The app's browser hint never blocks a successful connection or enables writes.</p>
+<p><a href="https://github.com/zooloo303/digi-roll/issues">Report a connection problem</a> ·
+<a href="https://www.chromium.org/developers/how-tos/run-chromium-with-flags/">Chromium launch-switch documentation</a></p>
+</body>
+</html>

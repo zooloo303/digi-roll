@@ -455,3 +455,11 @@ h1 .sub {
 .trigPickerNone.on { border-color: #4a5060; color: #e4e7ec; }
 
 canvas { display: block; cursor: crosshair; }
+
+/* Connection recovery stays outside the toolbar so its instructions can wrap. */
+#midiConnectionHelp {
+  flex: none; padding: 10px 14px; border-bottom: 1px solid #665028;
+  background: #262016; color: #ecd3a7; font-size: 13px; line-height: 1.5;
+}
+#midiConnectionHelp[hidden] { display: none; }
+#midiConnectionHelp a { color: #b6ceff; }

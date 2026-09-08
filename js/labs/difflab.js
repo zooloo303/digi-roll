@@ -9,6 +9,7 @@
 // lab notebook (localStorage) and export as Markdown for the docs/ format
 // files.
 
+import { identifyWithConnectionHelp } from '../midi-connection-help.js';
 import { ElektronDevice } from '../elektron/device.js';
 import { bankName, diffAnnotatedRanges } from '../elektron/pattern-core.js';
 import { readAllPLocks } from '../elektron/plocks.js';
@@ -173,7 +174,7 @@ $('connect').onclick = async () => {
   $('deviceInfo').textContent = '';
   setStatus(`Asking ${pair.out.name} to identify itself…`);
   try {
-    const id = await device.identify();
+    const id = await identifyWithConnectionHelp(device);
     $('deviceInfo').innerHTML = `<b>${esc(id.name)}</b>&nbsp; OS ${esc(id.version)} (build ${esc(id.build)})`;
     // The capture target follows the identity when we have one; for an unknown
     // box it stays blank until the probe (or the user) supplies a family byte.
