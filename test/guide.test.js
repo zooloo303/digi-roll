@@ -172,6 +172,16 @@ describe('guideDoneText', () => {
     expect(guideDoneText({ exportedCount: 1 })).toMatch(/another/i);
   });
 
+  it('requires a fresh baseline for every subsequent experiment', () => {
+    for (const exportedCount of [1, 3]) {
+      const text = guideDoneText({ exportedCount });
+      expect(text).toMatch(/Capture baseline<\/b> before making the next edit/);
+      expect(text).toMatch(/does not advance automatically/);
+      expect(text).toMatch(/GitHub website/);
+      expect(text).not.toMatch(/becomes the new/);
+    }
+  });
+
   it('reminds someone with several files to attach them together', () => {
     const t = guideDoneText({ exportedCount: 3 });
     expect(t).toMatch(/3 files saved/);

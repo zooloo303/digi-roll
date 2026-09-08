@@ -3,6 +3,52 @@
 Where this is going. Constraints and safety rules live in `CLAUDE.md`; the
 byte-level formats in `docs/`. This file is the "what's next".
 
+## In progress — Digitakt Mk1 + Syntakt read mapping (2026-09-08)
+
+**Capture collection is complete for the initial eight-experiment series on
+both boxes.** XtremeSounds uploaded both ZIPs to issue #8. All 16 capture pairs
+(32 SysEx snapshots) pass the existing parser's checksum, count and same-slot
+checks. These are real captures, not the earlier pasted notebook summaries.
+
+Start with [the mapping handoff](docs/digitakt-syntakt-mapping-handoff.md).
+Original extracted files, source URLs, SHA-256 hashes and full payload diffs
+are in `dumps/fixtures/issue-8-2026-09-08/`. Digitakt OS 1.52 build `0095`;
+Syntakt reports OS 1.40 build `0082` (the contributor calls it 1.40A).
+
+- [x] Preserve and validate all eight pairs and the probe report per device.
+- [x] Record experiment caveats and fix contributor baseline/upload instructions.
+- [x] Reproduce validation and adjacent-state comparisons; document measured
+      fields and candidate layouts in the two new format notes.
+- [x] Add fixture-backed raw-field reads and lab descriptions for each device,
+      gated by captured family/request/size/version. Register Syntakt identity.
+- [ ] Resolve defaults, musical units, other tracks/steps and Syntakt's combined
+      pattern/kit boundary before enabling Studio note import.
+- [ ] Request targeted hardware clarification only for gaps that remain after
+      analysis. No further broad capture run is needed now.
+
+The first read pass is implemented in `js/elektron/legacy-read.js`; it is
+intentionally a raw-field reader, not a Studio pattern decoder. See
+[Digitakt format notes](docs/digitakt-pattern-format.md) and
+[Syntakt format notes](docs/syntakt-pattern-format.md). All 850 tests pass.
+Neither device has a verified write path; the write allowlist is unchanged. The
+Digitakt first-trig pair is not a clean empty-to-trig experiment, and its length
+pair also carries a velocity change. Exact displayed before/after values are
+missing from notes. These limitations do not block starting offline analysis.
+
+## Guided capture sessions — implemented locally (2026-09-08)
+
+- Standard and follow-up experiment checklists, shareable links and preparation
+  instructions; explicit track/step and displayed before/after values, with
+  unknown / not displayed options.
+- Fresh baseline required for each guided experiment; per-pair save state,
+  pinned context, duplicate-save prevention and hardware busy controls.
+- One session ZIP of original pair files, structured details and probe reports.
+  Reports alone can be shared. Session data remains in the tab until downloaded.
+- Both mapping walkthroughs updated. Expert single-pair tools remain available.
+- 856 unit tests pass. Simulated-MIDI Playwright workflow covers complete cycles,
+  invalid captures, reconnect, probe, ZIP extraction and read-only requests.
+  No connected-hardware verification or publication has been performed.
+
 ## Shipped
 
 Phases 1–4, hardware-verified on a Digitakt II (OS 1.15B) and a Digitone II

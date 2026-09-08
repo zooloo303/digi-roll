@@ -56,6 +56,21 @@ describe('identify', () => {
     dev.close();
   });
 
+  it('recognises the donated Syntakt identity and family', async () => {
+    const { input, output } = fakePorts(msg => {
+      if (msg.kind !== 'api') return;
+      const data = msg.apiId === API.DEVICE
+        ? [30, 0, ...ascii('Syntakt'), 0]
+        : [...ascii('0082'), 0, ...ascii('1.40'), 0];
+      return [buildApiMessage(1, msg.apiId + API.RESPONSE, data, msg.msgId)];
+    });
+    const dev = new ElektronDevice(input, output);
+    expect(await dev.identify()).toMatchObject({ productId: 30, slug: 'syntakt',
+      family: 0x16, version: '1.40', build: '0082', supported: true });
+    expect(slugFromPortName('Elektron Syntakt')).toBe('syntakt');
+    dev.close();
+  });
+
   it('reports unknown products as unsupported but still named', async () => {
     const { input, output } = fakePorts(msg => {
       if (msg.kind !== 'api') return;

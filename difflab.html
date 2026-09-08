@@ -86,6 +86,24 @@
     font: 12px/1.55 system-ui, -apple-system, sans-serif; }
   .plainSummary b { color: #d8dae0; }
   #guideToggle { padding: 2px 8px; font-size: 11px; }
+  #experimentPanel { margin-top: 10px; }
+  .experimentRow { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .experimentRow label { display: inline-flex; gap: 5px; align-items: center; }
+  .experimentRow input[type=number] { width: 4em; }
+  .experimentRow input:not([type=checkbox]):not([type=number]) { width: 12em; }
+  #experimentInstruction { color: #e1d4c3; max-width: 85ch; }
+  #experimentValidation { color: #e7b472; min-height: 1.2em; }
+  #sessionPanel { flex: none; padding: 10px 14px; border-bottom: 1px solid #343944; }
+  #sessionPanel p { color: #a7afbe; margin: 6px 0 0; max-width: 100ch; }
+  #sessionPanel a { color: #6db2f0; margin-left: 8px; }
+  #guidePanel { max-height: 55vh; overflow-y: auto; }
+  #sessionSummary { display: block; margin-bottom: 6px; }
+  @media (max-height: 800px), (max-width: 600px) {
+    body { height: auto; min-height: 100vh; overflow: auto; }
+    #guidePanel { max-height: none; overflow: visible; }
+    #labWrap { min-height: 200px; flex: none; }
+  }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -106,15 +124,35 @@
   <div id="guidePanel">
     <div class="guideHead">
       <b>Mapping a box digi-roll can't read yet</b>
-      <span class="dim">Six steps, about twenty minutes, no coding.</span>
+      <span class="dim">One experiment at a time. No coding.</span>
     </div>
     <div class="safe">
-      <b>This can't change anything on your box.</b> Every button here only ever <em>reads</em> —
-      there is no save, write, send or overwrite on this page, and there is nothing you can press
-      that alters a pattern, a sound or a setting. Use a scratch project anyway, because it costs
-      you nothing.
+      <b>Every request here only reads your box.</b> Snapshots and experiments are saved on
+      your computer. Make the requested edits yourself in a scratch project.
     </div>
-    <ul id="guideSteps"></ul>
+    <ul id="guideSteps" aria-label="Capture progress"></ul>
+    <section id="experimentPanel" aria-label="Experiment checklist">
+      <div class="experimentRow">
+        <label>Experiment <select id="experimentSelect"></select></label>
+        <button id="checklistLink">Copy checklist link</button>
+        <label><input id="checklistInclude" type="checkbox" checked> Include in shared checklist</label>
+      </div>
+      <p id="experimentInstruction" role="status"></p>
+      <div class="experimentRow">
+        <label id="trackField">Track <input id="experimentTrack" type="number" min="1" max="128" value="1"></label>
+        <label id="stepField">Step <input id="experimentStep" type="number" min="1" max="128" value="1"></label>
+        <label>Before value <input type="text" id="experimentBefore" placeholder="Exactly as displayed"></label>
+        <label><input id="beforeUnknown" type="checkbox"> Before unknown / not displayed</label>
+        <label>After value <input type="text" id="experimentAfter" placeholder="Include units and direction"></label>
+        <label><input id="afterUnknown" type="checkbox"> After unknown / not displayed</label>
+      </div>
+      <p id="experimentValidation" role="status"></p>
+      <div class="experimentRow">
+        <button id="saveExperiment" disabled>Save experiment</button>
+        <button id="nextExperiment" disabled>Next experiment</button>
+        <button id="restartExperiment" disabled>Discard current pair and restart</button>
+      </div>
+    </section>
     <div class="guideFoot">
       Stuck, or want the longer version?
       <a href="https://github.com/zooloo303/digi-roll/blob/main/docs/mapping-your-box.md">Read the walkthrough</a>
@@ -129,7 +167,7 @@
     <button id="capA" title="Fetch the pattern as it is now — the baseline" disabled>Capture baseline</button>
     <span class="dim">→ make ONE edit on the box →</span>
     <button id="capB" title="Fetch the pattern again and diff it against the baseline" disabled>Capture + diff</button>
-    <input id="labNote" type="text" placeholder="what did you change? e.g. “added trig, track 1, step 1”">
+    <input id="labNote" type="text" aria-label="Experiment note" placeholder="Optional note: anything unexpected or extra edits?">
     <span class="expert">
       <button id="labSave" title="Save this diff to the lab notebook" disabled>Save to notebook</button>
       <button id="labChain" title="Use the latest capture as the next baseline" disabled>Chain: B → baseline</button>
@@ -155,12 +193,20 @@
       </select>
       <span class="dim">·</span>
     </span>
-    <button id="labExportPair" title="Save baseline + capture + your note as one JSON file — the thing to attach to the forum thread" disabled>Export pair</button>
+    <button class="expert" id="labExportPair" title="Save baseline + capture + your note as one JSON file — the thing to attach to the forum thread" disabled>Export pair</button>
     <span class="expert">
       <button id="labImportPair" title="Open a capture pair someone else exported and read its diff — no box needed">Open pair…</button>
     </span>
     <input id="labImportPairInput" type="file" accept=".json" hidden>
   </div>
+
+  <section id="sessionPanel" aria-label="Saved session">
+    <span id="sessionSummary" role="status">No experiments saved.</span>
+    <button id="downloadSession" disabled>Download session ZIP</button>
+    <a id="sessionIssue" href="https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml" target="_blank" rel="noopener">Open mapping issue</a>
+    <p>Saved experiments stay in this tab until you close or reload it. Download the ZIP before leaving.
+      Attach it on the GitHub website, wait for the upload, then post your comment. Email replies do not attach the files.</p>
+  </section>
 
   <div class="barhint expert">
     <b>Own a box digi-roll can't read yet</b> — Digitone, Syntakt, Analog Rytm, Analog Four MkII?

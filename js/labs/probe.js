@@ -192,8 +192,8 @@ export function contributorReport({ identity, portName = '', summary, probed }) 
   const lines = [
     '### digi-roll probe report',
     '',
-    `- Device: ${identity.name} (product id ${identity.productId})`,
-    `- OS: ${identity.version} (build ${identity.build})`,
+    `- Device: ${identity.name} (product id ${identity.productId ?? 'unknown'})`,
+    `- OS: ${identity.version || 'unknown'} (build ${identity.build || 'unknown'})`,
   ];
   if (portName) lines.push(`- MIDI port: ${portName}`);
   lines.push(`- Requests sent: ${probed} (dump requests only — the probe cannot write)`);

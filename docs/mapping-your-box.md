@@ -3,16 +3,16 @@
 **No coding. Nothing gets installed. Nothing on your box changes.**
 
 digi-roll can read and write patterns on the Digitakt II and Digitone II. It
-can't read yours yet — not because it's hard, but because working out how a box
-stores its patterns means having that box in front of you, and we only have two.
+does not yet have complete note import for the boxes below. Working out how a
+box stores its patterns needs controlled captures from someone who owns it.
 
 If you own a **Digitone, Syntakt, Analog Rytm, Analog Four, Analog Keys,
-Octatrack** or a first-generation **Digitakt**, you can fix that in about twenty
-minutes, and you don't need to know what a byte is. This page is the whole job.
+Octatrack** or a first-generation **Digitakt**, you can help by capturing a few controlled edits. You don't need to know what a
+byte is. A short session is useful; completing the mapping may need follow-ups.
 
 > Prefer the technical version, with the protocol reasoning and the byte-level
 > method? That's [`adding-a-device.md`](adding-a-device.md). This page and that
-> page describe the same six button presses.
+> page describe the same capture workflow.
 
 ---
 
@@ -55,7 +55,7 @@ write" claim is enforced in code and explained in
 - Your box, and the USB cable it came with.
 - **Chrome, Edge, or Brave** on a computer. Safari and Firefox can't talk to
   MIDI devices, so they won't work — this isn't a setting you can change.
-- About twenty minutes.
+- Time for a short session; you can stop after one experiment.
 
 Nothing to download or install. The lab is a web page:
 
@@ -102,77 +102,84 @@ a failed attempt.
 If it *did* find something, the lab quietly fills in the technical settings it
 needs for the next steps. You don't have to touch or understand them.
 
-## Step 3 — Take a "before" snapshot
+## Step 3 — Choose an experiment and prepare the box
 
-Pick a pattern slot from the dropdown — one in your scratch project — and hit
-**Capture baseline**.
+The **Experiment** menu contains the standard checklist: add a trig, velocity,
+length, microtiming, pitch, pattern length, tempo and swing. It also offers
+follow-up experiments for another track/step, a track default note, and a
+custom edit. If someone sent you a checklist link, those requested experiments
+appear first. Each experiment explains what to prepare and what to change.
 
-That reads the pattern out of the box and remembers it. Nothing on the box
-changes.
+Use the track and step shown in the form, or enter the ones you are actually
+using. Preparation happens **before** the before snapshot: for example, a
+velocity experiment needs an existing trig, while “Add a trig” needs an empty
+step. Keep the same scratch pattern selected on the box and in the lab.
 
-## Step 4 — Change exactly one thing, then snapshot again
+Enter the **Before value** exactly as the box displays it, including units,
+octaves, fractions or a timing direction. If the box does not show a value,
+select **Before unknown / not displayed**. For adding a trig, “empty” is a
+useful before value. Do not guess.
 
-Go to the box. Change **one** thing, and nothing else:
+## Step 4 — Capture before, make one edit, capture after
 
-- put one trig on, or
-- turn one knob by one click, or
-- change one note's length, or
-- change the pattern's tempo.
+Click **Capture baseline**. This is your before snapshot. The page locks the
+experiment, track, step and before value so they continue to describe that
+snapshot.
 
-Then come back to the lab and hit **Capture + diff**.
+Now make only the requested edit on the box. Click **Capture + diff** for the
+after snapshot. Enter the **After value**, or explicitly mark it unknown / not
+displayed. Include earlier/later or left/right for microtiming.
 
-**One change at a time is the entire method.** We learn where something lives by
-seeing which part of the pattern moved when you changed it. Change two things and
-we can't tell which change caused which movement, and the whole snapshot is
-wasted. Resist the urge to be efficient here — it's the one thing that makes this
-not work.
+Several changed bytes are fine: one edit can change several stored fields.
+A zero-change result is also useful. If you accidentally changed something
+else, explain it in the note; the pair may still help. A corrupt response or
+a response from another slot is rejected; follow the status message to retry
+or restart.
 
-Your screen will now fill up with numbers. **That's fine and you can ignore all
-of it.** It isn't addressed to you, you don't have to interpret it, and nothing
-about it means you did something wrong. The lab will tell you in plain English
-how much moved.
+## Step 5 — Save the experiment, then start the next one
 
-## Step 5 — Say what you changed
+Click **Save experiment**. This keeps both full snapshots and your experiment
+details **in this browser tab**. It does not download them yet or send them to
+anyone. The menu marks that experiment as saved.
 
-Type what you did into the note box, in completely normal words:
+Click **Next experiment**. The previous pair stays in the session, while the
+active snapshots and value fields are cleared. Prepare the next experiment,
+enter its before value and take a **fresh Capture baseline before editing**.
+There is no automatic reuse of the previous after snapshot.
 
-> put a trig on track 1, step 1
+You can choose another experiment from the menu before taking a baseline. To
+abandon an unfinished pair, use **Discard current pair and restart**. Saved
+session pairs are retained. Reconnecting or switching between guided and
+expert modes also clears the active pair; saved session pairs remain.
 
-> turned track 3 filter cutoff from 64 to 65
+## Step 6 — Download one ZIP and attach it
 
-> changed pattern tempo from 120 to 121
+Click **Download session ZIP**. It contains every saved experiment and any
+probe reports collected in this tab. A probe report can be downloaded on its
+own, including a report with no replies. There is no need to create a ZIP
+manually, and you can stop after one experiment.
 
-**This is the most valuable thing you give us.** The numbers are genuinely
-meaningless without it — we can see that something moved, but only you know what
-you touched. A snapshot pair with a vague note teaches us much less than one with
-a precise note, and one with no note at all teaches us nothing.
+Check your Downloads folder for `digiroll-session-….zip`. **Download before
+closing or reloading the tab**: the session is not stored across reloads.
+Download again if you save more experiments or run another probe.
 
-## Step 6 — Save the file and send it
+Click **Open mapping issue**. If you arrived through a link to an existing
+issue, it opens that issue; otherwise it opens the new mapping issue form.
+Drag the ZIP into the issue comment in your browser, wait for the upload to
+finish, and post the comment. **Replying by email does not attach these files.**
 
-Hit **Export pair**. That saves one small file containing both snapshots and your
-note.
+The **Read the walkthrough** link stays on the lab page for future sessions.
+To share a particular checklist, select experiments and use **Include in
+shared checklist**, then **Copy checklist link**. The link shares instructions,
+not your captures or displayed values.
 
-Then [open a mapping issue](https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml)
-and attach it. Say which box you have, and drag the file in. That's it — the
-form asks for nothing you don't already have.
+### Existing single-pair workflow
 
-**Want to do more than one?** Please do — each pair teaches us one more fact, and
-a run of them is what actually maps a box. Just change one more thing on the box
-and hit **Capture + diff** again; the snapshot you just took becomes the new
-"before". Attach all the files to the same issue.
-
-A good run, if you're up for it — one pair each, in this order:
-
-1. an empty pattern, then one trig on track 1 step 1
-2. that trig's velocity
-3. that trig's length
-4. that trig's micro-timing
-5. that trig's note pitch
-6. the pattern's length
-7. the tempo
-8. the swing
-
-That exact sequence is how the Digitakt II and Digitone II got mapped.
+**Show all controls** retains **Export pair**, **Open pair…**, explicit
+**Chain: B → baseline**, and the notebook. Export pair downloads the original
+single JSON format. **Export .md** is only a notebook summary, not complete
+capture evidence. In expert mode, take a fresh baseline before each edit or
+explicitly chain the previous after snapshot.
 
 ---
 
@@ -185,9 +192,10 @@ to see for yourself. It contains:
 - your box's name, model number and OS version;
 - your note, and the time.
 
-It does **not** contain your samples, your sounds, your other patterns, your
-project settings, or anything about you. The only personal thing in there is
-whatever you typed in the note box.
+A pattern-and-kit capture can also include kit and sound settings and names.
+It is not a sample-audio export. Other capture targets can contain different
+data, so use a scratch project with names and settings you are comfortable
+sharing. Your note is included too.
 
 If the pattern you captured is from a project you'd rather not share at all, use
 an empty scratch project instead — an empty pattern works perfectly well for

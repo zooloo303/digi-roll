@@ -14,6 +14,7 @@ import { buildApiMessage, buildDumpMessage, parseSysEx, API, DUMP } from './prot
 const PRODUCTS = {
   4: { name: 'Analog Four', slug: 'analogfour', family: 0x06 },  // product id 4, family 0x06 — not the same number, and the mismatch is the point
   12: { name: 'Digitakt', slug: 'digitakt', family: 0x0a },
+  30: { name: 'Syntakt', slug: 'syntakt', family: 0x16 }, // donated identity + probe, 2026-09-08
   42: { name: 'Digitakt II', slug: 'digitakt2', family: 0x14 },
   43: { name: 'Digitone II', slug: 'digitone2', family: 0x15 }, // both values captured from real hardware 2026-08-01 (family byte via 0x60 probe sweep)
 };

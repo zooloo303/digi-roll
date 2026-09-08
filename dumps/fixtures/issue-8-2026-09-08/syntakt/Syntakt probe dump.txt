@@ -1,0 +1,19 @@
+### digi-roll probe report
+
+- Device: Syntakt (product id 30)
+- OS: 1.40 (build 0082)
+- MIDI port: Elektron Syntakt
+- Requests sent: 106 (dump requests only — the probe cannot write)
+
+Family byte `0x16` answers:
+- `0x60` request → `0x50` response, 31,744 bytes, checksum OK (slot 1)
+- `0x61` request → `0x51` response, 27,136 bytes, checksum OK (slot 1)
+- `0x62` request → `0x52` response, 5,632 bytes, checksum OK (slot 1)
+- `0x63` request → `0x53` response, 263 bytes, checksum OK (slot 1)
+- `0x64` request → `0x54` response, 512 bytes, checksum OK (slot 1)
+- `0x65` request → `0x55` response, 31,744 bytes, checksum OK (slot 1)
+- `0x66` request → `0x56` response, 512 bytes, checksum OK (slot 1)
+- `0x68` request → `0x58` response, 31,744 bytes, checksum OK (slot 1)
+- `0x69` request → `0x59` response, 27,136 bytes, checksum OK (slot 1)
+- `0x6a` request → `0x5a` response, 5,632 bytes, checksum OK (slot 1)
+- `0x6b` request → `0x5b` response, 263 bytes, checksum OK (slot 1)

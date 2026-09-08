@@ -56,6 +56,8 @@ export const DECODERS = {
 // It does not make the box writable: `writeGate` needs a DECODERS entry and a
 // WRITE_ALLOWED_BUILDS row, and the Analog Four has neither.
 export const PRODUCT_BY_FAMILY = {
+  0x0a: { slug: 'digitakt', productId: 12, name: 'Digitakt' },
+  0x16: { slug: 'syntakt', productId: 30, name: 'Syntakt' },
   [FAMILY.ANALOG_FOUR]: { slug: 'analogfour', productId: 4, name: 'Analog Four' },
   [FAMILY.DIGITAKT_2]: { slug: 'digitakt2', productId: 42, name: 'Digitakt II' },
   [FAMILY.DIGITONE_2]: { slug: 'digitone2', productId: 43, name: 'Digitone II' },

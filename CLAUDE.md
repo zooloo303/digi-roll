@@ -56,6 +56,14 @@ since.
 
 ## The diff lab is contributor-facing, and read-only by construction
 
+**Next mapping session (2026-09-08):** real Digitakt Mk1 and Syntakt donations
+are saved in `dumps/fixtures/issue-8-2026-09-08/` (eight pairs each, all validated).
+Read `docs/digitakt-syntakt-mapping-handoff.md` and the opening section of
+`PLAN.md` before starting. Collection is complete for the first series; the first partial raw-field
+read pass is implemented (see the handoff follow-up and both new format notes).
+Studio decoding still awaits default/unit mapping. There is no new write
+authorization or firmware allowlist entry.
+
 Since 2026-08-04 the diff lab is aimed at Elektronauts users mapping boxes nobody
 here owns. There are two walkthroughs and they are not interchangeable:
 `docs/mapping-your-box.md` is the plain-English one for the person holding the
@@ -64,16 +72,21 @@ box (no hex, no opcodes, safety stated as what the box does), and
 whoever turns the findings into a `SPEC`. A change to the flow has to land in
 both.
 
-Since 2026-09-07 the lab opens in **guided mode**: `js/labs/guide.js` is a pure
-step machine (the `copy-hint.js` pattern — no DOM, no device, tested as wording)
-driving the panel, and everything the contributor path doesn't touch is marked
-`.expert` in `difflab.html` and hidden. It is presentation only — same requests,
-same captures, same exported bytes — so nothing about it is load-bearing for
-correctness, but two things are load-bearing for the pitch: the copy must not
-leak protocol vocabulary (`test/guide.test.js` asserts that, and that its step
-titles name buttons the page really has), and a pair opened from a *file* must
-not count as the contributor's own progress (`fromFile`, the same flag that stops
-it being re-exported). Two rules protect the read-only guarantee:
+Since 2026-09-08 the lab's guided mode uses an explicit experiment cycle:
+`js/labs/experiments.js` owns recipe instructions and displayed-value validation;
+`experiment-panel.js` owns before → after → save → next and the session UI.
+`session.js` retains validated original pair JSON with separate experiment
+metadata; `zip.js` builds a dependency-free ZIP containing pairs and reports.
+Sessions live in the tab until downloaded, not across reloads. Expert mode
+retains the original pair and notebook controls. `guide.js` still supplies
+plain-language diff summaries (its older checklist helpers are retained).
+
+The cycle requires a new baseline after Next experiment, locks the before
+context once captured, and tracks saving per pair. Imported pairs cannot be
+saved as live contributions. All hardware UI actions share a busy lock. Tests:
+`test/capture-session.test.js` and `scripts/test-capture-workflow.mjs` (Playwright
+with simulated MIDI; see the script header for setup). Keep both walkthroughs
+in sync with any changes. Two rules protect the read-only guarantee:
 
 - **The lab's hardware paths cannot write.** `fetchDump` and
   `probeDumpRequests` in `device.js` throw on any opcode outside the dump-request

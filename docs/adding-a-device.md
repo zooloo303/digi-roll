@@ -95,8 +95,10 @@ either side of exactly one edit, plus a note saying what the edit was. One pair
 proves one fact about the format ("the swing byte is at 88812", "a trig's
 velocity lives in the pool record, not the step word").
 
-If the probe found a family byte, the capture target above the hint fills itself
-in, and:
+The lab opens in guided mode: use [Guided experiment sessions](#guided-experiment-sessions)
+below for its checklist and session ZIP. The following single-pair sequence is
+for **Show all controls** (expert mode). If the probe found a family byte, the
+capture target fills itself in:
 
 1. **Capture baseline.**
 2. Change **exactly one thing** on the box. One trig on, one knob one click, one
@@ -106,15 +108,74 @@ in, and:
    struct and as raw offsets where we don't. For a new box everything is raw
    offsets — that's expected, and those offsets are the discovery.
 4. Type what you changed into the note box, in plain words.
-5. **Export pair** → drag the `.json` into your mapping issue. **Save to
-   notebook** keeps a running log you can **Export .md** at the end of a session
-   and paste in alongside.
+5. **Export pair** downloads `digiroll-capture-….json`, containing both complete
+   snapshots and the note. Find it in Downloads or the browser's downloads list.
+   Export before starting another experiment. **Save to notebook** and
+   **Export .md** provide a summary only, not the full capture data.
+6. Compress the downloaded `.json` files into a ZIP. Open the mapping issue on
+   the GitHub website, drag the ZIP into a comment, wait for the upload, and
+   post. Upload through the website rather than replying to notification email.
+
+Before each new edit, click **Capture baseline** again, then repeat the change,
+diff, note and export steps. Capturing or exporting does **not** automatically
+advance the baseline. In expert mode, **Chain: B → baseline** is an explicit
+alternative after exporting the current pair.
 
 A good first series, one pair each: empty pattern → one trig on track 1 step 1;
 then that trig's velocity; then its length; then micro-timing; then note pitch;
 then pattern length; then tempo; then swing. That sequence is exactly how the DT2
 and DN2 formats got mapped, and the logs are in `docs/dt2-pattern-format.md` and
 `docs/dn2-pattern-format.md` if you want to see what the answers looked like.
+
+## Guided experiment sessions
+
+The guided lab now enforces a per-experiment cycle:
+
+1. Choose a recipe, prepare its track/step, and enter the displayed before value
+   (or explicitly mark it unknown / not displayed).
+2. Capture a fresh baseline. The recipe, location and before value are locked.
+3. Make one physical edit, capture after, and enter the displayed after value
+   or explicit unknown. Notes record extra edits and other context.
+4. Save the experiment in the tab. Saving is per pair, never a session-wide
+   “already exported” flag. Multiple-byte and unchanged diffs are accepted.
+5. Next experiment clears active snapshots and values, requiring a new baseline.
+6. Download session ZIP, then attach it through the GitHub issue website.
+
+Saved pairs and probe reports live only in memory until downloaded. Reconnects,
+mode changes and explicit restarts clear active captures but retain the saved
+session. The UI warns before leaving with undownloaded session additions or an
+unfinished capture. A download request is not proof the user kept the file.
+
+`js/labs/experiments.js` owns physical-edit recipes and value validation;
+`experiment-panel.js` owns the guided cycle; `session.js` preserves validated
+original pair JSON alongside structured metadata. `zip.js` produces a standard
+uncompressed ZIP without browser dependencies. Each extracted pair still opens
+with the existing `parseCapturePair` / Open pair path. ZIP import is not needed:
+extract it and open an individual pair.
+
+A targeted URL can use, for example,
+`difflab.html?checklist=layout,default-note,length,micro,tempo,swing&issue=8`.
+Only recognised recipe IDs are accepted. `issue` is a positive issue number
+within this repository; it cannot redirect to another site. The standard list
+is used when no checklist is supplied. The app can generate links using the
+experiment selector, inclusion checkbox and Copy checklist link button.
+
+The ZIP contains `pairs/capture-NNN.json`, optional `reports/probe-N.txt`,
+`session.json` with displayed values and experiment metadata, and `README.txt`.
+A report-only ZIP is valid. Each pair is validated for framing/checksum/count,
+matching family/type/slot, metadata consistency and equal payload sizes before
+being added. Unknown musical encodings are not grounds to reject a pair.
+
+Hardware operations share a busy lock so identity, probing and captures cannot
+interleave. Guided after captures use the baseline's target and compare the
+actual returned slot; imported pairs cannot become live session contributions.
+No new MIDI operations or write paths were introduced.
+
+Run `npx vitest run` for unit/regression checks. The ZIP interoperability test
+uses Python 3's standard-library ZIP reader. For the browser workflow, serve
+the repo on localhost and run `scripts/test-capture-workflow.mjs` with Playwright
+available (or set `PLAYWRIGHT_MODULE` to its `index.mjs`). It installs simulated
+MIDI ports before page load and never needs connected hardware or a login.
 
 ## What a capture pair contains
 
@@ -126,9 +187,12 @@ Plain JSON, readable in any editor before you post it:
 - the family byte, request type and slot the captures were fetched with;
 - your note and a timestamp.
 
-It contains one pattern slot from your project. It does **not** contain samples,
-sounds, project settings, or anything else on the box — and no personal data
-beyond what your box reports about itself. Read it first if you'd rather check.
+The contents depend on the captured request. A pattern-kit dump can include
+kit and sound settings and names; other request types can contain project
+settings or other objects. These captures are not sample-audio exports. Use a
+scratch project with data you are comfortable sharing; the note is included.
+If more than one setting was edited, record that explicitly: the pair may
+still be useful. A single edit can legitimately change multiple payload fields.
 
 ## Step 3 — what we do with it
 

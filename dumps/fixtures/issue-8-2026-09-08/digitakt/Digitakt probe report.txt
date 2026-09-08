@@ -1,0 +1,13 @@
+### digi-roll probe report
+
+- Device: Digitakt (product id 12)
+- OS: 1.52 (build 0095)
+- MIDI port: Elektron Digitakt
+- Requests sent: 96 (dump requests only — the probe cannot write)
+
+Family byte `0x0a` (known: Digitakt) answers:
+- `0x60` request → `0x50` response (pattern+kit), 27,648 bytes, checksum OK (slot 1)
+- `0x61` request → `0x51` response (pattern), 25,088 bytes, checksum OK (slot 1)
+- `0x62` request → `0x52` response (kit), 2,560 bytes, checksum OK (slot 1)
+- `0x63` request → `0x53` response (sound), 160 bytes, checksum OK (slot 1)
+- `0x64` request → `0x54` response (project settings), 2,560 bytes, checksum OK (slot 1)

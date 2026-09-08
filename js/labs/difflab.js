@@ -19,14 +19,12 @@ import {
   objectName,
 } from './probe.js';
 import { buildCapturePair, parseCapturePair } from './capture-pair.js';
-import { guideState, guideDoneText, plainDiffSummary } from './guide.js';
+import { plainDiffSummary } from './guide.js';
+import { captureIdentity } from './capture-identity.js';
+import { experimentPanel } from './experiment-panel.js';
+import { describerFor } from './describers.js';
 import * as dt2 from '../elektron/dt2/pattern.js';
 import * as dn2 from '../elektron/dn2/pattern.js';
-
-const DESCRIBERS = {
-  digitakt2: dt2.describeOffset,
-  digitone2: dn2.describeOffset,
-};
 
 // Specs, for the readouts that need to know the struct rather than just how to
 // name an offset — the p-lock lane report below.
@@ -40,8 +38,6 @@ const SPECS = {
 // a DT2 gets the full annotation with no box attached, and a probe-discovered
 // dump from an unmapped box gets honest raw offsets instead of the wrong map.
 const slugForFamily = family => PRODUCT_BY_FAMILY[family]?.slug ?? null;
-const describerFor = (family, requestType) =>
-  (requestType === 0x60 ? DESCRIBERS[slugForFamily(family)] ?? null : null);
 const specFor = (family, requestType) =>
   (requestType === 0x60 ? SPECS[slugForFamily(family)] ?? null : null);
 
@@ -113,16 +109,18 @@ function refreshTypeMenu() {
 }
 
 function syncButtons() {
-  const connected = !!device?.identity;
+  const connected = !!device;
   const target = captureTarget();
-  $('labProbe').disabled = !connected;
-  $('capA').disabled = !connected || !target;
-  $('capB').disabled = !connected || !baseline;
-  $('labSave').disabled = !lastDiff;
-  $('labChain').disabled = !lastCapture || !connected;
+  $('labProbe').disabled = busy || !connected || (guided && !!baseline);
+  $('capA').disabled = busy || !connected || !target || (guided && !experiments.canBaseline());
+  $('capB').disabled = busy || !connected || !baseline || (guided && !experiments.canAfter());
+  $('labSave').disabled = busy || !lastDiff;
+  $('labChain').disabled = busy || !lastCapture || !connected || !!lastDiff?.fromFile;
   // A pair is exportable once both sides exist and came off a box in this
   // session — re-exporting an imported file would only launder its metadata.
-  $('labExportPair').disabled = !(baseline && lastCapture && lastDiff && !lastDiff.fromFile);
+  $('labExportPair').disabled = busy || !(baseline && lastCapture && lastDiff && !lastDiff.fromFile);
+  for (const id of ['connect', 'port', 'guideToggle', 'labImportPair']) $(id).disabled = busy;
+  for (const id of ['labPattern', 'labFamily', 'labType']) $(id).disabled = busy || (guided && !!baseline);
   renderGuide();
 }
 
@@ -137,72 +135,42 @@ $('labType').onchange = syncButtons;
 // the contributor path doesn't touch (`.expert` in difflab.html) and replaces the
 // one-line hint with a step panel that says one thing at a time.
 //
-// It is presentation only: the hidden controls stay live and keep their values,
-// so `captureTarget()` still reads the probe-filled family byte. What a capture
-// *collects* is identical in both modes — the mode changes which of it is drawn,
-// and an exported pair carries the same bytes either way. Least of all does it
-// change that the lab cannot write, which is true in both.
+// Guided mode also enforces an explicit before/after/save/next cycle. Hidden
+// target controls retain the probe selection; both modes use the same read-only
+// device methods and preserve the complete received messages.
 
 // Guided by default: a first-time contributor is the whole reason this page is
 // public, and a returning developer flips it once and is remembered.
 const GUIDE_KEY = 'digiroll-difflab-guided-v1';
 let guided = localStorage.getItem(GUIDE_KEY) !== 'off';
-let probeDone = false;
-let exportedCount = 0;
+let busy = false;
 
 function renderGuide() {
   $('guideToggle').textContent = guided ? 'Show all controls' : 'Guided mode';
   document.body.classList.toggle('guided', guided);
-  if (!guided) return;
-
-  // A pair opened from a file fills in baseline/lastCapture/lastDiff without
-  // anything having been captured, so counting it as progress would tell a
-  // contributor they'd already taken snapshots of their own box. `fromFile` is
-  // the same flag that stops such a pair being re-exported.
-  const own = !!lastDiff && !lastDiff.fromFile;
-  const g = guideState({
-    connected: !!device?.identity,
-    boxKnown: !!device?.identity?.supported,
-    probeDone,
-    hasBaseline: !!baseline && !lastDiff?.fromFile,
-    hasDiff: own,
-    noteFilled: !!$('labNote').value.trim(),
-    exported: exportedCount > 0,
-  });
-  $('guideSteps').innerHTML = g.steps.map(s =>
-    `<li class="${s.state}"><span class="n">${s.state === 'done' ? '' : s.number}</span>`
-    + `<span class="stepTitle">${s.title}</span>`
-    + `<span class="stepBody">${s.body}</span></li>`).join('');
-
-  const foot = $('guidePanel').querySelector('.guideDone');
-  if (g.complete) {
-    const html = guideDoneText({ exportedCount });
-    if (foot) foot.innerHTML = html;
-    else $('guideSteps').insertAdjacentHTML('afterend', `<div class="guideDone">${html}</div>`);
-  } else if (foot) {
-    foot.remove();
-  }
+  experiments.render();
 }
 
 $('guideToggle').onclick = () => {
   guided = !guided;
   localStorage.setItem(GUIDE_KEY, guided ? 'on' : 'off');
-  renderGuide();
-  // The diff already on screen was rendered for the other audience.
-  if (lastDiff) renderDiff(lastDiff, lastDiff.a, lastDiff.b);
+  experiments.reset();
+  setStatus('Mode changed — saved session pairs are retained; start with a fresh baseline.');
 };
 
-// The note is the single most valuable thing a contributor produces, and its
-// step can't tick until they've typed something.
-$('labNote').oninput = renderGuide;
+// Notes are optional except for custom experiments; structured values carry
+// the required before/after evidence in guided mode.
+$('labNote').oninput = syncButtons;
 
-$('port').onchange = () => { device?.close(); device = null; baseline = null; lastCapture = null; lastDiff = null; $('deviceInfo').textContent = ''; syncButtons(); };
+$('port').onchange = () => { device?.close(); device = null; experiments.reset(); $('deviceInfo').textContent = ''; syncButtons(); };
 
 $('connect').onclick = async () => {
   const pair = listPairs().find(p => p.out.id === $('port').value);
   if (!pair) { setStatus('Pick a device first', true); return; }
   device?.close();
   device = new ElektronDevice(pair.in, pair.out);
+  $('labFamily').value = ''; refreshTypeMenu();
+  $('deviceInfo').textContent = '';
   setStatus(`Asking ${pair.out.name} to identify itself…`);
   try {
     const id = await device.identify();
@@ -217,21 +185,17 @@ $('connect').onclick = async () => {
     if (!id.supported) {
       setStatus(`${id.name} identified, but its dump family byte is unknown — hit “Probe dump protocol” to look for one (read-only)`, true);
     } else {
-      setStatus(`Connected to ${id.name} — capture a baseline${DESCRIBERS[id.slug] ? '' : ' (no struct map for this box yet: diffs will be raw offsets)'}`);
+      setStatus(`Connected to ${id.name} — choose a scratch pattern and capture a baseline`);
     }
   } catch (err) {
-    // Silence here is nearly always the box rather than the browser: it is
-    // still booting, it is asleep, or this page was loaded before it was
-    // plugged in and is holding a port that no longer goes anywhere. Say so —
-    // a bare "no reply to API request 0x01" sends people to look at the wrong
-    // half of the problem.
-    setStatus(`${pair.out.name} didn't answer (${err.message}). Check the box has finished`
-      + ' booting and is not in Overbridge mode, then hit Connect again — and if it was'
-      + ' plugged in after this page loaded, reload first.', true);
-    device.close();
-    device = null;
+    // Identity and dump reads are independent. Keep the selected transport so
+    // the contributor can probe even when the identity API stays silent.
+    $('deviceInfo').textContent = 'MIDI port selected · identity and firmware unavailable';
+    setStatus(`${pair.out.name} did not identify itself (${err.message}). `
+      + 'The MIDI port is still selected. Click “Probe dump protocol” to check for read-only dump replies. '
+      + 'If that is silent too, check the box’s USB/MIDI routing and retry.', true);
   }
-  baseline = null; lastCapture = null; lastDiff = null;
+  experiments.reset();
   syncButtons();
 };
 
@@ -242,6 +206,22 @@ for (let i = 0; i < 128; i++) $('labPattern').add(new Option(bankName(i), i));
 let baseline = null;    // { index, payload, raw, family, requestType, at }
 let lastCapture = null; // the most recent B capture, same shape
 let lastDiff = null;    // { device, build, version, index, ranges, … }
+
+const experiments = experimentPanel({
+  getState: () => ({ connected: !!device, identity: device ? captureIdentity(device) : null, exported: !!lastDiff?.exported, target: !!captureTarget(), busy, guided,
+    hasBaseline: !!baseline, hasDiff: !!lastDiff, fromFile: !!lastDiff?.fromFile }),
+  resetCapture: () => {
+    baseline = null; lastCapture = null; lastDiff = null;
+    $('captureInfo').textContent = '';
+    $('diffPane').textContent = 'Prepare the next experiment, then capture a fresh before snapshot.';
+  },
+  pairText: note => buildCapturePair({
+    device: baseline.identity, family: baseline.family, requestType: baseline.requestType,
+    index: baseline.index, note, capturedAt: lastCapture.at,
+    baselineRaw: baseline.raw, afterRaw: lastCapture.raw,
+  }),
+  status: setStatus, sync: syncButtons,
+});
 
 // "family 0x1a · request 0x61" for anything that isn't a mapped box's
 // pattern-kit — the notebook and the export need to say what was captured,
@@ -258,21 +238,22 @@ function targetLabel(family, requestType) {
 // the UI fields — otherwise editing the target mid-experiment would diff two
 // different structs and call the whole file a change.
 async function capture(target) {
-  const asked = +$('labPattern').value;
+  const asked = target.index ?? +$('labPattern').value;
   setStatus(`Fetching ${bankName(asked)} (family 0x${target.family.toString(16)}, request 0x${target.requestType.toString(16)})…`);
   const { payload, raw, msg } = await device.fetchDump(target.family, target.requestType, asked);
   // Record the slot the box *answered* with. A working-state request ignores
   // the index you send and reports the loaded slot instead (the Analog Four's
   // 0x68/0x6a/0x6b/0x6c/0x6d do), and that answer is a finding: it is how you
   // know which slot the edit you are about to make will land in.
-  return { index: msg.index, asked, payload, raw, ...target, at: new Date().toISOString() };
+  return { index: msg.index, asked, payload, raw, family: target.family, requestType: target.requestType, identity: { ...captureIdentity(device) }, at: new Date().toISOString() };
 }
 
 $('capA').onclick = async () => {
   const target = captureTarget();
-  if (!target) return;
+  if (!target || (guided && !experiments.canBaseline())) return;
   try {
     baseline = await capture(target);
+    if (guided) experiments.beforeCaptured();
     lastCapture = null; lastDiff = null;
     $('captureInfo').textContent = `baseline: ${bankName(baseline.index)}, ${baseline.payload.length} bytes`
       + (baseline.index !== baseline.asked ? ` (the box answered with its loaded slot, not ${bankName(baseline.asked)})` : '');
@@ -401,7 +382,7 @@ function renderDiff(diff, a, b) {
     ? `<div class="plainSummary">${plainDiffSummary({
         regions: diff.ranges.length,
         bytes: diff.ranges.reduce((n, r) => n + r.end - r.start + 1, 0),
-        annotated: !!describerFor(diff.family, diff.requestType),
+        annotated: !!describerFor(diff.family, diff.requestType, a),
       })}</div>`
     : '';
   if (!diff.ranges.length) {
@@ -431,7 +412,7 @@ function makeDiff(a, b, deviceInfo, { fromFile = false } = {}) {
     index: b.index, at: b.at, family: a.family, requestType: a.requestType,
     target: targetLabel(a.family, a.requestType),
     fromFile,
-    ranges: diffAnnotatedRanges(a.payload, b.payload, describerFor(a.family, a.requestType)),
+    ranges: diffAnnotatedRanges(a.payload, b.payload, describerFor(a.family, a.requestType, a.payload)),
     plocks: plockReport(specFor(a.family, a.requestType), a.payload, b.payload),
     a: a.payload, b: b.payload,
   };
@@ -440,7 +421,7 @@ function makeDiff(a, b, deviceInfo, { fromFile = false } = {}) {
 function reportDiff() {
   if (guided) {
     setStatus(lastDiff.ranges.length
-      ? 'Got it — now write down what you changed, then hit “Export pair”'
+      ? 'Got it — enter the after value and click “Save experiment”'
       : "Nothing moved between the two snapshots — check the read-out below");
     return;
   }
@@ -453,20 +434,24 @@ function reportDiff() {
 }
 
 $('capB').onclick = async () => {
-  if (!baseline) return;
+  if (!baseline || (guided && !experiments.canAfter())) return;
   try {
-    const cap = await capture({ family: baseline.family, requestType: baseline.requestType });
+    const cap = await capture({ family: baseline.family, requestType: baseline.requestType, index: baseline.index });
     // Both sides must be the same slot or the diff is between two different
     // objects. This compares what the box *answered*, which also catches a
     // working-state capture where the box was made to load a different slot
     // between A and B — a real way to ruin an experiment without touching the
     // lab's controls.
+    if (cap.family !== baseline.family || cap.requestType !== baseline.requestType
+        || cap.payload.length !== baseline.payload.length) {
+      throw new Error('The snapshots have different targets or sizes — take a fresh baseline');
+    }
     if (cap.index !== baseline.index) {
       throw new Error(`the box answered with ${bankName(cap.index)}, but the baseline is ${bankName(baseline.index)}`
         + ' — capture a fresh baseline');
     }
     lastCapture = cap;
-    lastDiff = makeDiff(baseline, cap, device.identity);
+    lastDiff = makeDiff(baseline, cap, baseline.identity);
     renderDiff(lastDiff, baseline.payload, cap.payload);
     reportDiff();
   } catch (err) {
@@ -476,7 +461,7 @@ $('capB').onclick = async () => {
 };
 
 $('labChain').onclick = () => {
-  if (!lastCapture) return;
+  if (!lastCapture || lastDiff?.fromFile) return;
   baseline = lastCapture;
   lastCapture = null; lastDiff = null;
   $('captureInfo').textContent = `baseline: ${bankName(baseline.index)} (chained)`;
@@ -515,7 +500,7 @@ function renderProbeReport(report, summary) {
 }
 
 $('labProbe').onclick = async () => {
-  if (!device?.identity) return;
+  if (!device) return;
   $('labProbe').disabled = true;
   try {
     const plan = sweepPlan({ index: +$('labPattern').value });
@@ -533,13 +518,13 @@ $('labProbe').onclick = async () => {
       probed += plan2.length;
     }
 
-    probeDone = true;
     const summary = summarizeFindings(findings);
     const report = contributorReport({
-      identity: device.identity,
+      identity: captureIdentity(device),
       portName: [...access.outputs.values()].find(o => o.id === $('port').value)?.name ?? '',
       summary, probed,
     });
+    experiments.addReport(report, captureIdentity(device));
     renderProbeReport(report, summary);
 
     // Point the capture target at the best thing that answered, so the next
@@ -573,7 +558,7 @@ $('labProbe').onclick = async () => {
 
 $('labExportPair').onclick = () => {
   if (!(baseline && lastCapture && lastDiff) || lastDiff.fromFile) return;
-  const id = device.identity;
+  const id = baseline.identity;
   const name = `digiroll-capture-${id.slug !== 'elektron' ? id.slug : `product${id.productId}`}`
     + `-${bankName(baseline.index)}-${lastCapture.at.slice(0, 19).replaceAll(':', '-')}.json`;
   downloadText(name, buildCapturePair({
@@ -583,7 +568,7 @@ $('labExportPair').onclick = () => {
     capturedAt: lastCapture.at,
     baselineRaw: baseline.raw, afterRaw: lastCapture.raw,
   }));
-  exportedCount++;
+  lastDiff.exported = true;
   setStatus(`Capture pair saved: ${name} — attach it to the thread with the probe report`);
   syncButtons();
 };
@@ -715,6 +700,16 @@ $('labExport').onclick = () => {
 };
 
 // --- Boot -------------------------------------------------------------------------
+
+for (const id of ['connect', 'capA', 'capB', 'labProbe']) {
+  const handler = $(id).onclick;
+  $(id).onclick = async event => {
+    if (busy) return;
+    busy = true; syncButtons();
+    try { await handler(event); }
+    finally { busy = false; syncButtons(); }
+  };
+}
 
 (async () => {
   // The notebook must never keep MIDI from coming up: renderNotebook is already

@@ -1,0 +1,113 @@
+{
+  "contributor": "XtremeSounds",
+  "issue": "https://github.com/zooloo303/digi-roll/issues/8",
+  "received": "2026-09-08",
+  "archives": [
+    {
+      "device": "digitakt",
+      "url": "https://github.com/user-attachments/files/31964822/Digitakt.probe.report.zip",
+      "comment": "https://github.com/zooloo303/digi-roll/issues/8#issuecomment-5587771514",
+      "archiveSha256": "8f4bf0969ba8f4282e632547048f7d58c1a253a5e3f9c209c26dcd55c0e73be4",
+      "files": [
+        {
+          "path": "digitakt/Digitakt probe report.txt",
+          "bytes": 663,
+          "sha256": "3f32269ca0c48f6f5288e14153bbda87bfd80a84ecc04d7ed0c572030b7c4f70"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-25-24 (1).json",
+          "bytes": 84661,
+          "sha256": "3b727e34586c15ce2267b81d969e908262c5f46a7c16901ef1c53d47fca1dcff"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-27-15.json",
+          "bytes": 84644,
+          "sha256": "708d132e1bc43d5488d6820cd4dca797756cda1d6ed5bad3b7fba33c365d31e0"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-27-43.json",
+          "bytes": 84642,
+          "sha256": "eda1bf4bd9fb2eb1240421e1a6e4ac70db727b625d72f4eecb916e2563bd13e0"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-28-29.json",
+          "bytes": 84651,
+          "sha256": "77bb51b1cc9bbb1ee7fbe57591fcdfe21de624d3c46967d8fb87c91838e2d646"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-28-50.json",
+          "bytes": 84646,
+          "sha256": "0954db78c0c32015e8b308c267cbc5779ff04aebbcf5bae3c99b6860ac1527fb"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-29-45.json",
+          "bytes": 84645,
+          "sha256": "0e57187e2077cf5a3f5a47f82adaf4c39f00945ac8fc28a1a40a3cb2bfbde74a"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-30-22.json",
+          "bytes": 84636,
+          "sha256": "266494f08366f9655edd6912b228c4d91a480934e4fa20ca1e6ab8ffc42b6f03"
+        },
+        {
+          "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-30-43.json",
+          "bytes": 84636,
+          "sha256": "248e0efbcdcef4054d0e679c419759d12d07d0270edb5f2814180d04a9a48fd2"
+        }
+      ]
+    },
+    {
+      "device": "syntakt",
+      "url": "https://github.com/user-attachments/files/31964931/Syntakt.data.zip",
+      "comment": "https://github.com/zooloo303/digi-roll/issues/8#issuecomment-5587813077",
+      "archiveSha256": "66d42ea128d2a512c46e273629155695231211555a6d94bd0ffe53600a073b2c",
+      "files": [
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-36-19.json",
+          "bytes": 97133,
+          "sha256": "ab8c5a56f2b394d1e585103a9532337609c969136c14f78c27c79d7c975780e3"
+        },
+        {
+          "path": "syntakt/Syntakt probe dump.txt",
+          "bytes": 1022,
+          "sha256": "293d0b7555258de915ff98ffa9781421b15e8a505c7417d35f2505b7b8e64863"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-38-06.json",
+          "bytes": 97123,
+          "sha256": "d54ae6dee55a3b27cda12021e7c3c52b7aa2f69e8f0cdc2c18532de28b90f976"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-38-28.json",
+          "bytes": 97121,
+          "sha256": "81f1c2f2af04427678298e249c8f23ddf326e6408b2f00342a26c76911e0751c"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-38-50.json",
+          "bytes": 97127,
+          "sha256": "d15e33b34959eb4e08bbbb77964a3f644126a4278051a3deb43a2b97d4d31cf8"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-39-01.json",
+          "bytes": 97125,
+          "sha256": "e8df587abb7b0aa6b3abe769f554aefaa26806dceb16f483b0a9a73da3e6e5e0"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-39-23.json",
+          "bytes": 97124,
+          "sha256": "138d40b76970426cfbdc0b176b13c983e88d2cbafdf9cc790ccd6b97973cf240"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-39-39.json",
+          "bytes": 97115,
+          "sha256": "f3b3237c67648408f4a4039f6373f3e40292674c3a6620e328bf62be3cf4825f"
+        },
+        {
+          "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-40-06.json",
+          "bytes": 97115,
+          "sha256": "046b6492a2e5473b1d9887a5f25a1c53883303869d4d9790571fc3e7f5cc38f4"
+        }
+      ]
+    }
+  ]
+}

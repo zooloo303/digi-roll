@@ -1,0 +1,653 @@
+[
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-25-24 (1).json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "add a trig on track 1, step 1.",
+    "capturedAt": "2026-09-08T15:25:24.935Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 132,
+        "before": 67,
+        "after": 255
+      },
+      {
+        "offset": 196,
+        "before": 102,
+        "after": 255
+      },
+      {
+        "offset": 260,
+        "before": 80,
+        "after": 255
+      },
+      {
+        "offset": 324,
+        "before": 10,
+        "after": 0
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-27-15.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig velocity",
+    "capturedAt": "2026-09-08T15:27:15.616Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 196,
+        "before": 255,
+        "after": 51
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-27-43.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "note length",
+    "capturedAt": "2026-09-08T15:27:43.825Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 196,
+        "before": 255,
+        "after": 51
+      },
+      {
+        "offset": 260,
+        "before": 255,
+        "after": 28
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-28-29.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig’s microtiming",
+    "capturedAt": "2026-09-08T15:28:29.198Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 324,
+        "before": 0,
+        "after": 1
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-28-50.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig note pitch",
+    "capturedAt": "2026-09-08T15:28:50.992Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 132,
+        "before": 255,
+        "after": 62
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-29-45.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "pattern length",
+    "capturedAt": "2026-09-08T15:29:45.516Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 36,
+        "before": 0,
+        "after": 2
+      },
+      {
+        "offset": 37,
+        "before": 0,
+        "after": 129
+      },
+      {
+        "offset": 148,
+        "before": 255,
+        "after": 62
+      },
+      {
+        "offset": 212,
+        "before": 255,
+        "after": 51
+      },
+      {
+        "offset": 276,
+        "before": 255,
+        "after": 28
+      },
+      {
+        "offset": 340,
+        "before": 0,
+        "after": 1
+      },
+      {
+        "offset": 909,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 1820,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 2731,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 3642,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 4553,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 5464,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 6375,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 7286,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 8197,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 9108,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 10019,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 10930,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 11841,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 12752,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 13663,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 14574,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 25001,
+        "before": 16,
+        "after": 32
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-30-22.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "tempo",
+    "capturedAt": "2026-09-08T15:30:22.126Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 24998,
+        "before": 60,
+        "after": 58
+      },
+      {
+        "offset": 24999,
+        "before": 0,
+        "after": 32
+      }
+    ]
+  },
+  {
+    "path": "digitakt/digiroll-capture-digitakt-A01-2026-09-08T15-30-43.json",
+    "device": {
+      "name": "Digitakt",
+      "build": "0095",
+      "version": "1.52",
+      "slug": "digitakt",
+      "productId": 12
+    },
+    "family": 10,
+    "requestType": 96,
+    "index": 0,
+    "note": "swing",
+    "capturedAt": "2026-09-08T15:30:43.552Z",
+    "baselineBytes": 27648,
+    "afterBytes": 27648,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 25004,
+        "before": 20,
+        "after": 4
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-36-19.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig on track 1, step 1",
+    "capturedAt": "2026-09-08T15:36:19.571Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 4,
+        "before": 0,
+        "after": 3
+      },
+      {
+        "offset": 5,
+        "before": 0,
+        "after": 129
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-38-06.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig velocity",
+    "capturedAt": "2026-09-08T15:38:06.052Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 196,
+        "before": 255,
+        "after": 95
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-38-28.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig length",
+    "capturedAt": "2026-09-08T15:38:28.574Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 260,
+        "before": 255,
+        "after": 26
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-38-50.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig micro timing",
+    "capturedAt": "2026-09-08T15:38:50.151Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 324,
+        "before": 0,
+        "after": 255
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-39-01.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "trig note pitch",
+    "capturedAt": "2026-09-08T15:39:01.138Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 132,
+        "before": 255,
+        "after": 59
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-39-23.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "pattern length",
+    "capturedAt": "2026-09-08T15:39:23.802Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 36,
+        "before": 0,
+        "after": 3
+      },
+      {
+        "offset": 37,
+        "before": 0,
+        "after": 129
+      },
+      {
+        "offset": 148,
+        "before": 255,
+        "after": 59
+      },
+      {
+        "offset": 212,
+        "before": 255,
+        "after": 95
+      },
+      {
+        "offset": 276,
+        "before": 255,
+        "after": 26
+      },
+      {
+        "offset": 340,
+        "before": 0,
+        "after": 255
+      },
+      {
+        "offset": 974,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 1957,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 2940,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 3923,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 4906,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 5889,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 6872,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 7855,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 8838,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 9821,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 10804,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 11787,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 12770,
+        "before": 16,
+        "after": 32
+      },
+      {
+        "offset": 23204,
+        "before": 16,
+        "after": 32
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-39-39.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "tempo",
+    "capturedAt": "2026-09-08T15:39:39.343Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 23202,
+        "before": 64,
+        "after": 184
+      }
+    ]
+  },
+  {
+    "path": "syntakt/digiroll-capture-product30-A01-2026-09-08T15-40-06.json",
+    "device": {
+      "name": "Syntakt",
+      "build": "0082",
+      "version": "1.40",
+      "slug": "elektron",
+      "productId": 30
+    },
+    "family": 22,
+    "requestType": 96,
+    "index": 0,
+    "note": "swing",
+    "capturedAt": "2026-09-08T15:40:06.568Z",
+    "baselineBytes": 31744,
+    "afterBytes": 31744,
+    "checksumOk": true,
+    "countOk": true,
+    "changes": [
+      {
+        "offset": 23207,
+        "before": 14,
+        "after": 15
+      }
+    ]
+  }
+]

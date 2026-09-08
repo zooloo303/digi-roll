@@ -142,12 +142,13 @@ export function guideState({
 // still helped; one who keeps going is worth far more, so the finish line names
 // the next lap rather than just congratulating.
 export function guideDoneText({ exportedCount = 1 } = {}) {
-  return exportedCount > 1
-    ? `<b>${exportedCount} files saved.</b> Attach them all to the same issue. If you have another `
-      + 'twenty minutes, keep going — each new pair pins down one more part of the format.'
-    : '<b>Saved.</b> Attach that file to a mapping issue and you have contributed a mapped fact about '
-      + 'your box. Want to do another? Change one more thing and hit <b>Capture + diff</b> again — '
-      + 'the snapshot you just took becomes the new “before”.';
+  const saved = exportedCount > 1
+    ? `<b>${exportedCount} files saved.</b> Attach them all to the same issue.`
+    : '<b>Saved.</b> Attach that file to a mapping issue.';
+  return saved + ' Upload through the GitHub website, rather than replying by email. '
+    + 'Want to do another? Click <b>Capture baseline</b> before making the next edit. '
+    + 'Then change one thing, hit <b>Capture + diff</b>, update the note, and <b>Export pair</b>. '
+    + 'The baseline does not advance automatically.';
 }
 
 // The diff pane in plain language.
