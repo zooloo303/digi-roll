@@ -109,6 +109,19 @@ needs for the next steps. You don't have to touch or understand them.
 
 ## Step 3 — Choose an experiment and prepare the box
 
+For **Add a trig**, follow the numbered instructions on the page. Confirm that
+the chosen step is empty before capturing, then confirm you added a trig before
+capturing again. These confirmations record “empty → trig on”; there are no
+value fields to fill in for this experiment. Other experiments show only the
+value fields needed at the current stage.
+
+The prominent button follows your next step: **Capture before → Capture after →
+Save experiment → Next experiment**. At the end of the checklist it becomes
+**Download session ZIP**. You can also download early and stop after one experiment.
+The download instructions name the exact file to attach; downloading does not
+send it to anyone. Value examples are hints, not values to copy without checking
+your instrument.
+
 The **Experiment** menu contains the standard checklist: add a trig, velocity,
 length, microtiming, pitch, pattern length, tempo and swing. It also offers
 follow-up experiments for another track/step, a track default note, and a
@@ -127,11 +140,11 @@ useful before value. Do not guess.
 
 ## Step 4 — Capture before, make one edit, capture after
 
-Click **Capture baseline**. This is your before snapshot. The page locks the
+Click **Capture before**. This is your before snapshot. The page locks the
 experiment, track, step and before value so they continue to describe that
 snapshot.
 
-Now make only the requested edit on the box. Click **Capture + diff** for the
+Now make only the requested edit on the box. Click **Capture after** for the
 after snapshot. Enter the **After value**, or explicitly mark it unknown / not
 displayed. Include earlier/later or left/right for microtiming.
 
@@ -149,7 +162,7 @@ anyone. The menu marks that experiment as saved.
 
 Click **Next experiment**. The previous pair stays in the session, while the
 active snapshots and value fields are cleared. Prepare the next experiment,
-enter its before value and take a **fresh Capture baseline before editing**.
+enter its before value and click **Capture before** to take a fresh snapshot before editing.
 There is no automatic reuse of the previous after snapshot.
 
 You can choose another experiment from the menu before taking a baseline. To
@@ -174,7 +187,7 @@ Drag the ZIP into the issue comment in your browser, wait for the upload to
 finish, and post the comment. **Replying by email does not attach these files.**
 
 The **Read the walkthrough** link stays on the lab page for future sessions.
-To share a particular checklist, select experiments and use **Include in
+To share a particular checklist, open **Customize or share a checklist**, select experiments and use **Include in
 shared checklist**, then **Copy checklist link**. The link shares instructions,
 not your captures or displayed values.
 

@@ -138,6 +138,19 @@ and DN2 formats got mapped, and the logs are in `docs/dt2-pattern-format.md` and
 
 ## Guided experiment sessions
 
+For **Add a trig**, follow the numbered instructions on the page. Confirm that
+the chosen step is empty before capturing, then confirm you added a trig before
+capturing again. These confirmations record “empty → trig on”; there are no
+value fields to fill in for this experiment. Other experiments show only the
+value fields needed at the current stage.
+
+The prominent button follows your next step: **Capture before → Capture after →
+Save experiment → Next experiment**. At the end of the checklist it becomes
+**Download session ZIP**. You can also download early and stop after one experiment.
+The download instructions name the exact file to attach; downloading does not
+send it to anyone. Value examples are hints, not values to copy without checking
+your instrument.
+
 The guided lab now enforces a per-experiment cycle:
 
 1. Choose a recipe, prepare its track/step, and enter the displayed before value
@@ -167,7 +180,7 @@ A targeted URL can use, for example,
 Only recognised recipe IDs are accepted. `issue` is a positive issue number
 within this repository; it cannot redirect to another site. The standard list
 is used when no checklist is supplied. The app can generate links using the
-experiment selector, inclusion checkbox and Copy checklist link button.
+**Customize or share a checklist** disclosure, inclusion checkbox and Copy checklist link button.
 
 The ZIP contains `pairs/capture-NNN.json`, optional `reports/probe-N.txt`,
 `session.json` with displayed values and experiment metadata, and `README.txt`.

@@ -93,10 +93,25 @@
   .experimentRow input:not([type=checkbox]):not([type=number]) { width: 12em; }
   #experimentInstruction { color: #e1d4c3; max-width: 85ch; }
   #experimentValidation { color: #e7b472; min-height: 1.2em; }
+  #experimentHeading { font-size: 19px; margin: 14px 0 8px; }
+  #experimentTasks { font-size: 14px; line-height: 1.7; padding-left: 24px; }
+  #trigConfirmField { display: block; margin-top: 14px; font-size: 14px; }
+  body.guided #guideSteps .todo { display: none; }
+  #experimentAction { padding: 10px 16px; font-size: 14px; border-color: #f0913a; }
+  #experimentAction:enabled { background: #633c1b; color: #fff; }
+  #experimentProgress { color: #a7afbe; }
+  #checklistTools { margin: 8px 0; }
+  #checklistTools summary { cursor: pointer; color: #a7afbe; }
+  body.guided .cycleControl { display: none; }
+  #sessionPanel li { margin: 6px 0; }
+  #sessionDownload { overflow-wrap: anywhere; }
   #sessionPanel { flex: none; padding: 10px 14px; border-bottom: 1px solid #343944; }
   #sessionPanel p { color: #a7afbe; margin: 6px 0 0; max-width: 100ch; }
   #sessionPanel a { color: #6db2f0; margin-left: 8px; }
   #guidePanel { max-height: 55vh; overflow-y: auto; }
+  body.guided { height: auto; min-height: 100vh; overflow: auto; }
+  body.guided #guidePanel { max-height: none; overflow: visible; }
+  body.guided #labWrap { min-height: 200px; flex: none; }
   #sessionSummary { display: block; margin-bottom: 6px; }
   @media (max-height: 800px), (max-width: 600px) {
     body { height: auto; min-height: 100vh; overflow: auto; }
@@ -123,7 +138,7 @@
        expert mode, where #barhint below says the same thing in one line. -->
   <div id="guidePanel">
     <div class="guideHead">
-      <b>Mapping a box digi-roll can't read yet</b>
+      <b>Help us understand your box’s patterns</b>
       <span class="dim">One experiment at a time. No coding.</span>
     </div>
     <div class="safe">
@@ -134,22 +149,33 @@
     <section id="experimentPanel" aria-label="Experiment checklist">
       <div class="experimentRow">
         <label>Experiment <select id="experimentSelect"></select></label>
+        <span id="experimentProgress"></span>
+      </div>
+      <details id="checklistTools">
+        <summary>Customize or share a checklist</summary>
+        <div class="experimentRow">
         <button id="checklistLink">Copy checklist link</button>
         <label><input id="checklistInclude" type="checkbox" checked> Include in shared checklist</label>
-      </div>
+        </div>
+      </details>
+      <h2 id="experimentHeading"></h2>
       <p id="experimentInstruction" role="status"></p>
+      <ol id="experimentTasks"></ol>
+      <div id="guidedPatternTarget" class="experimentRow"></div>
       <div class="experimentRow">
         <label id="trackField">Track <input id="experimentTrack" type="number" min="1" max="128" value="1"></label>
         <label id="stepField">Step <input id="experimentStep" type="number" min="1" max="128" value="1"></label>
-        <label>Before value <input type="text" id="experimentBefore" placeholder="Exactly as displayed"></label>
-        <label><input id="beforeUnknown" type="checkbox"> Before unknown / not displayed</label>
-        <label>After value <input type="text" id="experimentAfter" placeholder="Include units and direction"></label>
-        <label><input id="afterUnknown" type="checkbox"> After unknown / not displayed</label>
+        <label id="beforeValueField">Before value <input type="text" id="experimentBefore" placeholder="Exactly as displayed"></label>
+        <label id="beforeUnknownField"><input id="beforeUnknown" type="checkbox"> Before unknown / not displayed</label>
+        <label id="afterValueField">After value <input type="text" id="experimentAfter" placeholder="Include units and direction"></label>
+        <label id="afterUnknownField"><input id="afterUnknown" type="checkbox"> After unknown / not displayed</label>
       </div>
+      <label id="trigConfirmField"><input id="trigConfirm" type="checkbox"> <span id="trigConfirmText"></span></label>
       <p id="experimentValidation" role="status"></p>
       <div class="experimentRow">
-        <button id="saveExperiment" disabled>Save experiment</button>
-        <button id="nextExperiment" disabled>Next experiment</button>
+        <button id="experimentAction" disabled aria-describedby="experimentInstruction experimentValidation">Connect your box</button>
+        <button id="saveExperiment" class="cycleControl" disabled>Save experiment</button>
+        <button id="nextExperiment" class="cycleControl" disabled>Next experiment</button>
         <button id="restartExperiment" disabled>Discard current pair and restart</button>
       </div>
     </section>
@@ -162,11 +188,12 @@
   </div>
 
   <div id="labBar">
-    <span class="dim">Experiment</span>
-    <select id="labPattern" title="Pattern slot on the box to watch"></select>
-    <button id="capA" title="Fetch the pattern as it is now — the baseline" disabled>Capture baseline</button>
-    <span class="dim">→ make ONE edit on the box →</span>
-    <button id="capB" title="Fetch the pattern again and diff it against the baseline" disabled>Capture + diff</button>
+    <span id="expertPatternTarget"></span>
+    <span id="patternSelector"><label for="labPattern">Pattern slot (same as on your box)</label>
+    <select id="labPattern" title="Pattern slot on the box to watch"></select></span>
+    <button id="capA" class="cycleControl" title="Fetch the pattern as it is now — the baseline" disabled>Capture baseline</button>
+    <span class="dim cycleControl">→ make ONE edit on the box →</span>
+    <button id="capB" class="cycleControl" title="Fetch the pattern again and diff it against the baseline" disabled>Capture + diff</button>
     <input id="labNote" type="text" aria-label="Experiment note" placeholder="Optional note: anything unexpected or extra edits?">
     <span class="expert">
       <button id="labSave" title="Save this diff to the lab notebook" disabled>Save to notebook</button>
@@ -202,10 +229,15 @@
 
   <section id="sessionPanel" aria-label="Saved session">
     <span id="sessionSummary" role="status">No experiments saved.</span>
-    <button id="downloadSession" disabled>Download session ZIP</button>
-    <a id="sessionIssue" href="https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml" target="_blank" rel="noopener">Open mapping issue</a>
-    <p>Saved experiments stay in this tab until you close or reload it. Download the ZIP before leaving.
-      Attach it on the GitHub website, wait for the upload, then post your comment. Email replies do not attach the files.</p>
+    <b>Send your captures — you can stop after one experiment.</b>
+    <ol>
+      <li><button id="downloadSession" disabled>Download session ZIP</button>
+        <span id="sessionDownload" role="status">This collects your saved snapshots and notes into one file.</span></li>
+      <li><a id="sessionIssue" href="https://github.com/zooloo303/digi-roll/issues/new?template=map-my-device.yml" target="_blank" rel="noopener">Open mapping issue</a> in your browser.</li>
+      <li>Drag the ZIP from Downloads into the issue’s text box. Wait for the upload to finish, then post the issue or comment.</li>
+    </ol>
+    <p>Downloading does not send us the file. No need to unzip it or paste its contents.
+      Email replies do not attach the files. Download before closing or reloading this tab.</p>
   </section>
 
   <div class="barhint expert">

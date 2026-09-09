@@ -37,40 +37,49 @@ try {
   await page.selectOption('#port', 'output'); await page.click('#connect');
   await page.waitForFunction(() => document.querySelector('#deviceInfo').textContent.includes('Syntakt'));
   assert.equal(await page.locator('#capA').isDisabled(), true);
-  await page.fill('#experimentBefore', 'empty'); await page.click('#capA');
-  await page.waitForFunction(() => !document.querySelector('#capB').disabled);
+  assert.equal(await page.locator('#experimentAction').textContent(), 'Capture before');
+  assert.equal(await page.locator('#experimentAction').isDisabled(), true);
+  assert.equal(await page.locator('#experimentBefore').getAttribute('placeholder'), 'e.g. empty');
+  assert.equal(await page.locator('#beforeValueField').isVisible(), false);
+  assert.match(await page.locator('#experimentTasks').textContent(), /Leave that step empty/);
+  await page.screenshot({ path: '/tmp/digiroll-trig-prepare.png', fullPage: true });
+  await page.check('#trigConfirm'); await page.click('#experimentAction');
+  await page.waitForFunction(() => !document.querySelector('#connect').disabled);
+  assert.equal(await page.locator('#capB').isDisabled(), true);
+  assert.equal(await page.locator('#trigConfirm').isChecked(), false);
+  await page.check('#trigConfirm');
   assert.equal(await page.locator('#experimentBefore').isDisabled(), true);
   assert.equal(await page.locator('#experimentSelect').isDisabled(), true);
   await page.evaluate(() => { window.sim.bytes[4] = 3; window.sim.bytes[5] = 129; window.sim.delay = 250; });
-  await page.click('#capB');
+  await page.click('#experimentAction');
   assert.equal(await page.locator('#labProbe').isDisabled(), true);
   await page.waitForFunction(() => !document.querySelector('#experimentAfter').disabled && document.querySelector('#diffPane').textContent.includes('2 bytes'));
-  assert.equal(await page.locator('#saveExperiment').isDisabled(), true);
-  await page.fill('#experimentAfter', 'trig on'); await page.click('#saveExperiment');
+  assert.equal(await page.locator('#saveExperiment').isDisabled(), false);
+  await page.click('#experimentAction');
   assert.equal(await page.locator('#saveExperiment').isDisabled(), true);
   assert.equal(await page.locator('#capB').isDisabled(), true);
-  await page.click('#nextExperiment');
+  await page.click('#experimentAction');
   assert.equal(await page.locator('#experimentSelect').inputValue(), 'velocity');
   assert.equal(await page.locator('#capB').isDisabled(), true);
   assert.equal(await page.locator('#saveExperiment').isDisabled(), true);
   assert.equal(await page.locator('#experimentAfter').inputValue(), '');
-  await page.check('#beforeUnknown'); await page.click('#capA');
+  await page.check('#beforeUnknown'); await page.click('#experimentAction');
   await page.waitForFunction(() => !document.querySelector('#capB').disabled);
   // Wrong returned slot cannot become a pair, even with a pinned requested slot.
-  await page.evaluate(() => { window.sim.slot = 1; }); await page.click('#capB');
+  await page.evaluate(() => { window.sim.slot = 1; }); await page.click('#experimentAction');
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('baseline is'));
   assert.equal(await page.locator('#saveExperiment').isDisabled(), true);
-  await page.evaluate(() => { window.sim.slot = null; window.sim.corrupt = true; }); await page.click('#capB');
+  await page.evaluate(() => { window.sim.slot = null; window.sim.corrupt = true; }); await page.click('#experimentAction');
   await page.waitForFunction(() => document.querySelector('#status').textContent.includes('corrupt'));
   assert.equal(await page.locator('#saveExperiment').isDisabled(), true);
   await page.evaluate(() => { window.sim.corrupt = false; window.sim.delay = 0; });
-  await page.click('#capB'); // unchanged is allowed
+  await page.click('#experimentAction'); // unchanged is allowed
   await page.waitForFunction(() => document.querySelector('#diffPane').textContent.includes('Nothing changed'));
-  await page.check('#afterUnknown'); await page.click('#saveExperiment');
-  await page.click('#nextExperiment');
+  await page.check('#afterUnknown'); await page.click('#experimentAction');
+  await page.click('#experimentAction');
   assert.equal(await page.locator('#experimentSelect').inputValue(), 'micro');
   assert.equal(await page.locator('#saveExperiment').isDisabled(), true);
-  await page.fill('#experimentBefore', '0'); await page.click('#capA');
+  await page.fill('#experimentBefore', '0'); await page.click('#experimentAction');
   await page.waitForFunction(() => !document.querySelector('#capB').disabled);
   // A reconnect invalidates the active pair while retaining saved evidence.
   await page.click('#connect'); await page.waitForFunction(() => !document.querySelector('#connect').disabled);
@@ -85,6 +94,7 @@ try {
   const download = await downloaded; const zip = '/tmp/digiroll-workflow.zip'; await download.saveAs(zip);
   const files = JSON.parse(execFileSync('python3', ['-c',
     'import zipfile,json,sys; z=zipfile.ZipFile(sys.argv[1]); assert z.testzip() is None; print(json.dumps({n:z.read(n).decode() for n in z.namelist()}))', zip], { encoding: 'utf8' }));
+  assert.ok((await page.locator('#sessionDownload').textContent()).includes(download.suggestedFilename()));
   const session = JSON.parse(files['session.json']);
   assert.equal(session.pairs.length, 2); assert.equal(session.reports.length, 1);
   assert.equal(session.pairs[0].experiment.before, 'empty');
@@ -114,5 +124,20 @@ try {
   assert.equal(await page.locator('#experimentTrack').inputValue(), '2');
   assert.equal(await page.locator('#experimentStep').inputValue(), '5');
   assert.equal(await page.locator('#sessionIssue').getAttribute('href'), 'https://github.com/zooloo303/digi-roll/issues/8');
+  await page.selectOption('#port', 'output'); await page.click('#experimentAction');
+  await page.waitForFunction(() => document.querySelector('#deviceInfo').textContent.includes('Syntakt'));
+  await page.fill('#experimentBefore', 'C3'); await page.click('#experimentAction');
+  await page.waitForFunction(() => !document.querySelector('#capB').disabled);
+  assert.match(await page.locator('#experimentInstruction').textContent(), /track 2, step 5/);
+  await page.click('#experimentAction');
+  await page.waitForFunction(() => document.querySelector('#diffPane').textContent.includes('Nothing changed'));
+  await page.fill('#experimentAfter', 'D3'); await page.click('#experimentAction');
+  assert.equal(await page.locator('#experimentAction').textContent(), 'Download session ZIP');
+  assert.match(await page.locator('#experimentInstruction').textContent(), /Checklist complete/);
+  const finalDownload = page.waitForEvent('download'); await page.click('#experimentAction');
+  assert.ok((await page.locator('#sessionDownload').textContent()).includes((await finalDownload).suggestedFilename()));
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  assert.deepEqual(errors, []);
+  await page.screenshot({ path: '/tmp/digiroll-capture-complete.png', fullPage: true });
   console.log('PASS: fresh cycles, displayed/unknown values, multi-byte and unchanged pairs, corrupt/mismatched captures, busy controls, reconnect, probe, ZIP, imported-pair isolation, no writes, no page errors, narrow layout.');
 } finally { await browser.close(); }

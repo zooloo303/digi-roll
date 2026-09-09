@@ -6,7 +6,7 @@ export const EXPERIMENTS = {
   micro: { title: 'Trig microtiming', track: 1, step: 1, prep: 'Use an existing trig. Read its timing on the screen.', edit: 'Move only this trig’s timing. Include the direction: earlier/later, left/right, or the displayed sign.' },
   pitch: { title: 'Trig pitch', track: 1, step: 1, prep: 'Use an existing trig. Read its note on the screen.', edit: 'Change only this trig’s pitch. Include the octave if displayed.' },
   'pattern-length': { title: 'Pattern length', prep: 'Read the pattern length. Keep its scale mode unchanged.', edit: 'Change only the pattern length. Several stored fields may change; that is fine.' },
-  tempo: { title: 'Pattern tempo', prep: 'Read the pattern tempo. Keep its tempo mode unchanged.', edit: 'Change only the tempo and record both displayed values.' },
+  tempo: { title: 'Pattern tempo', prep: 'If your box offers pattern/global tempo modes, select pattern tempo before capturing. Read the tempo on the screen.', edit: 'Change only the tempo and record both displayed values. Keep the tempo mode unchanged.' },
   swing: { title: 'Swing', prep: 'Read the swing value on the screen.', edit: 'Change only swing and record both displayed values, including the percent sign if shown.' },
   layout: { title: 'Pitch on another track and step', track: 2, step: 5, prep: 'Place a trig on the chosen track and step before taking the before snapshot.', edit: 'Change only that trig’s pitch. Include the octave if displayed.' },
   'default-note': { title: 'Track default note', track: 1, prep: 'Use a trig without an individual pitch lock on this track.', edit: 'Change only the track’s default note. Leave the trig unlocked.' },

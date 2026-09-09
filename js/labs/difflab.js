@@ -422,7 +422,7 @@ function makeDiff(a, b, deviceInfo, { fromFile = false } = {}) {
 function reportDiff() {
   if (guided) {
     setStatus(lastDiff.ranges.length
-      ? 'Got it — enter the after value and click “Save experiment”'
+      ? 'Got it — follow the experiment instructions above to save your snapshots'
       : "Nothing moved between the two snapshots — check the read-out below");
     return;
   }
