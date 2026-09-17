@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Digi-Roll Studio — a piano roll for Elektron boxes</title>
-<meta name="description" content="Draw, generate and write MIDI patterns straight into a Digitakt II, Digitone II or Analog Four over SysEx. Byte-verified writes, no live recording. Free and open source.">
+<meta name="description" content="Draw, generate and write MIDI patterns straight into a Digitakt II, Digitone II, Analog Four or Syntakt over SysEx. Byte-verified writes, no live recording. Free and open source.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0c0f'/><rect x='6' y='9' width='11' height='4' rx='1' fill='%236ecf9a'/><rect x='12' y='15' width='14' height='4' rx='1' fill='%236ecf9a'/><rect x='6' y='21' width='8' height='4' rx='1' fill='%236ecf9a'/></svg>">
 
 <meta property="og:title" content="Digi-Roll Studio">
@@ -387,7 +387,7 @@
 
 <header class="hero">
   <div class="wrap">
-    <div class="eyebrow">Digitakt II · Digitone II · Analog Four · <b>free and open source</b></div>
+    <div class="eyebrow">Digitakt II · Digitone II · Analog Four · Syntakt · <b>free and open source</b></div>
 
     <h1>A piano roll for your&nbsp;Elektron boxes.</h1>
 
@@ -549,9 +549,10 @@
       <div class="card">
         <h3><span class="pip pip-teal"></span>Your whole studio at once</h3>
         <p>
-          Digitakt II, Digitone II and Analog Four side by side — up to 38
-          tracks, per-track length and scale, and p-lock lanes drawn right
-          under the roll from each box's own parameters.
+          Digitakt II, Digitone II, Analog Four and Syntakt side by side — up
+          to 51 tracks, per-track length and scale, and p-lock lanes drawn right
+          under the roll from each box's own parameters — the three whose
+          parameters have been measured, which is not yet the Syntakt's.
         </p>
         <p>
           Internal or external clock, a fill toggle, and a panic button for when
@@ -568,9 +569,10 @@
     <h2>What it can write to, and what it can play to.</h2>
     <p class="sec-lede">
       Direct pattern writing needs a pattern format somebody has mapped byte
-      by byte. That's three boxes so far — two gen-2 digis and, since
-      September 2026, the gen-1 Analog Four. Everything else can still capture
-      a pattern the old way.
+      by byte. That's four boxes now — two gen-2 digis, the gen-1 Analog Four,
+      and since September 2026 the Syntakt, mapped and written by a contributor
+      on their own machine. Everything else can still capture a pattern the old
+      way.
     </p>
 
     <div class="gear">
@@ -585,6 +587,10 @@
       <div class="gear-row">
         <div class="who">Analog Four</div>
         <div class="what"><span class="badge badge-write">Direct write</span>The same round trip on a gen-1 box: six tracks, 64 steps, any of 128 slots, paced for its slower wire. Velocity, length, micro-timing, trig conditions and thirteen p-lock parameters all carry. Its FX and CV tracks are read-only and come back byte-exact.</div>
+      </div>
+      <div class="gear-row">
+        <div class="who">Syntakt</div>
+        <div class="what"><span class="badge badge-write">Direct write</span>Twelve audio tracks plus the FX track, 64 steps, any of 128 slots. Notes, velocity, length, micro-timing and trig conditions all carry; one note per trig. This box keeps its pattern and its kit in one message, so a write goes back carrying the destination's own kit and p-lock pool byte for byte — nothing here authors a sound. Same allowlist, same read-back verify.</div>
       </div>
       <div class="gear-row">
         <div class="who">Octatrack · Digitakt · Digitone</div>
@@ -603,10 +609,12 @@
     <div class="sechead">Don't see your box?</div>
     <h2>You can map it yourself, without writing any code.</h2>
     <p class="sec-lede">
-      The reason the list above is three boxes long isn't difficulty — it's
+      The reason the list above is four boxes long isn't difficulty — it's
       that mapping a pattern format needs the box in front of you, and we have
-      three. If you own one of the others, the tool for mapping it already
-      exists and runs in your browser.
+      three. The fourth is the Syntakt: somebody who owns one mapped its format,
+      wrote the code and verified the write on their own hardware. If you own one
+      of the others, the tool for mapping it already exists and runs in your
+      browser.
     </p>
 
     <div class="grid">
@@ -617,7 +625,8 @@
           the box, fetch it again, and the lab shows you which bytes moved. That
           is the entire method — it's how the Digitakt II and Digitone II
           formats were worked out, it's how the Analog Four's gen-1 format was
-          mapped after them one captured question at a time, and it's how the
+          mapped after them one captured question at a time, it's how the Syntakt's
+          format came off a box nobody here owns, and it's how the
           <a href="https://github.com/zooloo303/digi-roll/blob/main/docs/dn2-pattern-format.md">first public documentation of the DN2 pattern format</a>
           got written.
         </p>
@@ -667,8 +676,10 @@
     </p>
 
     <p style="margin:22px 0 0;color:var(--dimmer);font-size:14px">
-      Wanted: <b>Syntakt</b>, <b>Analog Rytm</b>, <b>Octatrack</b>, and the
-      gen-1 <b>Digitakt</b> and <b>Digitone</b>.
+      Wanted: <b>Analog Rytm</b>, <b>Octatrack</b>, and the gen-1
+      <b>Digitakt</b> and <b>Digitone</b>. And a second <b>Syntakt</b> owner —
+      its patterns transfer now, but its p-lock parameters are still unmapped,
+      and one machine is the whole of what has been tested.
     </p>
   </div>
 </section>
